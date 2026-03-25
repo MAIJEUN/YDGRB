@@ -1062,4 +1062,4 @@ async def on_ready():
     await bot.tree.sync()
     print(f"로그인 완료: {bot.user}")
 
-bot.run("MTQ3NDc4NzQ4NjY4NDE1NjAzNg.G-vmJI.2VBQnxMU_W016twlFvmQsxOsmiiYGACwlFhb7c")
+bot.run("")
