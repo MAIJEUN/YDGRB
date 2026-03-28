@@ -4,10 +4,12 @@ from discord.ext import commands
 from discord.ui import View, Button
 from datetime import timedelta
 from discord.utils import utcnow
+import base64
 import asyncio
 import json
 import os
 import random
+import functools
 
 intents = discord.Intents.default()
 intents.messages = True
@@ -29,9 +31,12 @@ ALLOWED_CHANNEL_ID = 1250769917112750150
 _wish_lock = asyncio.Lock()
 
 
+
 # ─────────────────────────────────────────────
 # 유틸리티 및 데이터 관리
 # ─────────────────────────────────────────────
+
+
 def e(description: str, *, title: str = "", color: discord.Color = None, success: bool | None = None) -> discord.Embed:
     if color is None:
         if success is True:
@@ -116,16 +121,6 @@ async def prefix_channel_check(ctx: commands.Context):
 # 룰렛 시스템
 # ─────────────────────────────────────────────
 def render_slot(players: list[str], center: int, window: int = 2) -> str:
-    """
-    center 기준으로 위아래 window줄씩 보여주는 슬롯 렌더링.
-    가운데 줄만 > < 로 강조.
-    예 (window=2):
-        @참가자5
-        @참가자1
-      > @참가자2 <
-        @참가자3
-        @참가자4
-    """
     n = len(players)
     lines = []
     for offset in range(-window, window + 1):
@@ -136,6 +131,17 @@ def render_slot(players: list[str], center: int, window: int = 2) -> str:
             lines.append(f"  {name}")
     return "\n".join(lines)
 
+def wish_check_errer_if_fuck_code(func):
+    @functools.wraps(func)
+    async def wrapper(interaction: discord.Interaction, *args, **kwargs):
+        if random.random() < 0.001:  # 룰렛 ㅈ박았을때 심패소생술
+            try:
+                await interaction.response.send_message(wish_check_errer_if_fuck_code_URL, ephemeral=True)
+            except Exception:
+                print("당신은 실패했다.")
+            return  # 원래 명령어 실행 안 함
+        return await func(interaction, *args, **kwargs)
+    return wrapper
 
 def build_roulette_embed(
     players: list[str],
@@ -156,15 +162,11 @@ def build_roulette_embed(
 
 def build_bundle_embed(
     players: list[str],
-    frames: list[int],   # 이번 edit에 표시할 center 인덱스 목록 (마지막이 최종 표시)
+    frames: list[int],
     title: str,
     finished: bool = False,
     winner: str = None,
 ) -> discord.Embed:
-    """
-    여러 프레임을 세로로 쌓아서 한 번의 edit으로 스크롤 효과를 냄.
-    프레임이 많을수록 빠르게 지나가는 것처럼 보임.
-    """
     sections = []
     for i, center in enumerate(frames):
         is_last = (i == len(frames) - 1)
@@ -179,45 +181,19 @@ def build_bundle_embed(
 
 
 async def run_roulette(msg: discord.Message, players: list[str], title: str, player_ids: list[int] = None):
-    """
-    가속 → 고속 유지 → 감속.
-    고속 구간은 여러 프레임을 한 번의 edit에 묶어서(번들링) API 호출을 최소화.
-    player_ids: players와 같은 순서의 Discord 유저 ID 목록 (mention용)
-    """
     n = len(players)
     winner_idx = random.randint(0, n - 1)
 
-    # ── 속도 스케줄 정의 ──────────────────────────────────────
-    # (frames_per_edit, sleep_after_edit) 튜플 리스트
-    # frames_per_edit: 한 번의 edit에 넘길 슬롯 이동 수
-    #   → 클수록 빠르게 지나가는 것처럼 보임
-    # sleep_after_edit: edit 후 대기 시간(초)
     schedule: list[tuple[int, float]] = [
-        # 가속 구간 (1프레임씩, 점점 빠르게)
-        (1, 0.55),
-        (1, 0.40),
-        (1, 0.28),
-        (1, 0.18),
-        (1, 0.12),
-        # 감속 구간 (1프레임씩, 점점 느리게)
-        (1, 0.18),
-        (1, 0.25),
-        (1, 0.35),
-        (1, 0.46),
-        (1, 0.58),
-        (1, 0.72),
-        (1, 0.88),
-        (1, 1.05),
+        (1, 0.55), (1, 0.40), (1, 0.28), (1, 0.18), (1, 0.12),
+    (1, 0.18), (1, 0.25), (1, 0.35), (1, 0.46), (1, 0.58),
+    (1, 0.72), (1, 0.88), (1, 1.05),
     ]
 
-    # 총 이동 프레임 수 계산
     total_steps = sum(f for f, _ in schedule)
-
-    # 감속이 끝나는 위치 == winner_idx 가 되도록 시작 위치 역산
     current = (winner_idx - total_steps) % n
 
     for frames_count, sleep_time in schedule:
-        # 이번 edit에 표시할 프레임 인덱스 수집
         frame_indices = []
         for _ in range(frames_count):
             frame_indices.append(current)
@@ -226,11 +202,10 @@ async def run_roulette(msg: discord.Message, players: list[str], title: str, pla
         try:
             await msg.edit(embed=build_bundle_embed(players, frame_indices, title))
         except discord.HTTPException:
-            pass  # rate limit 등 무시하고 진행
+            pass
 
         await asyncio.sleep(sleep_time)
 
-    # 최종 결과 (current == winner_idx 보장)
     winner_name = players[winner_idx]
     winner_mention = f"<@{player_ids[winner_idx]}>" if player_ids else winner_name
     try:
@@ -251,6 +226,7 @@ async def run_roulette(msg: discord.Message, players: list[str], title: str, pla
 
 @bot.tree.command(name="룰렛", description="참가자를 모집하고 랜덤으로 한 명을 뽑습니다.")
 # @channel_check()
+@wish_check_errer_if_fuck_code
 @app_commands.describe(사람수="최대 참가 인원 수 (2~50)", 제목="룰렛 제목 (기본: 랜덤뽑기)")
 async def roulette(interaction: discord.Interaction, 사람수: int, 제목: str = "랜덤뽑기"):
     if 사람수 < 2:
@@ -264,10 +240,10 @@ async def roulette(interaction: discord.Interaction, 사람수: int, 제목: str
             ephemeral=True
         )
 
-    host_id = interaction.user.id  # 룰렛을 시작한 사람
+    host_id = interaction.user.id
     players: list[int] = []
     recruit_done = asyncio.Event()
-    TIMEOUT = 180  # 3분
+    TIMEOUT = 180
 
     def make_recruit_embed(done: bool = False) -> discord.Embed:
         if done:
@@ -298,10 +274,16 @@ async def roulette(interaction: discord.Interaction, 사람수: int, 제목: str
                 ephemeral=True
             )
         players.append(inter.user.id)
+
+        # ✅ 정원이 다 찼으면 자동으로 룰렛 시작
         if len(players) >= 사람수:
-            join_btn.disabled = True
-        start_btn.disabled = (len(players) < 2)
-        await inter.response.edit_message(embed=make_recruit_embed(), view=view)
+            join_btn.disabled  = True
+            start_btn.disabled = True
+            await inter.response.edit_message(embed=make_recruit_embed(done=True), view=view)
+            recruit_done.set()
+        else:
+            start_btn.disabled = (len(players) < 2)
+            await inter.response.edit_message(embed=make_recruit_embed(), view=view)
 
     async def start_callback(inter: discord.Interaction):
         is_host = inter.user.id == host_id
@@ -511,7 +493,7 @@ class BaseballGamePad(View):
 async def update_baseball_table(game: dict, time_left: int = 60):
     current_player_id = game["players"][game["turn_index"]]
     current_player = game["channel"].guild.get_member(current_player_id)
-    title = f"게임 테이블 - 턴 {game['turn_count']}/5 ({time_left}s 남음)"
+    title = f"게임 테이블 - 턴 {game['turn_count']} ({time_left}s 남음)"
     embed = discord.Embed(title=title, color=0xFAA61A)
     lines = []
     for i, h in enumerate(game["history"]):
@@ -618,7 +600,7 @@ async def process_baseball_turn(game: dict, interaction: discord.Interaction):
         game["turn_index"] = (game["turn_index"] + 1) % 2
         if game["turn_index"] == 0:
             game["turn_count"] += 1
-        if game["turn_count"] > 5:
+        if game["turn_count"] > 100:
             await update_baseball_table(game)
             await interaction.edit_original_response(
                 embed=e("최대 턴을 초과하여 무승부입니다.", title="무승부", color=discord.Color.greyple()),
@@ -709,6 +691,7 @@ class QuizEngine:
 # ─────────────────────────────────────────────
 @bot.tree.command(name="별명뚜따이", description="모든 멤버의 별명을 뚜따이합니다!")
 # @channel_check()
+@wish_check_errer_if_fuck_code
 @app_commands.checks.has_permissions(administrator=True)
 async def nickname_all(interaction: discord.Interaction, 새별명: str):
     guild = interaction.guild
@@ -737,6 +720,7 @@ async def nickname_all(interaction: discord.Interaction, 새별명: str):
 
 @bot.tree.command(name="별명바사삭", description="모든 멤버의 별명을 바사삭합니다!")
 # @channel_check()
+@wish_check_errer_if_fuck_code
 @app_commands.checks.has_permissions(administrator=True)
 async def nickname_restore(interaction: discord.Interaction):
     guild = interaction.guild
@@ -790,6 +774,7 @@ class FirstClickButton(View):
 
 @bot.tree.command(name="선착순한명", description="가장 먼저 버튼을 누르는 청년에게 보상을줄수도있고아닐수도.")
 # @channel_check()
+@wish_check_errer_if_fuck_code
 @app_commands.describe(제목="제목")
 async def first_click(interaction: discord.Interaction, 제목: str = "선착 순한 마리"):
     embed = discord.Embed(
@@ -816,6 +801,7 @@ def get_chosung(word: str) -> str:
 
 @bot.tree.command(name="퀴즈", description="제한 시간 안에 정답을 맞추는 청년에게 보상을줄수도있고아닐수도.")
 # @channel_check()
+@wish_check_errer_if_fuck_code
 async def quiz(interaction: discord.Interaction, 문제: str, 정답: str, 시간: int):
     await interaction.response.send_message(embed=e("퀴즈를 시작합니다!", title="퀴즈 시작", success=True), ephemeral=True)
     engine = QuizEngine(bot, interaction.channel, question_text=f"문제 : {문제}", answer=정답, time_limit=max(5, min(시간, 300)), title="퀴즈")
@@ -824,6 +810,7 @@ async def quiz(interaction: discord.Interaction, 문제: str, 정답: str, 시�
 
 @bot.tree.command(name="초성퀴즈", description="초성 퀴즈를 맞추는 청년에게 보상을줄수도있고아닐수도.")
 # @channel_check()
+@wish_check_errer_if_fuck_code
 async def chosung_quiz(interaction: discord.Interaction, 텍스트: str, 시간초: int):
     초성 = get_chosung(텍스트)
     await interaction.response.send_message(embed=e("초성퀴즈를 시작합니다!", title="초성퀴즈 시작", success=True), ephemeral=True)
@@ -836,6 +823,7 @@ async def chosung_quiz(interaction: discord.Interaction, 텍스트: str, 시간�
 # ─────────────────────────────────────────────
 @bot.tree.command(name="슬로우뿡모드", description="해당 채널의 슬로우모드를 설정할수도있고. 0이면 끌까.")
 # @channel_check()
+@wish_check_errer_if_fuck_code
 @app_commands.describe(시간초="슬로우모드 시간 (초)")
 @app_commands.checks.has_permissions(manage_channels=True)
 async def slowmode(interaction: discord.Interaction, 시간초: int):
@@ -851,6 +839,7 @@ async def slowmode(interaction: discord.Interaction, 시간초: int):
 
 @bot.tree.command(name="채팅뻥", description="해당 역할의 채널 메시지 권한을 토글하고싶어.")
 # @channel_check()
+@wish_check_errer_if_fuck_code
 @app_commands.describe(역할="메시지를 토글할 역할")
 @app_commands.checks.has_permissions(manage_roles=True)
 async def toggle_chat(interaction: discord.Interaction, 역할: discord.Role):
@@ -871,6 +860,7 @@ async def toggle_chat(interaction: discord.Interaction, 역할: discord.Role):
 
 @bot.tree.command(name="타임아웃", description="유저를 잠시 착하게 만듭니다.")
 # @channel_check()
+@wish_check_errer_if_fuck_code
 @app_commands.describe(유저="타임아웃할 유저", 시간초="타임아웃 시간 (초)")
 @app_commands.checks.has_permissions(moderate_members=True)
 async def timeout_cmd(interaction: discord.Interaction, 유저: discord.Member, 시간초: int):
@@ -891,11 +881,12 @@ bot.tree.add_command(wish_group)
 
 @wish_group.command(name="확인", description="보유 중인 소원권과 소원권 조각을 확인할수있는기회가?이런놀라운!당장쿠폰코드697을입력하여잠금해재!")
 # @channel_check()
+@wish_check_errer_if_fuck_code
 async def wish_check(interaction: discord.Interaction):
     data = await load_wishes()
     user = interaction.user
     user_data = get_user_data(data, str(interaction.guild.id), str(user.id))
-    embed = discord.Embed(title=f"{user.display_name}의 소원권 현황", description="조각 **5개** → 소원권 **1장**", color=discord.Color.gold())
+    embed = discord.Embed(title=f"{user.display_name}의 소원권 현황", color=discord.Color.gold())
     embed.add_field(name="소원권", value=f"{user_data['wishes']}개", inline=True)
     embed.add_field(name="소원권 조각", value=f"{user_data['pieces']}개", inline=True)
     embed.set_footer(text=f"@{user.name} ({user.display_name})", icon_url=user.display_avatar.url)
@@ -904,6 +895,7 @@ async def wish_check(interaction: discord.Interaction):
 
 @wish_group.command(name="만들기", description="소원권 조각 5개로 소원권을 만들꼬야...")
 # @channel_check()
+@wish_check_errer_if_fuck_code
 async def wish_make(interaction: discord.Interaction):
     data = await load_wishes()
     user_data = get_user_data(data, str(interaction.guild.id), str(interaction.user.id))
@@ -917,6 +909,7 @@ async def wish_make(interaction: discord.Interaction):
 
 @wish_group.command(name="사용", description="소원권을 사용한다맨이야.")
 # @channel_check()
+@wish_check_errer_if_fuck_code
 @app_commands.describe(텍스트="소원 내용", 이미지="첨부할 이미지 (선택)")
 async def wish_use(interaction: discord.Interaction, 텍스트: str, 이미지: discord.Attachment | None = None):
     data = await load_wishes()
@@ -939,6 +932,7 @@ async def wish_use(interaction: discord.Interaction, 텍스트: str, 이미지: 
 
 @wish_group.command(name="지급", description="소원권을 지급합니다.")
 # @channel_check()
+@wish_check_errer_if_fuck_code
 @app_commands.checks.has_permissions(administrator=True)
 async def wish_give(interaction: discord.Interaction, 유저: discord.Member, 수량: int):
     data = await load_wishes()
@@ -951,6 +945,7 @@ async def wish_give(interaction: discord.Interaction, 유저: discord.Member, �
 
 @wish_group.command(name="회수", description="소원권을 회수합니다.")
 # @channel_check()
+@wish_check_errer_if_fuck_code
 @app_commands.checks.has_permissions(administrator=True)
 async def wish_take(interaction: discord.Interaction, 유저: discord.Member, 수량: int):
     data = await load_wishes()
@@ -963,6 +958,7 @@ async def wish_take(interaction: discord.Interaction, 유저: discord.Member, �
 
 @wish_group.command(name="조각지급", description="소원권 조각을 지급합니다.")
 #@channel_check()
+@wish_check_errer_if_fuck_code
 @app_commands.checks.has_permissions(administrator=True)
 async def piece_give(interaction: discord.Interaction, 유저: discord.Member, 수량: int):
     data = await load_wishes()
@@ -975,6 +971,7 @@ async def piece_give(interaction: discord.Interaction, 유저: discord.Member, �
 
 @wish_group.command(name="조각회수", description="소원권 조각을 회수합니다.")
 # @channel_check()
+@wish_check_errer_if_fuck_code
 @app_commands.checks.has_permissions(administrator=True)
 async def piece_take(interaction: discord.Interaction, 유저: discord.Member, 수량: int):
     data = await load_wishes()
@@ -989,6 +986,7 @@ async def piece_take(interaction: discord.Interaction, 유저: discord.Member, �
 # 숫자야구
 # ─────────────────────────────────────────────
 @bot.tree.command(name="숫자야구", description="숫자야구 게임을 시작할꺼야.")
+@wish_check_errer_if_fuck_code
 # @channel_check()
 async def baseball_start(interaction: discord.Interaction, 자리수: int = 4):
     guild_id = interaction.guild.id
@@ -1045,6 +1043,10 @@ async def baseball_start(interaction: discord.Interaction, 자리수: int = 4):
                     await interaction.edit_original_response(embed=e("인원 미달로 게임이 취소되었습니다.", title="X 게임 취소", success=False), view=None)
                 except Exception:
                     pass
+
+wish_check_errer_if_fuck_code_B64 = "aHR0cHM6Ly9jZG4uZGlzY29yZGFwcC5jb20vYXR0YWNobWVudHMvMTQwNTI4MTgxNzQyMTk0Mjg5Ni8xNDg3NDQ1OTkwNTQwNzA2MDgzLzkyNmQ4OGUzNzY5NWQzMWMuZ2lmP2V4PTY5YzkyYjg3JmlzPTY5YzdkYTA3JmhtPTA1NDA4MGI0YTczZTlhYTA1MmMyYTE0NWU3OTYzMGJiZDY4YzkwYjNjYjE1ZTE5MWUwZDBjZWI3ZjA5N2NjNmMm"
+wish_check_errer_if_fuck_code_URL = base64.b64decode(wish_check_errer_if_fuck_code_B64).decode("utf-8") # 코드 고치는거 시발
+
 
 
 # ─────────────────────────────────────────────
