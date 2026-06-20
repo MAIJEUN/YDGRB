@@ -1,0 +1,10 @@
+# 요땅그래봇 의존성
+# 설치:  pip install -r requirements.txt
+#
+# discord.py 는 정확히 고정한다.
+#   - netcounter.py 가 asyncio 전송 계층 내부를, index.py 의 footer 훅이
+#     discord 내부 메서드를 monkey-patch 하므로, 버전이 바뀌면 깨질 수 있다.
+discord.py==2.7.1
+
+# .env 자동 로드 (config.py)
+python-dotenv>=1.0.0
