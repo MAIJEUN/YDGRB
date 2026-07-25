@@ -64,9 +64,18 @@ jobs:
         env:
           NAME: ${{ steps.version.outputs.name }}
         run: |
+          set -euo pipefail
           mkdir -p release
-          cp -r dist package.json package-lock.json README.md .env.example release/
+          # 하나라도 빠지면 어떤 파일인지 바로 알 수 있게 이름을 찍고 멈춘다.
+          for item in dist package.json package-lock.json README.md .env.example; do
+            if [ ! -e "$item" ]; then
+              echo "::error::릴리스에 넣을 '$item' 이(가) 저장소에 없습니다."
+              exit 1
+            fi
+            cp -r "$item" release/
+          done
           (cd release && zip -qr "../${NAME}.zip" .)
+          unzip -l "${NAME}.zip"
 
       - name: 릴리스 설명 만들기
         env:
