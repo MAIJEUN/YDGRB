@@ -21,6 +21,8 @@ import { pathToFileURL } from "node:url";
  *   > 해결: …
  *
  * 제목의 `분류:` 접두사로 묶인다. 접두사가 없으면 「기타」로 간다.
+ *
+ * 버전 제목(`# YDGRB2026.725.0`)은 넣지 않는다 — GitHub 릴리스 화면이 이미 제목으로 보여 준다.
  */
 
 const SECTIONS = [
@@ -59,7 +61,7 @@ function quote(body) {
     .map((line) => (line.trim() === "" ? ">" : `> ${line.trimEnd()}`));
 }
 
-export function buildNotes(name, commits) {
+export function buildNotes(commits) {
   const grouped = new Map();
 
   for (const commit of commits) {
@@ -71,7 +73,7 @@ export function buildNotes(name, commits) {
     grouped.set(section, items);
   }
 
-  const lines = [`# ${name}`, ""];
+  const lines = [];
 
   for (const section of [...SECTIONS.map((entry) => entry.title), OTHER]) {
     const items = grouped.get(section);
@@ -129,11 +131,5 @@ export function readCommits(since = previousTag()) {
 
 // 직접 실행하면 설명 전문을 출력한다.
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const name = process.argv[2];
-  if (name === undefined || name === "") {
-    console.error("릴리스 이름이 필요합니다. 예) node scripts/release-notes.mjs YDGRB2026.725.0");
-    process.exit(1);
-  }
-
-  process.stdout.write(buildNotes(name, readCommits()));
+  process.stdout.write(buildNotes(readCommits()));
 }

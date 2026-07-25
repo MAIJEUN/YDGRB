@@ -78,10 +78,8 @@ jobs:
           unzip -l "${NAME}.zip"
 
       - name: 릴리스 설명 만들기
-        env:
-          NAME: ${{ steps.version.outputs.name }}
         run: |
-          node scripts/release-notes.mjs "$NAME" > "$RUNNER_TEMP/notes.md"
+          node scripts/release-notes.mjs > "$RUNNER_TEMP/notes.md"
           cat "$RUNNER_TEMP/notes.md"
 
       - name: 릴리스 생성
