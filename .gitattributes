@@ -1,6 +1,10 @@
 # 윈도우에서 개발하고 리눅스 러너에서 빌드하므로 줄바꿈을 LF 로 통일한다.
 * text=auto eol=lf
 
+# 배치 파일만 예외 — cmd 는 CRLF 가 아니면 label/goto 에서 오작동한다.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
 # 실행 파일과 이미지 등은 그대로 둔다.
 *.png binary
 *.jpg binary

@@ -168,9 +168,36 @@ npm run ship -- "메모 정리 [skip release]"
 | 제목 | `YDGRB2026.725.0` |
 | 첨부 파일 | `YDGRB2026.725.0.zip` |
 
-zip 안에는 `dist/`, `package.json`, `package-lock.json`, `README.md`, `.env.example` 이 들어갑니다.
+zip 안에는 `dist/`, `package.json`, `package-lock.json`, `README.md`, `.env.example`,
+그리고 실행기 `run.bat` 이 들어갑니다.
 
-서버에서 받아 쓸 때:
+### 윈도우 — run.bat 더블클릭
+
+zip 을 풀고 **`run.bat` 을 더블클릭**하면 끝입니다. 나머지는 알아서 합니다.
+
+```
+1. 봇 실행
+2. 슬래시 커맨드 등록   (커맨드를 새로 만들거나 이름·옵션을 바꿨을 때만)
+3. 종료
+```
+
+- **Node.js 확인** — 없으면 설치 주소를 안내하고 멈춥니다
+- **`.env` 준비** — 없으면 `.env.example` 을 복사해 만들고 메모장을 열어 줍니다.
+  토큰이 비어 있어도 같은 안내가 나옵니다
+- **패키지 설치** — `node_modules` 가 없으면 `npm ci --omit=dev` 를 한 번 돌립니다
+- **자동 재시작** — 봇이 예기치 않게 꺼지면 10초 뒤 다시 켭니다.
+  5번 연속 실패하면 멈추고 오류를 보여 줍니다 (토큰이 틀린 경우 무한 재시도를 막기 위해)
+
+작업 스케줄러나 바로가기에서 메뉴 없이 바로 띄우려면 인자를 주세요.
+
+```
+run.bat bot
+```
+
+> 24시간 운영이라면 `run.bat` 보다 PM2 나 작업 스케줄러 쪽이 낫습니다.
+> `run.bat` 의 재시작은 어디까지나 「가끔 꺼질 때」 대비용입니다.
+
+### 리눅스 · 직접 실행
 
 ```bash
 unzip YDGRB2026.725.0.zip -d ydgrb
@@ -180,8 +207,10 @@ unzip YDGRB2026.725.0.zip -d ydgrb
 npm ci --omit=dev
 ```
 
-`.env` 를 채우고 `node dist/index.js` 로 실행합니다. 소원권 데이터(`data/wishes.json`)는
-릴리스에 들어가지 않으니 서버에 있는 것을 그대로 두세요.
+`.env` 를 채우고 `node dist/index.js` 로 실행합니다.
+슬래시 커맨드 등록은 `node dist/deploy-commands.js` 입니다.
+
+소원권 데이터(`data/wishes.json`)는 릴리스에 들어가지 않으니 서버에 있는 것을 그대로 두세요.
 
 ---
 

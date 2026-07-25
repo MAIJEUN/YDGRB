@@ -67,7 +67,7 @@ jobs:
           set -euo pipefail
           mkdir -p release
           # 하나라도 빠지면 어떤 파일인지 바로 알 수 있게 이름을 찍고 멈춘다.
-          for item in dist package.json package-lock.json README.md .env.example; do
+          for item in dist package.json package-lock.json README.md .env.example run.bat; do
             if [ ! -e "$item" ]; then
               echo "::error::릴리스에 넣을 '$item' 이(가) 저장소에 없습니다."
               exit 1
