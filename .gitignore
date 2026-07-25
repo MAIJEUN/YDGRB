@@ -1,0 +1,17 @@
+node_modules/
+dist/
+
+# 토큰이 들어 있으므로 절대 커밋하지 않는다
+.env
+.env.*
+!.env.example
+
+# 소원권 보유량 · 서버 설정 · 소원 기록
+data/
+
+logs/
+*.log
+npm-debug.log*
+
+.DS_Store
+Thumbs.db

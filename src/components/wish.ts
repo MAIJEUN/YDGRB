@@ -1,0 +1,889 @@
+import { PermissionFlagsBits } from "discord.js";
+import type { ModalBuilder, ModalSubmitInteraction, User } from "discord.js";
+
+import { describeError } from "../errors.js";
+import { logger } from "../logger.js";
+import { channelMessage, response, updateResponse, type MessageOptions } from "../ui/response.js";
+import { defineComponentHandler, type ComponentInteraction } from "../types.js";
+import {
+  attachmentField,
+  attachmentSummary,
+  embedImages,
+  fromMessage,
+  prepareUploads,
+  toUploadFiles,
+} from "../wish/attachments.js";
+import { formatBalance, formatBalanceChange, formatBalanceChangeFor } from "../wish/format.js";
+import {
+  ACTION,
+  DIRECTION,
+  FIELD,
+  ITEM,
+  ITEM_LABEL,
+  ITEM_UNIT,
+  MODAL_ID,
+  PANEL,
+  WISH,
+  isDirection,
+  isItem,
+  type Item,
+} from "../wish/ids.js";
+import { bloodModal, configModal, grantModal, useModal, wasteModal } from "../wish/modals.js";
+import { wishDecidedRows, wishDecisionRows } from "../wish/panels.js";
+import {
+  MAX_FRAGMENTS_PER_TICKET,
+  MIN_FRAGMENTS_PER_TICKET,
+  applyBalanceChange,
+  applyBalanceChanges,
+  attachWishMessage,
+  createWish,
+  deleteWish,
+  getBalance,
+  getSettings,
+  resolveWish,
+  updateSettings,
+  type BalanceDelta,
+  type RankSort,
+} from "../wish/store.js";
+import type { WishAttachment, WishRecord } from "../wish/types.js";
+import { checkView, noticeView, rankView } from "../wish/views.js";
+
+/**
+ * 소원권 시스템의 모든 버튼 · 셀렉트 메뉴 · 모달을 처리한다.
+ * customId 는 `wish:<동작>[:인자…]` 형태다.
+ */
+export default defineComponentHandler({
+  namespace: WISH,
+  async execute(interaction, args) {
+    const [action, ...rest] = args;
+
+    const guildId = interaction.guildId;
+    if (guildId === null) {
+      await fail(interaction, "서버 전용", "이 기능은 서버 안에서만 쓸 수 있어요.");
+      return;
+    }
+
+    switch (action) {
+      // 비활성 버튼(페이지 표시) — 눌려도 아무 일도 하지 않는다.
+      case ACTION.noop:
+        await interaction.deferUpdate();
+        return;
+
+      // ── 확인 · 랭킹 ─────────────────────────────────────────
+      // 패널에서 누르면 채널에 공개로 띄우고(패널은 그대로), 그 뒤 드롭다운·페이지 조작은
+      // 공개된 그 메시지를 갱신한다. 읽기 전용이라 다른 사람이 눌러도 문제없다.
+      case ACTION.check:
+        await openPublicView(
+          interaction,
+          await checkView(guildId, interaction.user.id, interaction.user),
+        );
+        return;
+
+      case ACTION.checkSelect: {
+        if (!interaction.isUserSelectMenu()) return;
+        const targetId = interaction.values[0] ?? interaction.user.id;
+        await replaceView(interaction, await checkView(guildId, targetId, interaction.user));
+        return;
+      }
+
+      case ACTION.rank:
+        await openPublicView(
+          interaction,
+          await rankView(guildId, "tickets", 0, interaction.user),
+        );
+        return;
+
+      case ACTION.rankPage:
+        await replaceView(
+          interaction,
+          await rankView(guildId, parseSort(rest[0]), parsePage(rest[1]), interaction.user),
+        );
+        return;
+
+      case ACTION.rankSort: {
+        if (!interaction.isStringSelectMenu()) return;
+        await replaceView(
+          interaction,
+          await rankView(guildId, parseSort(interaction.values[0]), parsePage(rest[0]), interaction.user),
+        );
+        return;
+      }
+
+      case ACTION.craft:
+        await craft(interaction, guildId);
+        return;
+
+      case ACTION.use:
+        await openWishModal(interaction, guildId);
+        return;
+
+      case ACTION.waste:
+        await showModal(interaction, wasteModal());
+        return;
+
+      case ACTION.grant:
+        if (await denyNonAdmin(interaction)) return;
+        await showModal(interaction, grantModal());
+        return;
+
+      case ACTION.config:
+        if (await denyNonAdmin(interaction)) return;
+        // 현재 값을 채워서 띄운다 — 한 항목만 바꾸고 싶을 때 나머지를 다시 입력하지 않도록.
+        await showModal(interaction, configModal(await getSettings(guildId)));
+        return;
+
+      case ACTION.blood:
+        if (await denyNonAdmin(interaction)) return;
+        await showModal(interaction, bloodModal());
+        return;
+
+      case ACTION.accept:
+      case ACTION.reject:
+        await decideWish(interaction, guildId, rest[0], action === ACTION.accept);
+        return;
+
+      // ── 모달 제출 ────────────────────────────────────────────
+      case MODAL_ID.waste:
+        await submitWaste(interaction, guildId);
+        return;
+
+      case MODAL_ID.use:
+        await submitWish(interaction, guildId);
+        return;
+
+      case MODAL_ID.grant:
+        await submitGrant(interaction, guildId);
+        return;
+
+      case MODAL_ID.blood:
+        await submitBlood(interaction, guildId);
+        return;
+
+      case MODAL_ID.config:
+        await submitConfig(interaction, guildId);
+        return;
+
+      default:
+        logger.warn(`소원권: 모르는 customId ${interaction.customId}`);
+        await fail(interaction, "처리할 수 없음", "알 수 없는 동작입니다.");
+    }
+  },
+});
+
+// ─────────────────────────────────────────────────────────────
+// 공통 도우미
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * 패널 메시지를 그 자리에서 갱신한다.
+ * 모달이 패널에서 열렸다면 모달 제출도 같은 메시지를 고친다.
+ *
+ * 주의: 패널 메시지는 Components V2 로 만들어졌고 그 속성은 나중에 못 바꾼다.
+ * 그래서 여기 들어오는 view 는 항상 `layout: "container"` 여야 한다.
+ */
+async function replaceView(interaction: ComponentInteraction, view: MessageOptions): Promise<void> {
+  if (interaction.isMessageComponent()) {
+    await interaction.update(updateResponse(view));
+    return;
+  }
+
+  if (interaction.isModalSubmit() && interaction.isFromMessage()) {
+    await interaction.update(updateResponse(view));
+    return;
+  }
+
+  await interaction.reply(response(view));
+}
+
+/**
+ * 패널 결과를 채널에 **모두가 보이게** 한 번 더 남긴다.
+ *
+ * 패널 자체는 누른 사람에게만 보이는(ephemeral) 컨테이너라, 결과가 남지 않는다.
+ * 공개본은 기록용이므로 버튼을 떼고 임베드로만 보낸다 —
+ * 버튼을 그대로 두면 지나가던 사람이 눌러 자기 계정으로 동작해 버린다.
+ */
+async function announce(interaction: ComponentInteraction, view: MessageOptions): Promise<void> {
+  if (!interaction.isRepliable()) return;
+
+  try {
+    await interaction.followUp(
+      response({ ...view, layout: "embed", rows: [], ephemeral: false }),
+    );
+  } catch (error) {
+    // 공개 알림에 실패해도 본 동작은 이미 끝났으므로 로그만 남긴다.
+    logger.error("공개 결과 메시지 전송 실패", error);
+  }
+}
+
+/** 패널을 갱신하고, 같은 결과를 채널에도 공개로 남긴다. */
+async function replaceViewAndAnnounce(
+  interaction: ComponentInteraction,
+  view: MessageOptions,
+): Promise<void> {
+  await replaceView(interaction, view);
+  await announce(interaction, view);
+}
+
+/**
+ * 패널에서 누른 화면을 채널에 **공개로 띄운다**. 패널 자체는 건드리지 않는다.
+ *
+ * `announce` 와 달리 버튼·드롭다운을 그대로 싣는다 — 확인/랭킹은 읽기 전용이라
+ * 다른 사람이 조작해도 안전하고, 조작 결과는 이 공개 메시지가 갱신된다.
+ */
+async function openPublicView(
+  interaction: ComponentInteraction,
+  view: MessageOptions,
+): Promise<void> {
+  if (!interaction.isMessageComponent()) return;
+
+  // 패널을 그대로 두기 위해 갱신 없이 인터랙션만 종료한다.
+  await interaction.deferUpdate();
+  await interaction.followUp(response({ ...view, ephemeral: false }));
+}
+
+/** 패널과 무관한 단발성 오류 안내 (새 임시 메시지). */
+async function fail(
+  interaction: ComponentInteraction,
+  title: string,
+  description: string,
+): Promise<void> {
+  if (!interaction.isRepliable()) return;
+
+  await interaction.reply(
+    response({ status: "failure", title, description, user: interaction.user }),
+  );
+}
+
+function isAdmin(interaction: ComponentInteraction): boolean {
+  return interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) === true;
+}
+
+/** 관리자가 아니면 안내하고 true 를 돌려준다. */
+async function denyNonAdmin(interaction: ComponentInteraction): Promise<boolean> {
+  if (isAdmin(interaction)) return false;
+
+  await fail(interaction, "권한이 없습니다", "이 기능은 **관리자** 권한을 가진 사람만 쓸 수 있어요.");
+  return true;
+}
+
+async function showModal(interaction: ComponentInteraction, modal: ModalBuilder): Promise<void> {
+  // showModal 은 아직 응답하지 않은 인터랙션에서만 가능하다.
+  if (!interaction.isButton()) return;
+  await interaction.showModal(modal);
+}
+
+function parseSort(value: string | undefined): RankSort {
+  return value === "fragments" ? "fragments" : "tickets";
+}
+
+function parsePage(value: string | undefined): number {
+  const page = Number.parseInt(value ?? "0", 10);
+  return Number.isFinite(page) && page > 0 ? page : 0;
+}
+
+// ─────────────────────────────────────────────────────────────
+// 제작 — 조각 5개 → 소원권 1장
+// ─────────────────────────────────────────────────────────────
+
+async function craft(interaction: ComponentInteraction, guildId: string): Promise<void> {
+  // 제작 비용은 서버마다 다르게 정할 수 있다 (관리자 패널 > 설정).
+  const { fragmentsPerTicket } = await getSettings(guildId);
+
+  const delta: BalanceDelta = { fragments: -fragmentsPerTicket, tickets: 1 };
+  const result = await applyBalanceChange(guildId, interaction.user.id, delta);
+
+  if (!result.ok) {
+    await replaceViewAndAnnounce(
+      interaction,
+      noticeView({
+        status: "failure",
+        title: "제작 실패",
+        description: `조각이 부족합니다. 소원권 1장을 만들려면 조각 **${fragmentsPerTicket}개**가 필요해요.`,
+        fields: [{ name: "현재 보유", value: formatBalance(result.before) }],
+        user: interaction.user,
+        panel: PANEL.user,
+      }),
+    );
+    return;
+  }
+
+  await replaceViewAndAnnounce(
+    interaction,
+    noticeView({
+      status: "success",
+      title: "제작 완료",
+      description: `조각 ${fragmentsPerTicket}개를 소원권 **1장**으로 바꿨습니다.`,
+      balance: formatBalanceChange(result),
+      user: interaction.user,
+      panel: PANEL.user,
+    }),
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// 낭비 — 고른 항목 1개 소멸
+// ─────────────────────────────────────────────────────────────
+
+async function submitWaste(interaction: ComponentInteraction, guildId: string): Promise<void> {
+  if (!interaction.isModalSubmit()) return;
+
+  const picked = interaction.fields.getStringSelectValues(FIELD.wasteItem)[0];
+  if (!isItem(picked)) {
+    await replaceView(
+      interaction,
+      noticeView({
+        status: "failure",
+        title: "낭비 실패",
+        description: "항목을 고르지 않았습니다.",
+        user: interaction.user,
+        panel: PANEL.user,
+      }),
+    );
+    return;
+  }
+
+  const result = await applyBalanceChange(guildId, interaction.user.id, deltaFor(picked, -1));
+
+  if (!result.ok) {
+    await replaceViewAndAnnounce(
+      interaction,
+      noticeView({
+        status: "failure",
+        title: "낭비 실패",
+        description: `버릴 ${ITEM_LABEL[picked]}이(가) 없습니다.`,
+        fields: [{ name: "현재 보유", value: formatBalance(result.before) }],
+        user: interaction.user,
+        panel: PANEL.user,
+      }),
+    );
+    return;
+  }
+
+  await replaceViewAndAnnounce(
+    interaction,
+    noticeView({
+      status: "success",
+      title: "낭비",
+      description: "🤸",
+      balance: formatBalanceChange(result),
+      user: interaction.user,
+      panel: PANEL.user,
+    }),
+  );
+}
+
+function deltaFor(item: Item, amount: number): BalanceDelta {
+  return item === ITEM.ticket ? { tickets: amount } : { fragments: amount };
+}
+
+// ─────────────────────────────────────────────────────────────
+// 사용 — 소원 빌기
+// ─────────────────────────────────────────────────────────────
+
+async function openWishModal(interaction: ComponentInteraction, guildId: string): Promise<void> {
+  // 모달을 띄우기 전에 막을 수 있는 건 미리 막는다 (모달을 띄우면 다른 응답을 못 한다).
+  const settings = await getSettings(guildId);
+  if (settings.wishChannelId === null) {
+    await replaceView(
+      interaction,
+      noticeView({
+        status: "failure",
+        title: "소원을 빌 수 없습니다",
+        description: "관리자가 아직 **소원 전달 채널**을 설정하지 않았어요.",
+        user: interaction.user,
+        panel: PANEL.user,
+      }),
+    );
+    return;
+  }
+
+  const balance = await getBalance(guildId, interaction.user.id);
+  if (balance.tickets < 1) {
+    await replaceView(
+      interaction,
+      noticeView({
+        status: "failure",
+        title: "소원권이 없습니다",
+        description: `조각 ${settings.fragmentsPerTicket}개를 모아 제작하면 소원을 빌 수 있어요.`,
+        fields: [{ name: "현재 보유", value: formatBalance(balance) }],
+        user: interaction.user,
+        panel: PANEL.user,
+      }),
+    );
+    return;
+  }
+
+  await showModal(interaction, useModal());
+}
+
+async function submitWish(interaction: ComponentInteraction, guildId: string): Promise<void> {
+  if (!interaction.isModalSubmit()) return;
+
+  const content = interaction.fields.getTextInputValue(FIELD.wishContent).trim();
+  const attachments = prepareUploads(interaction.fields.getUploadedFiles(FIELD.wishFiles));
+
+  const channelId = (await getSettings(guildId)).wishChannelId;
+  if (channelId === null) {
+    await replaceView(
+      interaction,
+      noticeView({
+        status: "failure",
+        title: "소원을 빌 수 없습니다",
+        description: "관리자가 아직 **소원 전달 채널**을 설정하지 않았어요.",
+        user: interaction.user,
+        panel: PANEL.user,
+      }),
+    );
+    return;
+  }
+
+  // 소원권을 먼저 차감한다. 전달에 실패하면 아래에서 되돌린다.
+  const spent = await applyBalanceChange(guildId, interaction.user.id, { tickets: -1 });
+  if (!spent.ok) {
+    await replaceView(
+      interaction,
+      noticeView({
+        status: "failure",
+        title: "소원권이 없습니다",
+        description: "소원을 빌려면 소원권이 1장 필요해요.",
+        fields: [{ name: "현재 보유", value: formatBalance(spent.before) }],
+        user: interaction.user,
+        panel: PANEL.user,
+      }),
+    );
+    return;
+  }
+
+  const wish = await createWish(guildId, {
+    userId: interaction.user.id,
+    content,
+    attachments,
+    channelId,
+  });
+
+  try {
+    const channel = await interaction.client.channels.fetch(channelId);
+    if (channel === null || !channel.isSendable()) {
+      throw new Error(`메시지를 보낼 수 없는 채널입니다: ${channelId}`);
+    }
+
+    // 파일을 봇 메시지에 다시 올려 영구 첨부로 만든다.
+    // 임베드는 그 첨부를 attachment:// 로 가리키므로, 파일이 임베드 밖에 또 그려지지 않는다.
+    const message = await channel.send({
+      ...channelMessage(
+        wishMessage(content, interaction.user, attachments, wish.id, channelLink(guildId, channelId)),
+      ),
+      files: toUploadFiles(attachments),
+    });
+
+    // 임시 URL 을 메시지에 붙은 영구 URL 로 교체해 둔다.
+    await attachWishMessage(guildId, wish.id, message.id, fromMessage(message));
+
+    await replaceView(
+      interaction,
+      noticeView({
+        status: "success",
+        title: "소원을 보냈습니다",
+        description: `<#${channelId}> 로 전달했어요. 관리자가 수락하거나 거절하면 알려드릴게요.`,
+        fields: [{ name: "소원 내용", value: content.slice(0, 1000) }],
+        balance: formatBalanceChange(spent),
+        user: interaction.user,
+        panel: PANEL.user,
+      }),
+    );
+  } catch (error) {
+    logger.error("소원 전달 실패 — 소원권을 되돌립니다", error);
+
+    // 전달에 실패했으므로 차감을 취소한다.
+    const refund = await applyBalanceChange(guildId, interaction.user.id, { tickets: 1 });
+    await deleteWish(guildId, wish.id);
+
+    await replaceView(
+      interaction,
+      noticeView({
+        status: "failure",
+        title: "소원 전달 실패",
+        description: "설정된 채널에 메시지를 보내지 못했습니다. 관리자에게 알려 주세요.",
+        fields: [{ name: "원인", value: `\`\`\`\n${describeError(error)}\n\`\`\`` }],
+        balance: refund.ok ? formatBalanceChange(refund) : undefined,
+        user: interaction.user,
+        panel: PANEL.user,
+      }),
+    );
+  }
+}
+
+function channelLink(guildId: string, channelId: string): string {
+  return `https://discord.com/channels/${guildId}/${channelId}`;
+}
+
+/**
+ * 소원 전달 메시지.
+ *
+ * `galleryKey` 는 이미지가 2장 이상일 때 임베드를 하나로 합치기 위한 링크다.
+ * 이미지를 `attachment://` 로 가리키므로 합치기용 링크를 따로 줘야 한다.
+ */
+function wishMessage(
+  content: string,
+  requester: User,
+  files: readonly WishAttachment[],
+  wishId: string,
+  galleryKey: string,
+): MessageOptions {
+  return {
+    status: "progress",
+    title: "새 소원",
+    description: content,
+    fields: [
+      { name: "신청자", value: `<@${requester.id}>` },
+      ...(files.length > 0
+        ? [{ name: `첨부 — ${attachmentSummary(files)}`, value: attachmentField(files) }]
+        : []),
+    ],
+    images: embedImages(files),
+    galleryKey,
+    user: requester,
+    layout: "embed",
+    ephemeral: false,
+    rows: wishDecisionRows(wishId),
+  };
+}
+
+// ─────────────────────────────────────────────────────────────
+// 소원 수락 / 거절
+// ─────────────────────────────────────────────────────────────
+
+async function decideWish(
+  interaction: ComponentInteraction,
+  guildId: string,
+  wishId: string | undefined,
+  accepted: boolean,
+): Promise<void> {
+  if (!interaction.isButton()) return;
+  if (await denyNonAdmin(interaction)) return;
+
+  if (wishId === undefined) {
+    await fail(interaction, "처리할 수 없음", "소원 정보를 찾지 못했습니다.");
+    return;
+  }
+
+  const resolved = await resolveWish(
+    guildId,
+    wishId,
+    accepted ? "accepted" : "rejected",
+    interaction.user.id,
+  );
+
+  if (!resolved.ok) {
+    await fail(
+      interaction,
+      "이미 처리된 소원",
+      resolved.reason === "missing"
+        ? "소원 정보를 찾지 못했습니다."
+        : "다른 관리자가 먼저 처리했습니다.",
+    );
+    return;
+  }
+
+  const { wish } = resolved;
+
+  // 거절하면 소원권 1장을 돌려준다.
+  const refund = accepted ? null : await applyBalanceChange(guildId, wish.userId, { tickets: 1 });
+  const refundText = refund !== null && refund.ok ? formatBalanceChange(refund) : undefined;
+
+  // 원본 메시지는 **버튼만** 바꾼다.
+  //
+  // embeds / attachments 를 아예 넘기지 않으면 디스코드가 그 필드를 손대지 않는다
+  // (discord.js 의 MessagePayload 도 undefined 면 body 에서 빼 버린다).
+  // 반대로 임베드를 다시 그리면 이미지의 `attachment://` 참조가 풀리면서
+  // 임베드 이미지도, 첨부파일도 함께 사라진다 — 이 요청에는 업로드할 파일이 없기 때문이다.
+  await interaction.update({ components: wishDecidedRows(accepted) });
+
+  // 그래서 결과는 원본을 고치는 대신 **답글**로 남긴다.
+  const messageUrl = interaction.message.url;
+
+  await interaction.message.reply(
+    channelMessage({
+      status: accepted ? "success" : "failure",
+      title: accepted ? "소원 수락됨" : "소원 거절됨",
+      description: wish.content,
+      fields: [
+        { name: "신청자", value: `<@${wish.userId}>`, inline: true },
+        { name: "처리한 관리자", value: `<@${interaction.user.id}>`, inline: true },
+      ],
+      balance: refundText,
+      user: interaction.user,
+      layout: "embed",
+      ephemeral: false,
+    }),
+  );
+
+  await notifyWisher(interaction, wish, accepted, refundText, messageUrl);
+}
+
+/** 신청자에게 DM 으로 알린다. DM 이 막혀 있으면 조용히 넘어간다. */
+async function notifyWisher(
+  interaction: ComponentInteraction,
+  wish: WishRecord,
+  accepted: boolean,
+  refundText: string | undefined,
+  messageUrl: string,
+): Promise<void> {
+  try {
+    const target = await interaction.client.users.fetch(wish.userId);
+
+    await target.send(
+      channelMessage({
+        status: accepted ? "success" : "failure",
+        title: accepted ? "소원이 수락되었습니다" : "소원이 거절되었습니다",
+        description: wish.content,
+        fields: [
+          // 첨부파일은 원본 메시지에 붙어 있다. 링크로 안내한다
+          // (DM 에 다시 올리면 파일이 두 벌이 되고, 저장된 URL 은 언젠가 만료된다).
+          { name: "원본", value: `[소원 보러 가기](${messageUrl})` },
+          ...(accepted ? [] : [{ name: "안내", value: "소원권 1장을 돌려드렸어요." }]),
+        ],
+        balance: refundText,
+        user: target,
+        layout: "embed",
+        ephemeral: false,
+      }),
+    );
+  } catch (error) {
+    logger.debug("소원 결과 DM 전송 실패 (DM 차단 등)", error);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// 수수 — 지급 / 회수
+// ─────────────────────────────────────────────────────────────
+
+async function submitGrant(interaction: ComponentInteraction, guildId: string): Promise<void> {
+  if (!interaction.isModalSubmit()) return;
+  if (await denyNonAdmin(interaction)) return;
+
+  const direction = interaction.fields.getStringSelectValues(FIELD.grantDirection)[0];
+  const item = interaction.fields.getStringSelectValues(FIELD.grantItem)[0];
+  const targets = interaction.fields.getSelectedUsers(FIELD.grantUsers);
+  const rawAmount = interaction.fields.getTextInputValue(FIELD.grantAmount);
+
+  if (!isDirection(direction) || !isItem(item)) {
+    await replaceView(
+      interaction,
+      adminFailure(interaction, "수수 실패", "지급/회수와 항목을 모두 골라 주세요."),
+    );
+    return;
+  }
+
+  const amount = parseAmount(rawAmount);
+  if (amount === undefined) {
+    await replaceView(interaction, adminFailure(interaction, "수수 실패", amountError(rawAmount)));
+    return;
+  }
+
+  const userIds = targets === null ? [] : [...targets.keys()];
+  if (userIds.length === 0) {
+    await replaceView(
+      interaction,
+      adminFailure(interaction, "수수 실패", "대상 유저를 한 명 이상 골라 주세요."),
+    );
+    return;
+  }
+
+  const sign = direction === DIRECTION.give ? 1 : -1;
+  const results = await applyBalanceChanges(guildId, userIds, deltaFor(item, sign * amount));
+
+  const changed: string[] = [];
+  const rejected: string[] = [];
+
+  for (const [userId, result] of results) {
+    if (result.ok) changed.push(formatBalanceChangeFor(userId, result));
+    else rejected.push(`<@${userId}> — 보유량이 부족합니다 (현재 ${formatBalance(result.before)})`);
+  }
+
+  const label = direction === DIRECTION.give ? "지급" : "회수";
+  const status = rejected.length === 0 ? "success" : changed.length === 0 ? "failure" : "progress";
+
+  await replaceViewAndAnnounce(
+    interaction,
+    noticeView({
+      status,
+      title: `수수 — ${label}`,
+      description: `${ITEM_LABEL[item]} **${amount}${ITEM_UNIT[item]}** · 대상 ${userIds.length}명 중 ${changed.length}명 처리`,
+      fields: rejected.length > 0 ? [{ name: "처리하지 못함", value: rejected.join("\n") }] : undefined,
+      balance: changed.length > 0 ? changed.join("\n\n") : undefined,
+      user: interaction.user,
+      panel: PANEL.admin,
+    }),
+  );
+}
+
+function adminFailure(
+  interaction: ComponentInteraction,
+  title: string,
+  description: string,
+): MessageOptions {
+  return noticeView({
+    status: "failure",
+    title,
+    description,
+    user: interaction.user,
+    panel: PANEL.admin,
+  });
+}
+
+const MAX_AMOUNT = 10_000;
+
+/** 갯수 입력 검증 — 1 이상 10000 이하의 정수만 받는다. */
+function parseAmount(raw: string): number | undefined {
+  const trimmed = raw.trim();
+  if (!/^\d+$/.test(trimmed)) return undefined;
+
+  const amount = Number.parseInt(trimmed, 10);
+  return amount >= 1 && amount <= MAX_AMOUNT ? amount : undefined;
+}
+
+function amountError(raw: string): string {
+  return `갯수는 1 이상 ${MAX_AMOUNT} 이하의 정수여야 해요. (입력: \`${raw.trim()}\`)`;
+}
+
+// ─────────────────────────────────────────────────────────────
+// 흡혈 — 한 유저에게서 다른 유저에게로 옮기기
+// ─────────────────────────────────────────────────────────────
+
+function firstSelectedUser(
+  interaction: ModalSubmitInteraction,
+  field: string,
+): string | undefined {
+  const users = interaction.fields.getSelectedUsers(field);
+  return users === null ? undefined : [...users.keys()][0];
+}
+
+async function submitBlood(interaction: ComponentInteraction, guildId: string): Promise<void> {
+  if (!interaction.isModalSubmit()) return;
+  if (await denyNonAdmin(interaction)) return;
+
+  const item = interaction.fields.getStringSelectValues(FIELD.bloodItem)[0];
+  const from = firstSelectedUser(interaction, FIELD.bloodFrom);
+  const to = firstSelectedUser(interaction, FIELD.bloodTo);
+  const rawAmount = interaction.fields.getTextInputValue(FIELD.bloodAmount);
+
+  if (!isItem(item) || from === undefined || to === undefined) {
+    await replaceView(
+      interaction,
+      adminFailure(interaction, "흡혈 실패", "항목과 두 유저를 모두 골라 주세요."),
+    );
+    return;
+  }
+
+  if (from === to) {
+    await replaceView(
+      interaction,
+      adminFailure(interaction, "흡혈 실패", "같은 사람에게서 흡혈할 수는 없어요."),
+    );
+    return;
+  }
+
+  const amount = parseAmount(rawAmount);
+  if (amount === undefined) {
+    await replaceView(interaction, adminFailure(interaction, "흡혈 실패", amountError(rawAmount)));
+    return;
+  }
+
+  // 먼저 뺀다. 부족하면 applyBalanceChange 가 아무것도 바꾸지 않고 ok:false 를 돌려준다.
+  const drained = await applyBalanceChange(guildId, from, deltaFor(item, -amount));
+  if (!drained.ok) {
+    await replaceViewAndAnnounce(
+      interaction,
+      noticeView({
+        status: "failure",
+        title: "흡혈 실패",
+        description: `<@${from}> 님의 ${ITEM_LABEL[item]}이(가) 부족합니다.`,
+        fields: [{ name: "현재 보유", value: formatBalance(drained.before) }],
+        user: interaction.user,
+        panel: PANEL.admin,
+      }),
+    );
+    return;
+  }
+
+  const gained = await applyBalanceChange(guildId, to, deltaFor(item, amount));
+  if (!gained.ok) {
+    // 더하는 변경은 음수가 될 수 없어 실패하지 않지만, 만에 하나 실패하면 뺀 것을 되돌린다.
+    await applyBalanceChange(guildId, from, deltaFor(item, amount));
+    await replaceView(
+      interaction,
+      adminFailure(interaction, "흡혈 실패", "옮기는 중 문제가 생겨 되돌렸습니다."),
+    );
+    return;
+  }
+
+  await replaceViewAndAnnounce(
+    interaction,
+    noticeView({
+      status: "success",
+      title: "흡혈",
+      description: `${ITEM_LABEL[item]} **${amount}${ITEM_UNIT[item]}** · <@${from}> → <@${to}>`,
+      balance: [formatBalanceChangeFor(from, drained), formatBalanceChangeFor(to, gained)].join("\n\n"),
+      user: interaction.user,
+      panel: PANEL.admin,
+    }),
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// 설정 — 소원 전달 채널 · 제작 비용
+// ─────────────────────────────────────────────────────────────
+
+async function submitConfig(interaction: ComponentInteraction, guildId: string): Promise<void> {
+  if (!interaction.isModalSubmit()) return;
+  if (await denyNonAdmin(interaction)) return;
+
+  const rawCost = interaction.fields.getTextInputValue(FIELD.fragmentsPerTicket).trim();
+  const cost = Number.parseInt(rawCost, 10);
+
+  if (
+    !/^\d+$/.test(rawCost) ||
+    cost < MIN_FRAGMENTS_PER_TICKET ||
+    cost > MAX_FRAGMENTS_PER_TICKET
+  ) {
+    await replaceView(
+      interaction,
+      adminFailure(
+        interaction,
+        "설정 실패",
+        `제작 비용은 ${MIN_FRAGMENTS_PER_TICKET} 이상 ${MAX_FRAGMENTS_PER_TICKET} 이하의 정수여야 해요. (입력: \`${rawCost}\`)`,
+      ),
+    );
+    return;
+  }
+
+  // 채널은 선택 항목이다. 고르지 않았으면 기존 값을 그대로 둔다.
+  const channels = interaction.fields.getSelectedChannels(FIELD.configChannel);
+  const channelId = channels === null ? undefined : [...channels.keys()][0];
+
+  const settings = await updateSettings(guildId, {
+    fragmentsPerTicket: cost,
+    ...(channelId === undefined ? {} : { wishChannelId: channelId }),
+  });
+
+  await replaceView(
+    interaction,
+    noticeView({
+      status: "success",
+      title: "설정 완료",
+      description:
+        settings.wishChannelId === null
+          ? "소원 전달 채널이 아직 없어서 소원 빌기는 쓸 수 없습니다."
+          : `소원은 <#${settings.wishChannelId}> 로 전달됩니다.`,
+      fields: [
+        {
+          name: "제작 비용",
+          value: `조각 **${settings.fragmentsPerTicket}개** = 소원권 1장`,
+        },
+      ],
+      user: interaction.user,
+      panel: PANEL.admin,
+    }),
+  );
+}

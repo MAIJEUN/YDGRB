@@ -1,0 +1,98 @@
+name: 빌드 및 배포
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  # 태그와 릴리스를 만들려면 쓰기 권한이 필요하다.
+  contents: write
+
+concurrency:
+  # 동시에 두 번 돌면 같은 버전 번호를 계산해 버린다. 하나씩 순서대로 돌린다.
+  group: release
+  cancel-in-progress: false
+
+env:
+  # 버전의 날짜 부분이 한국 날짜를 따르도록. 러너 기본값은 UTC 라 저녁 배포가 전날로 찍힌다.
+  TZ: Asia/Seoul
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    # 커밋 메시지에 [skip release] 가 있으면 배포하지 않는다.
+    if: "!contains(github.event.head_commit.message, '[skip release]')"
+
+    steps:
+      - name: 소스 받기
+        uses: actions/checkout@v4
+        with:
+          # 버전 계산에 기존 태그가 전부 필요하다.
+          fetch-depth: 0
+
+      - name: Node 준비
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: 시작 알림
+        id: notify
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: node scripts/notify-discord.mjs start >> "$GITHUB_OUTPUT"
+
+      - name: 의존성 설치
+        run: npm ci
+
+      - name: 타입 검사
+        run: npm run typecheck
+
+      - name: 빌드
+        run: npm run build
+
+      - name: 버전 계산
+        id: version
+        run: |
+          VERSION="$(node scripts/version.mjs)"
+          echo "value=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "name=YDGRB$VERSION" >> "$GITHUB_OUTPUT"
+          echo "이번 버전: YDGRB$VERSION (태그 $VERSION)"
+
+      - name: 릴리스 묶음 만들기
+        env:
+          NAME: ${{ steps.version.outputs.name }}
+        run: |
+          mkdir -p release
+          cp -r dist package.json package-lock.json README.md .env.example release/
+          (cd release && zip -qr "../${NAME}.zip" .)
+
+      - name: 릴리스 설명 만들기
+        env:
+          NAME: ${{ steps.version.outputs.name }}
+        run: |
+          node scripts/release-notes.mjs "$NAME" > "$RUNNER_TEMP/notes.md"
+          cat "$RUNNER_TEMP/notes.md"
+
+      - name: 릴리스 생성
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.value }}
+          NAME: ${{ steps.version.outputs.name }}
+        run: |
+          gh release create "$VERSION" "${NAME}.zip" \
+            --target "${{ github.sha }}" \
+            --title "$NAME" \
+            --notes-file "$RUNNER_TEMP/notes.md"
+
+      - name: 결과 알림
+        # 앞 단계가 실패해도 알림은 보낸다.
+        if: always()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          node scripts/notify-discord.mjs finish \
+            "${{ job.status }}" \
+            "${{ steps.version.outputs.value }}" \
+            "${{ steps.notify.outputs.message_id }}"

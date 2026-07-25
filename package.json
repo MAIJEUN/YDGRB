@@ -1,0 +1,27 @@
+{
+  "name": "discord-bot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "TypeScript Discord bot",
+  "type": "module",
+  "engines": {
+    "node": ">=22.6.0"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "deploy": "tsx src/deploy-commands.ts",
+    "ship": "node scripts/ship.mjs",
+    "version:next": "node scripts/version.mjs"
+  },
+  "dependencies": {
+    "discord.js": "^14.27.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "tsx": "^4.23.1",
+    "typescript": "^7.0.2"
+  }
+}

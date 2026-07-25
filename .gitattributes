@@ -1,0 +1,10 @@
+# 윈도우에서 개발하고 리눅스 러너에서 빌드하므로 줄바꿈을 LF 로 통일한다.
+* text=auto eol=lf
+
+# 실행 파일과 이미지 등은 그대로 둔다.
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.tar.gz binary
+*.zip binary
