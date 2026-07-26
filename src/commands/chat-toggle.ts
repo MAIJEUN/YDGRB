@@ -32,6 +32,11 @@ function whyNotEditable(guild: Guild, role: Role, actor: GuildMember): string | 
     return "봇이나 연동이 관리하는 역할이라 아무도 권한을 바꿀 수 없습니다.";
   }
 
+  // 관리자는 모든 권한을 갖는다. 메시지 보내기 비트를 꺼도 아무 일도 일어나지 않는다.
+  if (role.permissions.has(PermissionFlagsBits.Administrator, false)) {
+    return "**관리자** 권한이 있는 역할입니다. 관리자는 모든 권한을 갖기 때문에 채팅만 따로 막을 수 없어요.";
+  }
+
   const me = guild.members.me;
   if (me === null || !me.permissions.has(PermissionFlagsBits.ManageRoles)) {
     return "봇에게 **역할 관리(Manage Roles)** 권한을 주세요.";
@@ -105,7 +110,9 @@ export default defineCommand({
       return;
     }
 
-    const wasAllowed = role.permissions.has(PermissionFlagsBits.SendMessages);
+    // checkAdmin 을 끈다. 기본값(true)이면 관리자 권한이 있는 역할은 무엇을 물어도 true 라
+    // 늘 "허용 중" 으로 읽혀 끄기만 반복하게 된다.
+    const wasAllowed = role.permissions.has(PermissionFlagsBits.SendMessages, false);
 
     const permissions = new PermissionsBitField(role.permissions.bitfield);
     if (wasAllowed) permissions.remove(PermissionFlagsBits.SendMessages);
