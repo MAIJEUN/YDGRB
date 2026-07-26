@@ -22,10 +22,10 @@ const COLOR = {
 };
 
 const TITLE = {
-  progress: "🚀 배포 진행 중",
-  success: "✅ 배포 완료",
-  failure: "❌ 배포 실패",
-  cancelled: "⚠️ 배포 취소됨",
+  progress: "배포 진행 중",
+  success: "배포 완료",
+  failure: "배포 실패",
+  cancelled: "배포 취소됨",
 };
 
 function env(name, fallback = "") {
