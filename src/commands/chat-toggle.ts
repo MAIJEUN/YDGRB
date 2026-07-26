@@ -12,9 +12,13 @@ import { defineCommand } from "../types.js";
 
 const OPTION = { role: "역할" } as const;
 
-/** 역할 이름을 그대로 코드로 적는다 — 멘션을 쓰면 알림이 갈 수 있다. */
+/**
+ * 역할 이름을 그대로 코드로 적는다 — 멘션을 쓰면 알림이 갈 수 있다.
+ *
+ * `@everyone` 과 `@here` 는 이름 자체에 `@` 가 들어 있어서 또 붙이면 `@@everyone` 이 된다.
+ */
 function label(role: Role): string {
-  return `\`@${role.name}\``;
+  return `\`${role.name.startsWith("@") ? role.name : `@${role.name}`}\``;
 }
 
 /**
@@ -127,9 +131,6 @@ export default defineCommand({
       return;
     }
 
-    // @everyone 의 채팅을 끄면 봇도 일반 메시지를 못 보낼 수 있다.
-    const warnsBot = role.id === guild.id && wasAllowed;
-
     await interaction.editReply(
       editResponse({
         status: "success",
@@ -140,15 +141,6 @@ export default defineCommand({
             name: "메시지 보내기",
             value: `${wasAllowed ? "켜짐" : "꺼짐"} → **${wasAllowed ? "꺼짐" : "켜짐"}**`,
           },
-          ...(warnsBot
-            ? [
-                {
-                  name: "참고",
-                  value:
-                    "채널에 따로 지정된 권한이 있으면 그쪽이 우선합니다. 봇도 `@everyone` 으로 채팅 권한을 얻고 있었다면 일반 메시지를 못 보낼 수 있어요.",
-                },
-              ]
-            : []),
         ],
         user: interaction.user,
       }),
