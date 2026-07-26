@@ -10,6 +10,7 @@ import {
 } from "discord.js";
 import type {
   ActionRowBuilder,
+  InteractionEditReplyOptions,
   InteractionReplyOptions,
   InteractionUpdateOptions,
   MessageActionRowComponentBuilder,
@@ -239,6 +240,17 @@ export function updateResponse(options: MessageOptions): InteractionUpdateOption
   const { embeds, components, isContainer } = render(options);
 
   // content 는 건드리지 않는다 — Components V2 메시지에는 content 를 실을 수 없다.
+  return { embeds, components, flags: isContainer ? [MessageFlags.IsComponentsV2] : [] };
+}
+
+/**
+ * `interaction.editReply()` 용 — 이미 defer/reply 한 응답을 갈아 끼울 때.
+ *
+ * ephemeral 여부는 처음 응답할 때 정해지므로 여기서 다루지 않는다.
+ */
+export function editResponse(options: MessageOptions): InteractionEditReplyOptions {
+  const { embeds, components, isContainer } = render(options);
+
   return { embeds, components, flags: isContainer ? [MessageFlags.IsComponentsV2] : [] };
 }
 
