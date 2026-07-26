@@ -38,22 +38,40 @@ const file = new JsonFile<NicknameData>(
   () => ({ guilds: {} }),
 );
 
-function guildOf(data: NicknameData, guildId: string): GuildNicknames {
-  const existing = data.guilds[guildId];
-  if (existing !== undefined) return existing;
+/**
+ * 저장된 값을 지금 형식으로 맞춘다.
+ *
+ * 예전에는 서버 칸에 상태가 그대로 들어 있었다 (대상이 전체 하나뿐이었으므로).
+ * 그 파일을 그대로 읽으면 `members` 가 없어서 터진다.
+ */
+function normalize(raw: unknown): GuildNicknames {
+  if (typeof raw !== "object" || raw === null) return { all: null, members: {} };
 
-  const created: GuildNicknames = { all: null, members: {} };
-  data.guilds[guildId] = created;
-  return created;
+  const value = raw as Partial<GuildNicknames> & Partial<NicknameState>;
+
+  // 예전 형식 — 상태가 곧 서버 칸이었다.
+  if (typeof value.nickname === "string") {
+    return { all: { ...(raw as NicknameState), targetId: null }, members: {} };
+  }
+
+  return { all: value.all ?? null, members: value.members ?? {} };
+}
+
+/** update 안에서만 쓴다 — 옛 형식을 새 형식으로 바꿔 저장까지 되게 한다. */
+function guildOf(data: NicknameData, guildId: string): GuildNicknames {
+  const normalized = normalize(data.guilds[guildId]);
+  data.guilds[guildId] = normalized;
+  return normalized;
 }
 
 export async function getState(
   guildId: string,
   targetId: string | null,
 ): Promise<NicknameState | undefined> {
-  const guild = (await file.read()).guilds[guildId];
-  if (guild === undefined) return undefined;
+  const raw = (await file.read()).guilds[guildId];
+  if (raw === undefined) return undefined;
 
+  const guild = normalize(raw);
   return targetId === null ? (guild.all ?? undefined) : guild.members[targetId];
 }
 
@@ -68,9 +86,9 @@ export async function setState(guildId: string, state: NicknameState): Promise<v
 
 export async function clearState(guildId: string, targetId: string | null): Promise<void> {
   await file.update((data) => {
-    const guild = data.guilds[guildId];
-    if (guild === undefined) return;
+    if (data.guilds[guildId] === undefined) return;
 
+    const guild = guildOf(data, guildId);
     if (targetId === null) guild.all = null;
     else delete guild.members[targetId];
   });
@@ -88,10 +106,13 @@ export async function statesWithExpiry(): Promise<{ guildId: string; state: Nick
   const { guilds } = await file.read();
   const found: { guildId: string; state: NicknameState }[] = [];
 
-  for (const [guildId, guild] of Object.entries(guilds)) {
+  for (const [guildId, raw] of Object.entries(guilds)) {
+    const guild = normalize(raw);
+
     for (const state of [guild.all, ...Object.values(guild.members)]) {
       if (state !== null && state !== undefined && state.expiresAt !== null) {
-        found.push({ guildId, state });
+        // 옛 파일에는 targetId 가 없다.
+        found.push({ guildId, state: { ...state, targetId: state.targetId ?? null } });
       }
     }
   }
