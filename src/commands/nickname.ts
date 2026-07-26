@@ -1,43 +1,32 @@
 import { InteractionContextType, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
-import type { ChatInputCommandInteraction, SlashCommandSubcommandBuilder } from "discord.js";
+import type { SlashCommandSubcommandBuilder } from "discord.js";
 
 import { runNicknameChange } from "../nickname/execute.js";
 import { MAX_NICKNAME_LENGTH, MODE } from "../nickname/ids.js";
+import { resolveTargets, searchMembers } from "../nickname/targets.js";
 import { describeDurationError, parseDuration } from "../time.js";
 import { response } from "../ui/response.js";
 import { defineCommand } from "../types.js";
 
-const OPTION = { nickname: "별명", duration: "기간" } as const;
+const OPTION = { nickname: "별명", users: "유저", duration: "기간" } as const;
+
+/** 자동완성 후보 값은 100자를 넘을 수 없다. */
+const MAX_CHOICE_VALUE = 100;
+const MAX_CHOICES = 25;
 
 /**
- * 유저 선택 칸.
+ * 대상 칸.
  *
- * 슬래시 커맨드에는 여러 명을 한 번에 고르는 옵션이 없어서 칸을 여러 개 둔다.
- * 문자열로 멘션을 받는 방법도 있지만, 정식 유저 선택기라야 id 가 정확히 들어온다.
+ * 슬래시 커맨드에는 여러 명을 고르는 옵션이 없어서 문자열 한 칸으로 받는다.
+ * 자동완성으로 고르면 이름이 쉼표로 이어 붙고, 멘션이나 ID 를 붙여넣어도 된다.
  */
-const USER_SLOTS = ["유저", "유저2", "유저3", "유저4", "유저5"] as const;
-
-function addUserSlots<T extends SlashCommandSubcommandBuilder>(sub: T): T {
-  for (const [index, name] of USER_SLOTS.entries()) {
-    sub.addUserOption((option) =>
-      option
-        .setName(name)
-        .setDescription(
-          index === 0 ? "지목한 사람만 바꿉니다. 비우면 서버 전원" : `추가로 지목할 사람 ${index + 1}`,
-        ),
-    );
-  }
-
-  return sub;
-}
-
-/** 고른 사람들. 같은 사람을 두 칸에 넣어도 한 번만 센다. */
-function targetIdsFrom(interaction: ChatInputCommandInteraction): string[] {
-  const ids = USER_SLOTS.map((name) => interaction.options.getUser(name)?.id).filter(
-    (id): id is string => id !== undefined,
-  );
-
-  return [...new Set(ids)];
+function addTargetOption<T extends SlashCommandSubcommandBuilder>(sub: T): T {
+  return sub.addStringOption((option) =>
+    option
+      .setName(OPTION.users)
+      .setDescription("여러 명은 쉼표로 구분. 멘션·ID 도 됩니다. 비우면 서버 전원")
+      .setAutocomplete(true),
+  ) as T;
 }
 
 export default defineCommand({
@@ -60,7 +49,7 @@ export default defineCommand({
             .setMaxLength(MAX_NICKNAME_LENGTH),
         );
 
-      addUserSlots(sub);
+      addTargetOption(sub);
 
       return sub.addStringOption((option) =>
         option
@@ -69,11 +58,42 @@ export default defineCommand({
       );
     })
     .addSubcommand((sub) =>
-      addUserSlots(sub.setName("바사삭").setDescription("별명을 초기화합니다.")),
+      addTargetOption(sub.setName("바사삭").setDescription("별명을 초기화합니다.")),
     ),
 
+  /**
+   * 대상 칸 자동완성.
+   *
+   * 마지막 쉼표 뒤를 검색어로 보고, 앞부분은 그대로 두고 이름만 이어 붙인다.
+   * 값이 100자를 넘는 후보는 디스코드가 거부하므로 빼 둔다 —
+   * 그쯤이면 멘션을 붙여넣는 편이 낫다.
+   */
+  async autocomplete(interaction) {
+    const focused = interaction.options.getFocused(true);
+    const guild = interaction.guild;
+
+    if (focused.name !== OPTION.users || guild === null) {
+      await interaction.respond([]);
+      return;
+    }
+
+    const lastComma = focused.value.lastIndexOf(",");
+    const prefix = lastComma === -1 ? "" : focused.value.slice(0, lastComma + 1).trimEnd();
+    const query = (lastComma === -1 ? focused.value : focused.value.slice(lastComma + 1)).trim();
+
+    const choices = searchMembers(guild, query, MAX_CHOICES)
+      .map((member) => ({
+        name: `${member.displayName} (@${member.user.username})`.slice(0, MAX_CHOICE_VALUE),
+        value: prefix === "" ? member.displayName : `${prefix} ${member.displayName}`,
+      }))
+      .filter((choice) => choice.value.length <= MAX_CHOICE_VALUE);
+
+    await interaction.respond(choices);
+  },
+
   async execute(interaction) {
-    if (interaction.guildId === null) {
+    const guild = interaction.guild;
+    if (guild === null) {
       await interaction.reply(
         response({
           status: "failure",
@@ -97,7 +117,23 @@ export default defineCommand({
       return;
     }
 
-    const targetIds = targetIdsFrom(interaction);
+    const raw = interaction.options.getString(OPTION.users)?.trim() ?? "";
+    const { ids: targetIds, unresolved } = resolveTargets(guild, raw);
+
+    // 한 명이라도 못 찾으면 실행하지 않는다 — 의도한 인원보다 적게 바꾸는 게 더 나쁘다.
+    if (unresolved.length > 0) {
+      await interaction.reply(
+        response({
+          status: "failure",
+          title: "누구인지 알 수 없어요",
+          description:
+            "이름이 정확하지 않거나 같은 이름이 여럿입니다. 멘션이나 ID 로 적으면 확실합니다.",
+          fields: [{ name: "못 찾은 값", value: unresolved.map((name) => `\`${name}\``).join(", ") }],
+          user: interaction.user,
+        }),
+      );
+      return;
+    }
 
     if (interaction.options.getSubcommand() === "바사삭") {
       await runNicknameChange(interaction, {
@@ -123,18 +159,18 @@ export default defineCommand({
     }
 
     // 기간을 비우면 직접 풀 때까지 유지한다.
-    const raw = interaction.options.getString(OPTION.duration)?.trim() ?? "";
+    const rawDuration = interaction.options.getString(OPTION.duration)?.trim() ?? "";
     let expiresAt: number | null = null;
 
-    if (raw !== "") {
-      const parsed = parseDuration(raw);
+    if (rawDuration !== "") {
+      const parsed = parseDuration(rawDuration);
       if (!parsed.ok) {
         await interaction.reply(
           response({
             status: "failure",
             title: "기간을 읽을 수 없습니다",
             description: describeDurationError(parsed.reason),
-            fields: [{ name: "입력한 값", value: `\`${raw}\`` }],
+            fields: [{ name: "입력한 값", value: `\`${rawDuration}\`` }],
             user: interaction.user,
           }),
         );
