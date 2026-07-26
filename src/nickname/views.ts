@@ -38,10 +38,12 @@ function tally(progress: Progress): string {
   ].join(" · ");
 }
 
-function subject(mode: Mode, nickname: string | null): string {
-  return mode === "dduttai"
-    ? `모두의 별명을 \`${nickname ?? ""}\` 로 바꿉니다.`
-    : "모두의 별명을 지워 디스코드 기본값(사용자명)으로 되돌립니다.";
+function subject(options: ViewOptions): string {
+  const who = options.targetId === null ? "모두의" : `<@${options.targetId}> 님의`;
+
+  return options.mode === "dduttai"
+    ? `${who} 별명을 \`${options.nickname ?? ""}\` 로 바꿉니다.`
+    : `${who} 별명을 지워 디스코드 기본값(사용자명)으로 되돌립니다.`;
 }
 
 /** 만료 안내 — 시각은 반드시 타임스탬프 마크다운으로 낸다. */
@@ -55,19 +57,29 @@ export interface ViewOptions {
   readonly mode: Mode;
   readonly nickname: string | null;
   readonly expiresAt: number | null;
+  /** null 이면 서버 전체. */
+  readonly targetId: string | null;
   readonly user: User;
 }
 
-/** 멤버 목록을 받아오는 동안 보여 줄 첫 화면. 여기서 컨테이너 속성이 정해진다. */
-export function preparingView(options: ViewOptions, run: ActiveRun): MessageOptions {
+/** 한 명만 대상일 때는 취소할 새도 없이 끝나므로 버튼을 달지 않는다. */
+function accessory(run: ActiveRun | null): { accessoryButton?: ReturnType<typeof cancelButton> } {
+  return run === null ? {} : { accessoryButton: cancelButton(run.id) };
+}
+
+/** 대상을 모으는 동안 보여 줄 첫 화면. 여기서 컨테이너 속성이 정해진다. */
+export function preparingView(options: ViewOptions, run: ActiveRun | null): MessageOptions {
   return {
     status: "progress",
     title: `${MODE_LABEL[options.mode]} 준비 중`,
-    description: `${subject(options.mode, options.nickname)}\n멤버 목록을 받아오고 있습니다.`,
+    description:
+      options.targetId === null
+        ? `${subject(options)}\n멤버 목록을 받아오고 있습니다.`
+        : subject(options),
     fields: expiryField(options.expiresAt),
     user: options.user,
     layout: "container",
-    accessoryButton: cancelButton(run.id),
+    ...accessory(run),
     ephemeral: false,
   };
 }
@@ -76,12 +88,12 @@ export function preparingView(options: ViewOptions, run: ActiveRun): MessageOpti
 export function progressView(
   options: ViewOptions,
   progress: Progress,
-  run: ActiveRun,
+  run: ActiveRun | null,
 ): MessageOptions {
   return {
     status: "progress",
     title: `${MODE_LABEL[options.mode]} 진행 중`,
-    description: subject(options.mode, options.nickname),
+    description: subject(options),
     fields: [
       { name: "진행", value: bar(progress.done, progress.total) },
       { name: "집계", value: tally(progress) },
@@ -89,7 +101,7 @@ export function progressView(
     ],
     user: options.user,
     layout: "container",
-    accessoryButton: cancelButton(run.id),
+    ...accessory(run),
     ephemeral: false,
   };
 }
@@ -108,7 +120,7 @@ function cancelReason(run: ActiveRun): string {
 export function resultView(
   options: ViewOptions,
   result: RunResult,
-  run?: ActiveRun,
+  run?: ActiveRun | null,
 ): MessageOptions {
   if (result.cancelled) {
     return {
@@ -116,7 +128,7 @@ export function resultView(
       status: "progress",
       title: `${MODE_LABEL[options.mode]} 취소됨`,
       description: [
-        run === undefined ? "중단했습니다." : cancelReason(run),
+        run === undefined || run === null ? "중단했습니다." : cancelReason(run),
         "이미 바뀐 사람은 그대로 남아 있습니다.",
       ].join(" "),
       fields: [
@@ -138,7 +150,7 @@ export function resultView(
   return {
     status,
     title: `${MODE_LABEL[options.mode]} 완료`,
-    description: subject(options.mode, options.nickname),
+    description: subject(options),
     // 실패 원인은 화면에 늘어놓지 않는다 (로그에만 남긴다).
     fields: [
       { name: "집계", value: tally({ ...result, done: result.total }) },

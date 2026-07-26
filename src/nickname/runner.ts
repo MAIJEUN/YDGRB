@@ -99,6 +99,8 @@ export interface ApplyOptions {
   readonly onProgress: (progress: Progress) => Promise<void> | void;
   /** 매 사람마다 확인한다. true 를 돌려주면 그 자리에서 멈춘다. */
   readonly shouldStop?: () => boolean;
+  /** 한 명만 대상으로 할 때. null 이면 서버 전원(봇 제외). */
+  readonly targetId?: string | null;
 }
 
 function emptyProgress(total: number): Progress {
@@ -115,11 +117,23 @@ function describeFailure(guild: Guild, member: GuildMember, error: unknown): str
   return describeError(error);
 }
 
+/**
+ * 대상 목록.
+ *
+ * 한 명만 지정하면 그 사람만 REST 로 가져온다 — 게이트웨이 요청 제한과 무관하고 즉시 끝난다.
+ * 전원일 때만 봇을 걸러 낸다 (지목한 대상이 봇이면 그 뜻대로 바꾼다).
+ */
+async function collectTargets(guild: Guild, targetId: string | null): Promise<GuildMember[]> {
+  if (targetId !== null) return [await guild.members.fetch(targetId)];
+
+  // GuildMembers 특권 인텐트가 있어야 전원을 받아올 수 있다.
+  return (await fetchAllMembers(guild)).filter((member) => !member.user.bot);
+}
+
 export async function applyNickname(options: ApplyOptions): Promise<RunResult> {
   const { guild, nickname, reason, onProgress, shouldStop } = options;
 
-  // GuildMembers 특권 인텐트가 있어야 전원을 받아올 수 있다.
-  const targets = (await fetchAllMembers(guild)).filter((member) => !member.user.bot);
+  const targets = await collectTargets(guild, options.targetId ?? null);
 
   let progress = emptyProgress(targets.length);
   const failures = new Map<string, number>();

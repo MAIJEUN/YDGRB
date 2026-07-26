@@ -6,17 +6,6 @@ export const ACTION = {
   cancel: "cancel",
 } as const;
 
-export const MODAL_ID = {
-  /** 뚜따이 — 별명과 기간을 받는다. */
-  dduttai: "m-dduttai",
-} as const;
-
-/** 모달 안쪽 입력의 id. */
-export const FIELD = {
-  nickname: "nickname",
-  duration: "duration",
-} as const;
-
 export const MODE = {
   dduttai: "dduttai",
   basasak: "basasak",
