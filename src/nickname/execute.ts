@@ -16,8 +16,8 @@ export interface RunOptions {
   /** null 이면 별명을 지운다 (바사삭). */
   readonly nickname: string | null;
   readonly expiresAt: number | null;
-  /** null 이면 서버 전원. */
-  readonly targetId: string | null;
+  /** 비어 있으면 서버 전원. */
+  readonly targetIds: readonly string[];
 }
 
 async function refuse(
@@ -30,34 +30,46 @@ async function refuse(
   );
 }
 
-/** 저장된 예약을 이번 작업에 맞게 갈아 끼운다. */
+/**
+ * 저장된 예약을 이번 작업에 맞게 갈아 끼운다.
+ *
+ * 예약은 대상별로 따로 잡는다 — 전체 대상은 `null` 한 칸, 지목한 사람은 각자 한 칸.
+ */
 async function updateSchedule(
   interaction: ChatInputCommandInteraction,
   guildId: string,
   options: RunOptions,
 ): Promise<void> {
-  if (options.mode === "dduttai" && options.nickname !== null) {
-    await setState(guildId, {
-      nickname: options.nickname,
-      appliedBy: interaction.user.id,
-      appliedAt: Date.now(),
-      expiresAt: options.expiresAt,
-      channelId: interaction.channelId,
-      targetId: options.targetId,
-    });
+  const wholeServer = options.targetIds.length === 0;
+  const slots: (string | null)[] = wholeServer ? [null] : [...options.targetIds];
 
-    if (options.expiresAt === null) cancelExpiry(guildId, options.targetId);
-    else scheduleExpiry(interaction.client, guildId, options.targetId, options.expiresAt);
+  if (options.mode === "dduttai" && options.nickname !== null) {
+    for (const targetId of slots) {
+      await setState(guildId, {
+        nickname: options.nickname,
+        appliedBy: interaction.user.id,
+        appliedAt: Date.now(),
+        expiresAt: options.expiresAt,
+        channelId: interaction.channelId,
+        targetId,
+      });
+
+      if (options.expiresAt === null) cancelExpiry(guildId, targetId);
+      else scheduleExpiry(interaction.client, guildId, targetId, options.expiresAt);
+    }
     return;
   }
 
   // 서버 전체 바사삭은 모두의 별명을 지우므로 개별 예약까지 전부 정리한다.
-  if (options.targetId === null) {
+  if (wholeServer) {
     cancelAllExpiry(guildId);
     await clearAllStates(guildId);
-  } else {
-    cancelExpiry(guildId, options.targetId);
-    await clearState(guildId, options.targetId);
+    return;
+  }
+
+  for (const targetId of slots) {
+    cancelExpiry(guildId, targetId);
+    await clearState(guildId, targetId);
   }
 }
 
@@ -90,7 +102,7 @@ export async function runNicknameChange(
   const view: ViewOptions = { ...options, user: interaction.user };
   const label = MODE_LABEL[options.mode];
 
-  const wholeServer = options.targetId === null;
+  const wholeServer = options.targetIds.length === 0;
   const run: ActiveRun | null = wholeServer
     ? await beginRun(guild.id, options.mode, interaction.user.id)
     : null;
@@ -108,7 +120,7 @@ export async function runNicknameChange(
       result = await applyNickname({
         guild,
         nickname: options.nickname,
-        targetId: options.targetId,
+        targetIds: options.targetIds,
         reason: `${label} — ${interaction.user.tag}`,
         shouldStop: () => run?.cancelled === true,
         onProgress: async (progress) => {

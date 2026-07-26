@@ -94,7 +94,7 @@ async function expire(client: Client, guildId: string, targetId: string | null):
       result = await applyNickname({
         guild,
         nickname: null,
-        targetId,
+        targetIds: targetId === null ? [] : [targetId],
         reason: "뚜따이 기간 만료 — 자동 바사삭",
         onProgress: () => {},
         shouldStop: () => run?.cancelled === true,
@@ -124,7 +124,13 @@ async function expire(client: Client, guildId: string, targetId: string | null):
     await channel.send(
       channelMessage({
         ...resultView(
-          { mode: MODE.basasak, nickname: null, expiresAt: null, targetId, user: actor },
+          {
+            mode: MODE.basasak,
+            nickname: null,
+            expiresAt: null,
+            targetIds: targetId === null ? [] : [targetId],
+            user: actor,
+          },
           result,
         ),
         title: "기간이 끝나 자동으로 바사삭했습니다",

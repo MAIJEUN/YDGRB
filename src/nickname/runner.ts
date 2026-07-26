@@ -99,8 +99,8 @@ export interface ApplyOptions {
   readonly onProgress: (progress: Progress) => Promise<void> | void;
   /** 매 사람마다 확인한다. true 를 돌려주면 그 자리에서 멈춘다. */
   readonly shouldStop?: () => boolean;
-  /** 한 명만 대상으로 할 때. null 이면 서버 전원(봇 제외). */
-  readonly targetId?: string | null;
+  /** 지목한 대상들. 비어 있으면 서버 전원(봇 제외). */
+  readonly targetIds?: readonly string[];
 }
 
 function emptyProgress(total: number): Progress {
@@ -120,23 +120,48 @@ function describeFailure(guild: Guild, member: GuildMember, error: unknown): str
 /**
  * 대상 목록.
  *
- * 한 명만 지정하면 그 사람만 REST 로 가져온다 — 게이트웨이 요청 제한과 무관하고 즉시 끝난다.
+ * 지목한 사람들은 한 명씩 REST 로 가져온다 — `fetch({ user: [...] })` 는 게이트웨이(opcode 8)를
+ * 쓰기 때문에 요청 제한에 걸리지만, 개별 조회는 REST 라 그 제한과 무관하다.
  * 전원일 때만 봇을 걸러 낸다 (지목한 대상이 봇이면 그 뜻대로 바꾼다).
  */
-async function collectTargets(guild: Guild, targetId: string | null): Promise<GuildMember[]> {
-  if (targetId !== null) return [await guild.members.fetch(targetId)];
+async function collectTargets(
+  guild: Guild,
+  targetIds: readonly string[],
+): Promise<{ members: GuildMember[]; missing: string[] }> {
+  if (targetIds.length === 0) {
+    // GuildMembers 특권 인텐트가 있어야 전원을 받아올 수 있다.
+    const all = await fetchAllMembers(guild);
+    return { members: all.filter((member) => !member.user.bot), missing: [] };
+  }
 
-  // GuildMembers 특권 인텐트가 있어야 전원을 받아올 수 있다.
-  return (await fetchAllMembers(guild)).filter((member) => !member.user.bot);
+  const members: GuildMember[] = [];
+  const missing: string[] = [];
+
+  for (const id of targetIds) {
+    try {
+      members.push(await guild.members.fetch(id));
+    } catch {
+      // 서버를 나갔거나 없는 사람. 전체를 실패시키지 말고 그 사람만 실패로 센다.
+      missing.push(id);
+    }
+  }
+
+  return { members, missing };
 }
 
 export async function applyNickname(options: ApplyOptions): Promise<RunResult> {
   const { guild, nickname, reason, onProgress, shouldStop } = options;
 
-  const targets = await collectTargets(guild, options.targetId ?? null);
+  const { members: targets, missing } = await collectTargets(guild, options.targetIds ?? []);
 
-  let progress = emptyProgress(targets.length);
+  // 찾지 못한 사람도 대상에 넣고 곧바로 실패로 처리한다 — 전체 인원이 맞아야 진행률이 말이 된다.
+  let progress = emptyProgress(targets.length + missing.length);
   const failures = new Map<string, number>();
+
+  if (missing.length > 0) {
+    failures.set("서버에 없는 사람", missing.length);
+    progress = { ...progress, done: missing.length, failed: missing.length };
+  }
 
   let lastReport = 0;
   const report = async (force: boolean): Promise<void> => {

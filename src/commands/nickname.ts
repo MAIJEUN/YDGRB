@@ -1,4 +1,5 @@
 import { InteractionContextType, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
+import type { ChatInputCommandInteraction, SlashCommandSubcommandBuilder } from "discord.js";
 
 import { runNicknameChange } from "../nickname/execute.js";
 import { MAX_NICKNAME_LENGTH, MODE } from "../nickname/ids.js";
@@ -6,7 +7,38 @@ import { describeDurationError, parseDuration } from "../time.js";
 import { response } from "../ui/response.js";
 import { defineCommand } from "../types.js";
 
-const OPTION = { nickname: "별명", user: "유저", duration: "기간" } as const;
+const OPTION = { nickname: "별명", duration: "기간" } as const;
+
+/**
+ * 유저 선택 칸.
+ *
+ * 슬래시 커맨드에는 여러 명을 한 번에 고르는 옵션이 없어서 칸을 여러 개 둔다.
+ * 문자열로 멘션을 받는 방법도 있지만, 정식 유저 선택기라야 id 가 정확히 들어온다.
+ */
+const USER_SLOTS = ["유저", "유저2", "유저3", "유저4", "유저5"] as const;
+
+function addUserSlots<T extends SlashCommandSubcommandBuilder>(sub: T): T {
+  for (const [index, name] of USER_SLOTS.entries()) {
+    sub.addUserOption((option) =>
+      option
+        .setName(name)
+        .setDescription(
+          index === 0 ? "지목한 사람만 바꿉니다. 비우면 서버 전원" : `추가로 지목할 사람 ${index + 1}`,
+        ),
+    );
+  }
+
+  return sub;
+}
+
+/** 고른 사람들. 같은 사람을 두 칸에 넣어도 한 번만 센다. */
+function targetIdsFrom(interaction: ChatInputCommandInteraction): string[] {
+  const ids = USER_SLOTS.map((name) => interaction.options.getUser(name)?.id).filter(
+    (id): id is string => id !== undefined,
+  );
+
+  return [...new Set(ids)];
+}
 
 export default defineCommand({
   data: new SlashCommandBuilder()
@@ -15,7 +47,7 @@ export default defineCommand({
     .setContexts(InteractionContextType.Guild)
     // 디스코드 쪽에서도 권한 없는 사람에게는 아예 안 보이게 한다.
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageNicknames)
-    .addSubcommand((sub) =>
+    .addSubcommand((sub) => {
       sub
         .setName("뚜따이")
         .setDescription("별명을 정한 값으로 바꿉니다. 기간이 지나면 자동으로 풀립니다.")
@@ -26,18 +58,18 @@ export default defineCommand({
             .setRequired(true)
             .setMinLength(1)
             .setMaxLength(MAX_NICKNAME_LENGTH),
-        )
-        .addUserOption((option) =>
-          option.setName(OPTION.user).setDescription("이 사람만 바꿉니다. 비우면 서버 전원"),
-        )
-        .addStringOption((option) =>
-          option
-            .setName(OPTION.duration)
-            .setDescription("1일 4시간 45초 · 64(숫자만 쓰면 초). 비우면 직접 풀 때까지"),
-        ),
-    )
+        );
+
+      addUserSlots(sub);
+
+      return sub.addStringOption((option) =>
+        option
+          .setName(OPTION.duration)
+          .setDescription("1일 4시간 45초 · 64(숫자만 쓰면 초). 비우면 직접 풀 때까지"),
+      );
+    })
     .addSubcommand((sub) =>
-      sub.setName("바사삭").setDescription("모두의 별명을 초기화합니다."),
+      addUserSlots(sub.setName("바사삭").setDescription("별명을 초기화합니다.")),
     ),
 
   async execute(interaction) {
@@ -65,12 +97,14 @@ export default defineCommand({
       return;
     }
 
+    const targetIds = targetIdsFrom(interaction);
+
     if (interaction.options.getSubcommand() === "바사삭") {
       await runNicknameChange(interaction, {
         mode: MODE.basasak,
         nickname: null,
         expiresAt: null,
-        targetId: null,
+        targetIds,
       });
       return;
     }
@@ -110,11 +144,6 @@ export default defineCommand({
       expiresAt = Date.now() + parsed.seconds * 1000;
     }
 
-    await runNicknameChange(interaction, {
-      mode: MODE.dduttai,
-      nickname,
-      expiresAt,
-      targetId: interaction.options.getUser(OPTION.user)?.id ?? null,
-    });
+    await runNicknameChange(interaction, { mode: MODE.dduttai, nickname, expiresAt, targetIds });
   },
 });

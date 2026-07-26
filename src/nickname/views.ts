@@ -38,12 +38,17 @@ function tally(progress: Progress): string {
   ].join(" · ");
 }
 
+function who(targetIds: readonly string[]): string {
+  if (targetIds.length === 0) return "모두의";
+  return `${targetIds.map((id) => `<@${id}>`).join(", ")} 님의`;
+}
+
 function subject(options: ViewOptions): string {
-  const who = options.targetId === null ? "모두의" : `<@${options.targetId}> 님의`;
+  const target = who(options.targetIds);
 
   return options.mode === "dduttai"
-    ? `${who} 별명을 \`${options.nickname ?? ""}\` 로 바꿉니다.`
-    : `${who} 별명을 지워 디스코드 기본값(사용자명)으로 되돌립니다.`;
+    ? `${target} 별명을 \`${options.nickname ?? ""}\` 로 바꿉니다.`
+    : `${target} 별명을 지워 디스코드 기본값(사용자명)으로 되돌립니다.`;
 }
 
 /** 만료 안내 — 시각은 반드시 타임스탬프 마크다운으로 낸다. */
@@ -57,12 +62,12 @@ export interface ViewOptions {
   readonly mode: Mode;
   readonly nickname: string | null;
   readonly expiresAt: number | null;
-  /** null 이면 서버 전체. */
-  readonly targetId: string | null;
+  /** 비어 있으면 서버 전체. */
+  readonly targetIds: readonly string[];
   readonly user: User;
 }
 
-/** 한 명만 대상일 때는 취소할 새도 없이 끝나므로 버튼을 달지 않는다. */
+/** 지목한 사람만 바꿀 때는 취소할 새도 없이 끝나므로 버튼을 달지 않는다. */
 function accessory(run: ActiveRun | null): { accessoryButton?: ReturnType<typeof cancelButton> } {
   return run === null ? {} : { accessoryButton: cancelButton(run.id) };
 }
@@ -73,7 +78,7 @@ export function preparingView(options: ViewOptions, run: ActiveRun | null): Mess
     status: "progress",
     title: `${MODE_LABEL[options.mode]} 준비 중`,
     description:
-      options.targetId === null
+      options.targetIds.length === 0
         ? `${subject(options)}\n멤버 목록을 받아오고 있습니다.`
         : subject(options),
     fields: expiryField(options.expiresAt),
