@@ -10,11 +10,8 @@ import type { Progress, RunResult } from "./runner.js";
 /**
  * 별명 작업 화면.
  *
- * 취소 버튼을 제목 **오른쪽 위**에 두어야 해서 컨테이너(Components V2)로 그린다 —
- * 임베드는 안에 버튼을 넣을 수 없다. 색상·footer 규칙은 임베드와 같다.
- *
- * 한 번 컨테이너로 만든 메시지는 임베드로 바꿀 수 없으므로,
- * 준비·진행·결과 화면 모두 `layout: "container"` 를 유지한다.
+ * 준비 → 진행 → 결과 순으로 같은 메시지를 갈아 끼운다.
+ * 취소 버튼은 제목 오른쪽 끝(Section 액세서리)에 붙는다.
  */
 
 const BAR_WIDTH = 16;
@@ -83,7 +80,6 @@ export function preparingView(options: ViewOptions, run: ActiveRun | null): Mess
         : subject(options),
     fields: expiryField(options.expiresAt),
     user: options.user,
-    layout: "container",
     ...accessory(run),
     ephemeral: false,
   };
@@ -105,7 +101,6 @@ export function progressView(
       ...expiryField(options.expiresAt),
     ],
     user: options.user,
-    layout: "container",
     ...accessory(run),
     ephemeral: false,
   };
@@ -142,7 +137,6 @@ export function resultView(
         ...expiryField(options.expiresAt),
       ],
       user: options.user,
-      layout: "container",
       rows: [],
       ephemeral: false,
     };
@@ -162,7 +156,6 @@ export function resultView(
       ...expiryField(options.expiresAt),
     ],
     user: options.user,
-    layout: "container",
     rows: [],
     ephemeral: false,
   };

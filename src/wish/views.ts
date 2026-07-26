@@ -7,10 +7,8 @@ import { checkRows, panelRows, rankRows } from "./panels.js";
 import { getBalance, getRanking, getSettings, type RankSort } from "./store.js";
 
 /**
- * 패널 화면은 전부 컨테이너(Components V2)로 만든다.
- *
- * 이미 만들어진 메시지의 Components V2 여부는 바꿀 수 없으므로,
- * 패널에서 파생되는 모든 화면은 반드시 `layout: "container"` 를 유지해야 한다.
+ * 패널·확인·랭킹은 무언가를 바꾸는 게 아니라 보여 주기만 한다 — 전부 파랑(정보).
+ * 실제로 수량이 바뀌는 화면만 초록/빨강을 쓴다 (`noticeView` 호출부 참고).
  */
 
 const MEDALS = ["🥇", "🥈", "🥉"];
@@ -24,7 +22,7 @@ export async function panelView(
 
   if (panel === PANEL.admin) {
     return {
-      status: "progress",
+      status: "info",
       title: "소원권 · 관리자 패널",
       description: [
         "**수수** — 소원권/조각을 지급하거나 회수합니다.",
@@ -47,7 +45,6 @@ export async function panelView(
         },
       ],
       user,
-      layout: "container",
       rows: panelRows(panel),
     };
   }
@@ -55,7 +52,7 @@ export async function panelView(
   const balance = await getBalance(guildId, user.id);
 
   return {
-    status: "progress",
+    status: "info",
     title: "소원권 · 유저 패널",
     description: [
       "**확인** — 내 보유 수량과 다른 사람의 보유 수량을 봅니다.",
@@ -66,7 +63,6 @@ export async function panelView(
     ].join("\n"),
     fields: [{ name: "내 보유", value: formatBalance(balance) }],
     user,
-    layout: "container",
     rows: panelRows(panel),
   };
 }
@@ -81,7 +77,7 @@ export async function checkView(
   const craftable = Math.floor(balance.fragments / fragmentsPerTicket);
 
   return {
-    status: "success",
+    status: "info",
     title: "소원권 확인",
     description: `<@${targetId}> 님의 보유 현황입니다.`,
     fields: [
@@ -92,7 +88,6 @@ export async function checkView(
       },
     ],
     user,
-    layout: "container",
     rows: checkRows(),
   };
 }
@@ -122,12 +117,11 @@ export async function rankView(
       : "_아직 소원권 조각을 가진 사람이 없습니다._";
 
   return {
-    status: "success",
+    status: "info",
     title: sort === "tickets" ? "소원권 랭킹" : "소원권 조각 랭킹",
     description: lines.length === 0 ? emptyMessage : lines.join("\n"),
     fields: [{ name: "집계", value: `총 ${entries.length}명 · ${current + 1}/${pageCount} 페이지` }],
     user,
-    layout: "container",
     rows: rankRows(sort, current, pageCount),
   };
 }
@@ -151,7 +145,6 @@ export function noticeView(options: NoticeOptions): MessageOptions {
     fields: options.fields,
     balance: options.balance,
     user: options.user,
-    layout: "container",
     rows: panelRows(options.panel),
   };
 }

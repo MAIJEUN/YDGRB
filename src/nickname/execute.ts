@@ -145,7 +145,6 @@ export async function runNicknameChange(
               : "대상을 찾지 못했습니다. 서버에 없는 사람일 수 있어요.",
           fields: [{ name: "원인", value: `\`\`\`\n${describeError(error)}\n\`\`\`` }],
           user: interaction.user,
-          layout: "container",
         }),
       );
       return;

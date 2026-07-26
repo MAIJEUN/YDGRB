@@ -8,28 +8,12 @@ import type { WishAttachment } from "./types.js";
  * 모달로 올라온 파일은 **임시 업로드**라서 그대로 두면 URL 이 만료된다.
  * 그래서 소원을 채널에 올릴 때 봇 메시지에 다시 첨부해 영구 파일로 만든다.
  *
- * 미리보기는 임베드에 넣지 않고 **첨부파일 자체로** 보여 준다:
- *   - 이미지가 여러 장이면 디스코드가 알아서 격자로 묶어 준다
- *   - 임베드가 아니라 메시지에 속하므로, 수락/거절로 임베드를 고쳐도 그대로 남는다
- *   - `attachment://` 로 임베드 이미지를 지정하면 메시지를 수정할 때 참조가 풀려 사라진다
+ * 미리보기는 컨테이너 안의 이미지 묶음(MediaGallery)과 File 컴포넌트로 그린다.
+ * Components V2 메시지에서는 컴포넌트가 가리킨 첨부만 그려지므로 두 벌로 보이지 않는다.
  *
- * 단, 메시지를 수정할 때 남길 첨부를 id 로 명시해야 한다 (`retainable` 참고).
+ * 단, 메시지를 수정할 때는 남길 첨부를 id 로 명시해야 `attachment://` 참조가 풀리지 않는다
+ * (`retained` 참고).
  */
-
-const UNITS = ["B", "KB", "MB", "GB"] as const;
-
-export function formatBytes(bytes: number): string {
-  let value = bytes;
-  let unit = 0;
-
-  while (value >= 1024 && unit < UNITS.length - 1) {
-    value /= 1024;
-    unit += 1;
-  }
-
-  // Number() 로 감싸 "2.0KB" 같은 불필요한 소수점을 없앤다.
-  return `${unit === 0 ? Math.round(value) : Number(value.toFixed(1))}${UNITS[unit]}`;
-}
 
 export function isImage(file: Pick<WishAttachment, "contentType">): boolean {
   return file.contentType?.startsWith("image/") === true;
@@ -74,6 +58,16 @@ export function toUploadFiles(files: readonly WishAttachment[]): AttachmentBuild
   return files.map((file) => new AttachmentBuilder(file.url, { name: file.name }));
 }
 
+/**
+ * 메시지를 수정할 때 **그대로 남길** 첨부 목록.
+ *
+ * 수정 요청에 첨부를 아예 안 실으면 컨테이너의 `attachment://` 참조가 풀려 이미지가 사라진다.
+ * 원래 붙어 있던 첨부를 id 그대로 다시 넘겨 주면 새로 올리지 않고 유지된다.
+ */
+export function retained(message: Message): Attachment[] {
+  return Array.from(message.attachments.values());
+}
+
 /** 전송된 메시지에서 **영구** 첨부 정보를 읽어 온다 (URL 이 임시 업로드가 아닌 것으로 바뀐다). */
 export function fromMessage(message: Message): WishAttachment[] {
   return Array.from(message.attachments.values(), (file) => ({
@@ -85,28 +79,16 @@ export function fromMessage(message: Message): WishAttachment[] {
 }
 
 /**
- * 임베드 안에 넣을 이미지 참조.
+ * 컨테이너 안 이미지 묶음(MediaGallery)이 가리킬 참조.
  *
- * CDN URL 대신 `attachment://` 를 쓰는 이유: 디스코드는 임베드가 참조한 첨부를 "임베드가 쓴 것"으로
- * 보고 임베드 **밖에** 따로 그리지 않는다. URL 로 주면 첨부로 한 번, 임베드로 한 번 두 번 나온다.
+ * CDN URL 대신 `attachment://` 를 쓴다. Components V2 메시지에서는 컴포넌트가 가리킨 첨부만
+ * 그려지므로, 이렇게 하면 첨부로 한 번 · 묶음으로 한 번 두 벌로 보이는 일이 없다.
  */
-export function embedImages(files: readonly WishAttachment[]): string[] {
+export function galleryImages(files: readonly WishAttachment[]): string[] {
   return files.filter((file) => isImage(file)).map((file) => `attachment://${file.name}`);
 }
 
-/** 임베드 안에 넣을 첨부파일 목록. 파일 자체는 임베드 아래에 이미지/카드로 표시된다. */
-export function attachmentField(files: readonly WishAttachment[]): string {
-  return files
-    .map((file) => `${isImage(file) ? "🖼️" : "📄"} [${file.name}](${file.url}) · ${formatBytes(file.size)}`)
-    .join("\n");
-}
-
-/** "이미지 2장 · 파일 1개" 처럼 요약한 이름 — 필드 제목에 쓴다. */
-export function attachmentSummary(files: readonly WishAttachment[]): string {
-  const images = files.filter((file) => isImage(file)).length;
-  const others = files.length - images;
-
-  return [images > 0 ? `이미지 ${images}장` : "", others > 0 ? `파일 ${others}개` : ""]
-    .filter((part) => part !== "")
-    .join(" · ");
+/** 이미지가 아닌 첨부 — File 컴포넌트로 카드처럼 표시된다. */
+export function galleryFiles(files: readonly WishAttachment[]): string[] {
+  return files.filter((file) => !isImage(file)).map((file) => `attachment://${file.name}`);
 }

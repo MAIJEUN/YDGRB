@@ -1,4 +1,4 @@
-import { PermissionFlagsBits } from "discord.js";
+import { MessageFlags, PermissionFlagsBits } from "discord.js";
 import type { ModalBuilder, ModalSubmitInteraction, User } from "discord.js";
 
 import { describeError } from "../errors.js";
@@ -6,11 +6,11 @@ import { logger } from "../logger.js";
 import { channelMessage, response, updateResponse, type MessageOptions } from "../ui/response.js";
 import { defineComponentHandler, type ComponentInteraction } from "../types.js";
 import {
-  attachmentField,
-  attachmentSummary,
-  embedImages,
   fromMessage,
+  galleryFiles,
+  galleryImages,
   prepareUploads,
+  retained,
   toUploadFiles,
 } from "../wish/attachments.js";
 import { formatBalance, formatBalanceChange, formatBalanceChangeFor } from "../wish/format.js";
@@ -178,8 +178,6 @@ export default defineComponentHandler({
  * 패널 메시지를 그 자리에서 갱신한다.
  * 모달이 패널에서 열렸다면 모달 제출도 같은 메시지를 고친다.
  *
- * 주의: 패널 메시지는 Components V2 로 만들어졌고 그 속성은 나중에 못 바꾼다.
- * 그래서 여기 들어오는 view 는 항상 `layout: "container"` 여야 한다.
  */
 async function replaceView(interaction: ComponentInteraction, view: MessageOptions): Promise<void> {
   if (interaction.isMessageComponent()) {
@@ -199,15 +197,15 @@ async function replaceView(interaction: ComponentInteraction, view: MessageOptio
  * 패널 결과를 채널에 **모두가 보이게** 한 번 더 남긴다.
  *
  * 패널 자체는 누른 사람에게만 보이는(ephemeral) 컨테이너라, 결과가 남지 않는다.
- * 공개본은 기록용이므로 버튼을 떼고 임베드로만 보낸다 —
- * 버튼을 그대로 두면 지나가던 사람이 눌러 자기 계정으로 동작해 버린다.
+ * 공개본은 기록용이므로 버튼을 뗀다 —
+ * 그대로 두면 지나가던 사람이 눌러 자기 계정으로 동작해 버린다.
  */
 async function announce(interaction: ComponentInteraction, view: MessageOptions): Promise<void> {
   if (!interaction.isRepliable()) return;
 
   try {
     await interaction.followUp(
-      response({ ...view, layout: "embed", rows: [], ephemeral: false }),
+      response({ ...view, rows: [], accessoryButton: undefined, ephemeral: false }),
     );
   } catch (error) {
     // 공개 알림에 실패해도 본 동작은 이미 끝났으므로 로그만 남긴다.
@@ -468,11 +466,9 @@ async function submitWish(interaction: ComponentInteraction, guildId: string): P
     }
 
     // 파일을 봇 메시지에 다시 올려 영구 첨부로 만든다.
-    // 임베드는 그 첨부를 attachment:// 로 가리키므로, 파일이 임베드 밖에 또 그려지지 않는다.
+    // 컨테이너가 그 첨부를 attachment:// 로 가리키므로 파일이 따로 또 그려지지 않는다.
     const message = await channel.send({
-      ...channelMessage(
-        wishMessage(content, interaction.user, attachments, wish.id, channelLink(guildId, channelId)),
-      ),
+      ...channelMessage(wishMessage(content, interaction.user, attachments, wish.id)),
       files: toUploadFiles(attachments),
     });
 
@@ -513,37 +509,21 @@ async function submitWish(interaction: ComponentInteraction, guildId: string): P
   }
 }
 
-function channelLink(guildId: string, channelId: string): string {
-  return `https://discord.com/channels/${guildId}/${channelId}`;
-}
-
-/**
- * 소원 전달 메시지.
- *
- * `galleryKey` 는 이미지가 2장 이상일 때 임베드를 하나로 합치기 위한 링크다.
- * 이미지를 `attachment://` 로 가리키므로 합치기용 링크를 따로 줘야 한다.
- */
+/** 소원 전달 메시지. 처리 대기 중이므로 진행중(노랑). */
 function wishMessage(
   content: string,
   requester: User,
   files: readonly WishAttachment[],
   wishId: string,
-  galleryKey: string,
 ): MessageOptions {
   return {
     status: "progress",
     title: "새 소원",
     description: content,
-    fields: [
-      { name: "신청자", value: `<@${requester.id}>` },
-      ...(files.length > 0
-        ? [{ name: `첨부 — ${attachmentSummary(files)}`, value: attachmentField(files) }]
-        : []),
-    ],
-    images: embedImages(files),
-    galleryKey,
+    fields: [{ name: "신청자", value: `<@${requester.id}>` }],
+    images: galleryImages(files),
+    files: galleryFiles(files),
     user: requester,
-    layout: "embed",
     ephemeral: false,
     rows: wishDecisionRows(wishId),
   };
@@ -591,34 +571,63 @@ async function decideWish(
   const refund = accepted ? null : await applyBalanceChange(guildId, wish.userId, { tickets: 1 });
   const refundText = refund !== null && refund.ok ? formatBalanceChange(refund) : undefined;
 
-  // 원본 메시지는 **버튼만** 바꾼다.
-  //
-  // embeds / attachments 를 아예 넘기지 않으면 디스코드가 그 필드를 손대지 않는다
-  // (discord.js 의 MessagePayload 도 undefined 면 body 에서 빼 버린다).
-  // 반대로 임베드를 다시 그리면 이미지의 `attachment://` 참조가 풀리면서
-  // 임베드 이미지도, 첨부파일도 함께 사라진다 — 이 요청에는 업로드할 파일이 없기 때문이다.
-  await interaction.update({ components: wishDecidedRows(accepted) });
+  const status = accepted ? "success" : "failure";
+  const title = accepted ? "소원 수락됨" : "소원 거절됨";
+  const decidedFields = [
+    { name: "신청자", value: `<@${wish.userId}>` },
+    { name: "처리한 관리자", value: `<@${interaction.user.id}>` },
+  ];
 
-  // 그래서 결과는 원본을 고치는 대신 **답글**로 남긴다.
-  const messageUrl = interaction.message.url;
+  // 메시지의 Components V2 여부는 만들 때 정해지고 나중에 못 바꾼다.
+  // 이 규칙을 정하기 전에 올라간 임베드 메시지는 컨테이너로 갈아 끼울 수 없다.
+  if (interaction.message.flags.has(MessageFlags.IsComponentsV2)) {
+    // 원본을 결과 색으로 통째로 다시 그린다. 컨테이너가 곧 메시지 전체라 버튼만 바꿀 수 없다.
+    // 원래 붙어 있던 첨부는 id 그대로 다시 넘긴다 — 안 그러면 `attachment://` 참조가 풀려
+    // 이미지와 파일이 함께 사라진다.
+    const requester = await fetchUser(interaction, wish.userId);
 
-  await interaction.message.reply(
-    channelMessage({
-      status: accepted ? "success" : "failure",
-      title: accepted ? "소원 수락됨" : "소원 거절됨",
-      description: wish.content,
-      fields: [
-        { name: "신청자", value: `<@${wish.userId}>`, inline: true },
-        { name: "처리한 관리자", value: `<@${interaction.user.id}>`, inline: true },
-      ],
-      balance: refundText,
-      user: interaction.user,
-      layout: "embed",
-      ephemeral: false,
-    }),
-  );
+    await interaction.update({
+      ...updateResponse({
+        ...wishMessage(wish.content, requester, wish.attachments, wish.id),
+        status,
+        title,
+        fields: decidedFields,
+        balance: refundText,
+        rows: wishDecidedRows(accepted),
+      }),
+      attachments: retained(interaction.message),
+    });
+  } else {
+    // 옛 메시지 — 버튼만 갈아 끼우고 결과는 답글로 남긴다.
+    await interaction.update({ components: wishDecidedRows(accepted) });
 
-  await notifyWisher(interaction, wish, accepted, refundText, messageUrl);
+    await interaction.message.reply(
+      channelMessage({
+        status,
+        title,
+        description: wish.content,
+        fields: decidedFields,
+        balance: refundText,
+        user: interaction.user,
+        ephemeral: false,
+      }),
+    );
+  }
+
+  await notifyWisher(interaction, wish, accepted, refundText, interaction.message.url);
+}
+
+/**
+ * footer 에 쓸 유저. 캐시에 있으면 바로 돌아온다.
+ * 못 찾으면 버튼을 누른 사람으로 대신한다 — footer 하나 때문에 처리를 실패시킬 이유는 없다.
+ */
+async function fetchUser(interaction: ComponentInteraction, userId: string): Promise<User> {
+  try {
+    return await interaction.client.users.fetch(userId);
+  } catch (error) {
+    logger.debug(`유저 조회 실패 ${userId}`, error);
+    return interaction.user;
+  }
 }
 
 /** 신청자에게 DM 으로 알린다. DM 이 막혀 있으면 조용히 넘어간다. */
@@ -645,7 +654,6 @@ async function notifyWisher(
         ],
         balance: refundText,
         user: target,
-        layout: "embed",
         ephemeral: false,
       }),
     );
