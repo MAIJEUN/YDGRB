@@ -4,10 +4,12 @@ import {
   MediaGalleryBuilder,
   MediaGalleryItemBuilder,
   MessageFlags,
+  SectionBuilder,
   SeparatorBuilder,
   SeparatorSpacingSize,
   TextDisplayBuilder,
 } from "discord.js";
+import type { ButtonBuilder } from "discord.js";
 import type {
   ActionRowBuilder,
   InteractionEditReplyOptions,
@@ -80,8 +82,13 @@ export interface MessageOptions extends ResponseOptions {
   /** 기본값 "embed". 인터랙션을 컨테이너 안에 넣어야 하면 "container". */
   readonly layout?: "embed" | "container";
   readonly rows?: readonly ActionRowBuilder<MessageActionRowComponentBuilder>[];
-  /** 컨테이너에서 버튼을 본문 **위쪽**에 둘 때. 기본은 아래쪽. */
-  readonly rowsAtTop?: boolean;
+  /**
+   * 본문 **오른쪽 위**에 붙는 버튼 하나 (컨테이너 전용).
+   *
+   * 액션 로우는 항상 한 줄을 통째로 차지하지만, Section 의 액세서리로 넣으면
+   * 제목과 같은 줄 오른쪽 끝에 붙는다. 임베드에는 이런 자리가 없어 무시된다.
+   */
+  readonly accessoryButton?: ButtonBuilder;
   /** 기본값 true. 채널에 공개로 남겨야 하는 메시지만 false. */
   readonly ephemeral?: boolean;
 }
@@ -164,13 +171,6 @@ export function buildContainer(options: MessageOptions): ContainerBuilder {
     .setAccentColor(COLOR[options.status]);
 
   const rows = options.rows ?? [];
-
-  // 버튼을 본문 위에 두는 경우 (진행 중 작업의 취소 버튼 등).
-  if (rows.length > 0 && options.rowsAtTop === true) {
-    container.addActionRowComponents(...rows);
-    container.addSeparatorComponents(divider());
-  }
-
   const header = [`### ${options.title}`];
 
   const content = body(options);
@@ -180,7 +180,18 @@ export function buildContainer(options: MessageOptions): ContainerBuilder {
     header.push(`**${field.name}**\n${field.value}`);
   }
 
-  container.addTextDisplayComponents(new TextDisplayBuilder().setContent(header.join("\n\n")));
+  const headerText = new TextDisplayBuilder().setContent(header.join("\n\n"));
+
+  if (options.accessoryButton === undefined) {
+    container.addTextDisplayComponents(headerText);
+  } else {
+    // Section 은 본문과 액세서리를 좌우로 나눈다 — 버튼이 제목 오른쪽 끝에 붙는다.
+    container.addSectionComponents(
+      new SectionBuilder()
+        .addTextDisplayComponents(headerText)
+        .setButtonAccessory(options.accessoryButton),
+    );
+  }
 
   // 컨테이너에는 임베드를 못 넣으므로 이미지 묶음은 MediaGallery 로 그린다.
   const images = options.images ?? [];
@@ -192,7 +203,7 @@ export function buildContainer(options: MessageOptions): ContainerBuilder {
     );
   }
 
-  if (rows.length > 0 && options.rowsAtTop !== true) {
+  if (rows.length > 0) {
     container.addSeparatorComponents(divider());
     container.addActionRowComponents(...rows);
   }

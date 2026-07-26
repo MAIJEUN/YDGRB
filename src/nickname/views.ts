@@ -3,14 +3,14 @@ import type { User } from "discord.js";
 import { atWithCountdown } from "../time.js";
 import type { MessageOptions, ResponseField } from "../ui/response.js";
 import { MODE_LABEL, type Mode } from "./ids.js";
-import { cancelRows } from "./panels.js";
+import { cancelButton } from "./panels.js";
 import type { ActiveRun } from "./registry.js";
 import type { Progress, RunResult } from "./runner.js";
 
 /**
  * 별명 작업 화면.
  *
- * 취소 버튼을 본문 **위쪽**에 두어야 해서 컨테이너(Components V2)로 그린다 —
+ * 취소 버튼을 제목 **오른쪽 위**에 두어야 해서 컨테이너(Components V2)로 그린다 —
  * 임베드는 안에 버튼을 넣을 수 없다. 색상·footer 규칙은 임베드와 같다.
  *
  * 한 번 컨테이너로 만든 메시지는 임베드로 바꿀 수 없으므로,
@@ -67,8 +67,7 @@ export function preparingView(options: ViewOptions, run: ActiveRun): MessageOpti
     fields: expiryField(options.expiresAt),
     user: options.user,
     layout: "container",
-    rows: cancelRows(run.id),
-    rowsAtTop: true,
+    accessoryButton: cancelButton(run.id),
     ephemeral: false,
   };
 }
@@ -90,8 +89,7 @@ export function progressView(
     ],
     user: options.user,
     layout: "container",
-    rows: cancelRows(run.id),
-    rowsAtTop: true,
+    accessoryButton: cancelButton(run.id),
     ephemeral: false,
   };
 }
