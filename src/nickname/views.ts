@@ -14,13 +14,15 @@ function bar(progress: Progress): string {
   return `\`${"█".repeat(filled)}${"░".repeat(BAR_WIDTH - filled)}\`  ${Math.round(ratio * 100)}%`;
 }
 
+/**
+ * 전체 · 완료 · 실패만 보여 준다.
+ * 이미 같은 별명이라 건너뛴 사람도 원하는 상태이므로 완료로 센다.
+ */
 function tally(progress: Progress): string {
   return [
     `전체 **${progress.total}명**`,
-    `성공 **${progress.changed}명**`,
-    `건너뜀 **${progress.skipped}명**`,
+    `완료 **${progress.changed + progress.skipped}명**`,
     `실패 **${progress.failed}명**`,
-    `남음 **${progress.total - progress.done}명**`,
   ].join(" · ");
 }
 
@@ -70,12 +72,10 @@ export function resultView(options: ViewOptions, result: RunResult): MessageOpti
     status,
     title: `${MODE_LABEL[options.mode]} 완료`,
     description: subject(options.mode, options.nickname),
+    // 실패 원인은 화면에 늘어놓지 않는다 (로그에만 남긴다).
     fields: [
       { name: "집계", value: tally({ ...result, done: result.total }) },
       ...expiryField(options.expiresAt),
-      ...(result.failures.length > 0
-        ? [{ name: "바꾸지 못한 사람", value: result.failures.join("\n").slice(0, 1000) }]
-        : []),
     ],
     user: options.user,
     layout: "embed",

@@ -1,3 +1,5 @@
+import { setTimeout as sleep } from "node:timers/promises";
+
 import type { Guild, GuildMember } from "discord.js";
 
 import { describeError } from "../errors.js";
@@ -13,6 +15,62 @@ import { logger } from "../logger.js";
 
 /** 진행률을 이 간격보다 자주 갱신하지 않는다 — 메시지 수정에도 요청 제한이 있다. */
 const PROGRESS_INTERVAL_MS = 1500;
+
+/** 요청 제한에 걸렸을 때 재시도 횟수와, 디스코드가 알려 준 대기 시간에 더할 여유. */
+const FETCH_ATTEMPTS = 4;
+const RETRY_BUFFER_MS = 500;
+
+/**
+ * 멤버 목록 요청(게이트웨이 opcode 8)은 제한이 빡빡하다.
+ * 여러 서버를 동시에 처리하면 바로 걸리므로 프로세스 전체에서 한 번에 하나만 보낸다.
+ */
+let fetchQueue: Promise<unknown> = Promise.resolve();
+
+function queued<T>(task: () => Promise<T>): Promise<T> {
+  const run = fetchQueue.then(task, task);
+  fetchQueue = run.catch(() => undefined);
+  return run;
+}
+
+/**
+ * 요청 제한 오류면 디스코드가 알려 준 대기 시간(ms), 아니면 undefined.
+ *
+ * catch 블록에서 부르는 함수이므로 무엇이 던져져도 터지지 않아야 한다.
+ */
+export function memberFetchRetryDelay(error: unknown): number | undefined {
+  if (typeof error !== "object" || error === null) return undefined;
+
+  const retryAfter = (error as { data?: { retry_after?: unknown } }).data?.retry_after;
+  return typeof retryAfter === "number" ? retryAfter * 1000 + RETRY_BUFFER_MS : undefined;
+}
+
+/**
+ * 서버 전원을 가져온다.
+ *
+ * 캐시가 이미 전원을 담고 있으면 게이트웨이에 묻지 않는다 —
+ * 뚜따이 직후 바사삭처럼 연달아 실행할 때 제한에 걸리는 주된 원인이었다.
+ */
+async function fetchAllMembers(guild: Guild): Promise<GuildMember[]> {
+  if (guild.members.cache.size >= guild.memberCount) {
+    return [...guild.members.cache.values()];
+  }
+
+  return queued(async () => {
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        return [...(await guild.members.fetch()).values()];
+      } catch (error) {
+        const wait = memberFetchRetryDelay(error);
+        if (wait === undefined || attempt >= FETCH_ATTEMPTS) throw error;
+
+        logger.warn(
+          `멤버 목록 요청이 제한되었습니다. ${(wait / 1000).toFixed(1)}초 뒤 다시 시도합니다 (${attempt}/${FETCH_ATTEMPTS})`,
+        );
+        await sleep(wait);
+      }
+    }
+  });
+}
 
 export interface Progress {
   /** 대상 인원 (봇 제외). */
@@ -52,8 +110,7 @@ export async function applyNickname(
   onProgress: (progress: Progress) => Promise<void> | void,
 ): Promise<RunResult> {
   // GuildMembers 특권 인텐트가 있어야 전원을 받아올 수 있다.
-  const members = await guild.members.fetch();
-  const targets = [...members.values()].filter((member) => !member.user.bot);
+  const targets = (await fetchAllMembers(guild)).filter((member) => !member.user.bot);
 
   let progress = emptyProgress(targets.length);
   const failures = new Map<string, number>();

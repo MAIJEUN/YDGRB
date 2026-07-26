@@ -1,10 +1,11 @@
 import { PermissionFlagsBits } from "discord.js";
 import type { ChatInputCommandInteraction, ModalSubmitInteraction } from "discord.js";
 
+import { describeError } from "../errors.js";
 import { logger } from "../logger.js";
 import { channelMessage, editResponse, response } from "../ui/response.js";
 import { MODE_LABEL, type Mode } from "./ids.js";
-import { applyNickname } from "./runner.js";
+import { applyNickname, memberFetchRetryDelay } from "./runner.js";
 import { clearState, setState } from "./store.js";
 import { cancelExpiry, scheduleExpiry } from "./scheduler.js";
 import { progressView, resultView, type ViewOptions } from "./views.js";
@@ -89,18 +90,30 @@ export async function runNicknameChange(interaction: Runnable, options: RunOptio
       },
     );
   } catch (error) {
-    logger.error(`${label} 실행 중 오류`, error);
+    const throttled = memberFetchRetryDelay(error) !== undefined;
+
+    // 요청 제한은 스택 트레이스를 남길 만한 오류가 아니다.
+    if (throttled) logger.warn(`${label}: 멤버 목록 요청이 제한되어 포기했습니다.`);
+    else logger.error(`${label} 실행 중 오류`, error);
+
     await interaction.editReply(
       editResponse({
         status: "failure",
         title: `${label} 실패`,
-        description: "멤버 목록을 받아오지 못했습니다. 봇의 **서버 멤버(Server Members)** 특권 인텐트가 켜져 있는지 확인해 주세요.",
-        fields: [{ name: "원인", value: `\`\`\`\n${String(error).slice(0, 300)}\n\`\`\`` }],
+        description: throttled
+          ? "디스코드가 멤버 목록 요청을 잠시 제한했습니다. 조금 뒤에 다시 시도해 주세요."
+          : "멤버 목록을 받아오지 못했습니다. 봇의 **서버 멤버(Server Members)** 특권 인텐트가 켜져 있는지 확인해 주세요.",
+        fields: [{ name: "원인", value: `\`\`\`\n${describeError(error)}\n\`\`\`` }],
         user: interaction.user,
         layout: "embed",
       }),
     );
     return;
+  }
+
+  // 바꾸지 못한 사람은 화면에 늘어놓지 않고 로그에만 남긴다.
+  if (result.failures.length > 0) {
+    logger.info(`${label} 실패 사유 — ${result.failures.join(" / ")}`);
   }
 
   const final = resultView(view, result);
