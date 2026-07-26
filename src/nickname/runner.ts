@@ -86,6 +86,19 @@ export interface Progress {
 export interface RunResult extends Progress {
   /** 원인별 실패 요약 — `봇보다 높은 역할 (3명)` 처럼. */
   readonly failures: readonly string[];
+  /** 도중에 멈췄는지. 남은 사람은 손대지 않은 상태다. */
+  readonly cancelled: boolean;
+}
+
+export interface ApplyOptions {
+  readonly guild: Guild;
+  /** null 이면 별명을 지운다 = 바사삭. */
+  readonly nickname: string | null;
+  /** 감사 로그에 남을 이유. */
+  readonly reason: string;
+  readonly onProgress: (progress: Progress) => Promise<void> | void;
+  /** 매 사람마다 확인한다. true 를 돌려주면 그 자리에서 멈춘다. */
+  readonly shouldStop?: () => boolean;
 }
 
 function emptyProgress(total: number): Progress {
@@ -102,13 +115,9 @@ function describeFailure(guild: Guild, member: GuildMember, error: unknown): str
   return describeError(error);
 }
 
-export async function applyNickname(
-  guild: Guild,
-  /** null 이면 별명을 지운다 = 바사삭. */
-  nickname: string | null,
-  reason: string,
-  onProgress: (progress: Progress) => Promise<void> | void,
-): Promise<RunResult> {
+export async function applyNickname(options: ApplyOptions): Promise<RunResult> {
+  const { guild, nickname, reason, onProgress, shouldStop } = options;
+
   // GuildMembers 특권 인텐트가 있어야 전원을 받아올 수 있다.
   const targets = (await fetchAllMembers(guild)).filter((member) => !member.user.bot);
 
@@ -131,7 +140,15 @@ export async function applyNickname(
 
   await report(true);
 
+  let cancelled = false;
+
   for (const member of targets) {
+    // 다른 작업이 시작됐거나 취소 버튼을 눌렀으면 여기서 멈춘다.
+    if (shouldStop?.() === true) {
+      cancelled = true;
+      break;
+    }
+
     if (member.nickname === nickname) {
       // 이미 원하는 상태다. 요청을 아끼면 큰 서버에서 눈에 띄게 빨라진다.
       progress = { ...progress, done: progress.done + 1, skipped: progress.skipped + 1 };
@@ -153,6 +170,7 @@ export async function applyNickname(
 
   return {
     ...progress,
+    cancelled,
     failures: [...failures.entries()]
       .sort((a, b) => b[1] - a[1])
       .map(([cause, count]) => `${cause} — ${count}명`),

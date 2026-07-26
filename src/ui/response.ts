@@ -80,6 +80,8 @@ export interface MessageOptions extends ResponseOptions {
   /** 기본값 "embed". 인터랙션을 컨테이너 안에 넣어야 하면 "container". */
   readonly layout?: "embed" | "container";
   readonly rows?: readonly ActionRowBuilder<MessageActionRowComponentBuilder>[];
+  /** 컨테이너에서 버튼을 본문 **위쪽**에 둘 때. 기본은 아래쪽. */
+  readonly rowsAtTop?: boolean;
   /** 기본값 true. 채널에 공개로 남겨야 하는 메시지만 false. */
   readonly ephemeral?: boolean;
 }
@@ -152,10 +154,22 @@ export function buildEmbeds(options: ResponseOptions): EmbedBuilder[] {
 // Container 레이아웃 (Components V2)
 // ─────────────────────────────────────────────────────────────
 
+function divider(): SeparatorBuilder {
+  return new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small);
+}
+
 export function buildContainer(options: MessageOptions): ContainerBuilder {
   const container = new ContainerBuilder()
     // 왼쪽 색 띠가 임베드와 같은 역할을 한다.
     .setAccentColor(COLOR[options.status]);
+
+  const rows = options.rows ?? [];
+
+  // 버튼을 본문 위에 두는 경우 (진행 중 작업의 취소 버튼 등).
+  if (rows.length > 0 && options.rowsAtTop === true) {
+    container.addActionRowComponents(...rows);
+    container.addSeparatorComponents(divider());
+  }
 
   const header = [`### ${options.title}`];
 
@@ -178,11 +192,8 @@ export function buildContainer(options: MessageOptions): ContainerBuilder {
     );
   }
 
-  const rows = options.rows ?? [];
-  if (rows.length > 0) {
-    container.addSeparatorComponents(
-      new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small),
-    );
+  if (rows.length > 0 && options.rowsAtTop !== true) {
+    container.addSeparatorComponents(divider());
     container.addActionRowComponents(...rows);
   }
 

@@ -1,6 +1,11 @@
 /** customId 규칙: `nick:<동작>[:인자…]` */
 export const NICK = "nick";
 
+export const ACTION = {
+  /** 진행 중인 작업 취소 — `nick:cancel:<작업 id>` */
+  cancel: "cancel",
+} as const;
+
 export const MODAL_ID = {
   /** 뚜따이 — 별명과 기간을 받는다. */
   dduttai: "m-dduttai",

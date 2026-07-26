@@ -3,6 +3,7 @@ import type { Client } from "discord.js";
 import { logger } from "../logger.js";
 import { channelMessage } from "../ui/response.js";
 import { MODE } from "./ids.js";
+import { beginRun } from "./registry.js";
 import { applyNickname, memberFetchRetryDelay } from "./runner.js";
 import { clearState, getState, statesWithExpiry } from "./store.js";
 import { resultView } from "./views.js";
@@ -61,7 +62,28 @@ async function expire(client: Client, guildId: string): Promise<void> {
     // 알림의 footer 에 넣을 사람 — 뚜따이를 건 사람. 못 찾으면 봇 자신.
     const actor = await client.users.fetch(state.appliedBy).catch(() => client.user);
 
-    const result = await applyNickname(guild, null, "뚜따이 기간 만료 — 자동 바사삭", () => {});
+    // 뚜따이가 아직 돌고 있으면 취소하고 기다린다.
+    const run = await beginRun(guildId, MODE.basasak, state.appliedBy);
+
+    let result;
+    try {
+      result = await applyNickname({
+        guild,
+        nickname: null,
+        reason: "뚜따이 기간 만료 — 자동 바사삭",
+        onProgress: () => {},
+        shouldStop: () => run.cancelled,
+      });
+    } finally {
+      run.finish();
+    }
+
+    // 누가 도중에 새 뚜따이를 걸었다면 그 상태를 지우면 안 된다.
+    if (result.cancelled) {
+      logger.info(`자동 바사삭이 다른 작업에 밀려 중단되었습니다 (${guildId})`);
+      return;
+    }
+
     await clearState(guildId);
 
     logger.info(
