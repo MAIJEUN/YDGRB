@@ -53,6 +53,21 @@ export function classify(subject) {
     : { section: found.title, title: match[2].trim() };
 }
 
+/**
+ * git 트레일러 — 커밋 끝에 붙는 기계용 줄. 릴리스 설명에는 필요 없다.
+ *
+ * 한글 라벨(`증상:` `원인:` `해결:`)은 건드리지 않도록 아는 이름만 지운다.
+ */
+const TRAILER = /^(?:co-authored-by|signed-off-by|reviewed-by|acked-by|tested-by|cc)\s*:/iu;
+
+export function stripTrailers(body) {
+  return body
+    .split(/\r?\n/u)
+    .filter((line) => !TRAILER.test(line.trim()))
+    .join("\n")
+    .trimEnd();
+}
+
 /** 본문을 인용문으로 바꾼다. 빈 줄도 `>` 로 이어야 인용이 중간에 끊기지 않는다. */
 function quote(body) {
   return body
@@ -69,7 +84,7 @@ export function buildNotes(commits) {
     if (title === "") continue;
 
     const items = grouped.get(section) ?? [];
-    items.push({ title, body: commit.body });
+    items.push({ title, body: stripTrailers(commit.body) });
     grouped.set(section, items);
   }
 

@@ -105,7 +105,16 @@ npm run ship -- "수정: 랭킹 정렬 오류"
 
 ### 1. 디스코드 웹훅 만들기
 
-알림을 받을 채널 → **채널 편집 → 연동 → 웹후크 → 새 웹후크** → **웹후크 URL 복사**.
+**채널 편집 → 연동 → 웹후크 → 새 웹후크** → **웹후크 URL 복사**.
+
+웹훅은 **두 개**를 만듭니다. 받는 사람도 내용도 다릅니다.
+
+| 어느 채널 | 무엇이 오나 | 누가 보나 |
+|-----------|-------------|-----------|
+| 빌드 알림 채널 | 배포가 시작됐다 / 끝났다 · 실패했다 | 개발자 |
+| **업데이트 채널** | 이번 버전에 무엇이 바뀌었다 · 받기 버튼 | 봇을 쓰는 사람 |
+
+업데이트 채널 하나만 쓰고 싶으면 같은 URL 을 두 시크릿에 넣어도 됩니다.
 
 ### 2. GitHub 시크릿 등록
 
@@ -113,9 +122,12 @@ npm run ship -- "수정: 랭킹 정렬 오류"
 
 | 이름 | 값 |
 |------|-----|
-| `DISCORD_WEBHOOK_URL` | 위에서 복사한 웹후크 URL |
+| `DISCORD_WEBHOOK_URL` | 빌드 알림 채널의 웹후크 URL |
+| `DISCORD_UPDATE_WEBHOOK_URL` | 업데이트 채널의 웹후크 URL |
 
 > `GITHUB_TOKEN` 은 Actions 가 자동으로 넣어 줍니다. 따로 만들 필요 없습니다.
+>
+> 업데이트 웹훅을 등록하지 않으면 그 단계만 조용히 건너뜁니다 — 배포는 그대로 됩니다.
 
 **봇 토큰(`DISCORD_TOKEN`)은 여기에 넣지 마세요.** 배포 자동화에는 필요 없고,
 `.env` 는 `.gitignore` 에 있어서 저장소에 올라가지 않습니다.
@@ -218,10 +230,11 @@ npm ci --omit=dev
 
 | 파일 | 역할 |
 |------|------|
-| [.github/workflows/release.yml](.github/workflows/release.yml) | 빌드 → 버전 → 릴리스 → 알림 |
+| [.github/workflows/release.yml](.github/workflows/release.yml) | 빌드 → 버전 → 릴리스 → 안내 → 알림 |
 | [scripts/version.mjs](scripts/version.mjs) | YDGRB 버전 계산 |
 | [scripts/release-notes.mjs](scripts/release-notes.mjs) | 커밋에서 릴리스 설명 생성 |
-| [scripts/notify-discord.mjs](scripts/notify-discord.mjs) | 디스코드 웹훅 알림 (시작/결과) |
+| [scripts/notify-discord.mjs](scripts/notify-discord.mjs) | 빌드 알림 (시작/결과) |
+| [scripts/announce-update.mjs](scripts/announce-update.mjs) | 업데이트 채널 안내 |
 | [scripts/ship.mjs](scripts/ship.mjs) | 로컬에서 검사 후 커밋·푸시 |
 
 `scripts/` 는 TypeScript 빌드 대상이 아닙니다. CI 에서 `npm ci` 전에도 돌아야 해서
@@ -234,6 +247,8 @@ npm ci --omit=dev
 | 증상 | 원인 |
 |------|------|
 | 디스코드 알림이 안 옴 | `DISCORD_WEBHOOK_URL` 시크릿 미등록 또는 웹훅 삭제됨. Actions 로그에 `알림을 건너뜁니다` / `알림 실패` 가 남습니다 |
+| 업데이트 안내만 안 옴 | `DISCORD_UPDATE_WEBHOOK_URL` 미등록. 로그에 `업데이트 안내를 건너뜁니다` 가 남습니다 |
+| 업데이트 안내가 400 으로 실패 | 릴리스 설명이 너무 긴 경우. 3000자에서 자르지만 커밋이 아주 많으면 넘칠 수 있습니다 |
 | 알림은 오는데 릴리스가 없음 | 빌드나 타입 검사가 실패한 것. 알림이 빨강이고 「실행 로그」 링크에 이유가 있습니다 |
 | `Resource not accessible by integration` | 저장소 → Settings → Actions → General → Workflow permissions 를 **Read and write** 로 |
 | 버전 날짜가 하루 어긋남 | 워크플로의 `TZ: Asia/Seoul` 이 지워졌는지 확인 |
