@@ -185,6 +185,7 @@ export default defineEvent({
 | 오류는 내용 안에 `코드` 로 | `error` 에 원본 오류를 넘기면 내용 바로 아래에 최대 3줄 ([errors.ts](src/errors.ts)) |
 | 유저·역할은 항상 멘션 | `<@id>` / `<@&id>`. 이름을 글자로 적지 않습니다 (footer 만 예외) |
 | 멘션은 알림을 보내지 않음 | 모든 페이로드에 `allowedMentions: { parse: [] }`. 표시는 그대로, 알림만 빠집니다 |
+| 시각은 타임스탬프 마크다운 | [time.ts](src/time.ts) 의 `at()` · `countdown()` · `atWithCountdown()` 만 씁니다 |
 
 ```
 소원권: 3장 → 4장          ← 소원권이 바뀐 경우에만
@@ -210,6 +211,7 @@ export default defineEvent({
 │ ### 제목                ← 명령어 이름
 │
 │ 내용                     ← 유저·역할은 <@id> / <@&id> 멘션
+│                            시각은 <t:초:F> / <t:초:R> 타임스탬프
 │ `Error: …`               ← 오류가 있으면 최대 3줄
 │
 │ **변동**                ← 권한, 소원권 갯수 …
@@ -299,6 +301,11 @@ await interaction.editReply(
 ```
 
 문자열로 날짜를 직접 조립하지 마세요 — `atWithCountdown()` 이 둘을 함께 냅니다.
+[출력 형식 규칙](#출력-형식-규칙)의 일부라, `toLocaleString()` 같은 걸 쓰면 검사에서 걸립니다.
+
+`formatDuration()` 은 예외입니다. 이건 **시각이 아니라 길이**(`1일 4시간 45초`)라서
+타임스탬프로 표현할 수 없습니다. 사용자가 입력한 기간을 그대로 되돌려 줄 때만 쓰고,
+"언제 풀리는지"는 반드시 `atWithCountdown()` 으로 냅니다.
 
 ## 별명 시스템
 

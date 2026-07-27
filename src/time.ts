@@ -108,7 +108,12 @@ export function describeDurationError(reason: Exclude<DurationResult, { ok: true
   }
 }
 
-/** 초를 `1일 4시간 45초` 형태로. 0 인 단위는 생략한다. */
+/**
+ * 초를 `1일 4시간 45초` 형태로. 0 인 단위는 생략한다.
+ *
+ * **입력한 기간을 그대로 되돌려 줄 때만 쓴다.** 언제 일어나는지 · 얼마나 남았는지는
+ * 아래 타임스탬프 마크다운 함수로 낸다 — 이건 시각이 아니라 길이라서 갱신되지 않는다.
+ */
 export function formatDuration(seconds: number): string {
   if (seconds <= 0) return "0초";
 

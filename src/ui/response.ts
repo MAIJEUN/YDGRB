@@ -46,6 +46,10 @@ import { describeError } from "../errors.js";
  *   5. 유저와 역할을 가리킬 때는 항상 멘션을 쓴다. 이름을 글자로 적지 않는다.
  *      footer 만 예외 — 규칙이 `@유저` 텍스트다.
  *      멘션 알림은 `NO_PINGS` 로 막는다 — 표시는 되고 알림만 안 간다.
+ *
+ *   6. 시각과 남은 시간은 반드시 디스코드 타임스탬프 마크다운으로 낸다.
+ *      [time.ts](../time.ts) 의 `at()` · `countdown()` · `atWithCountdown()` 만 쓴다.
+ *      날짜를 글자로 적으면 보는 사람의 시간대가 반영되지 않고, 남은 시간도 멈춰 버린다.
  */
 
 export type Status = "success" | "failure" | "progress" | "info";
