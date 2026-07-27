@@ -118,7 +118,7 @@ export default defineCommand({
             status: "failure",
             title: "기간을 읽을 수 없습니다",
             description: describeDurationError(parsed.reason),
-            fields: [{ name: "입력한 값", value: `\`${rawDuration}\``, inline: true }],
+            fields: [{ name: "입력한 값", value: `\`${rawDuration}\`` }],
             user: interaction.user,
           }),
         );
@@ -132,7 +132,7 @@ export default defineCommand({
             status: "failure",
             title: "기간이 너무 깁니다",
             description: `타임아웃은 최대 **${formatDuration(MAX_TIMEOUT_SECONDS)}** 까지만 걸 수 있어요.`,
-            fields: [{ name: "입력한 값", value: `\`${rawDuration}\` (${formatDuration(parsed.seconds)})`, inline: true }],
+            fields: [{ name: "입력한 값", value: `\`${rawDuration}\` (${formatDuration(parsed.seconds)})` }],
             user: interaction.user,
           }),
         );
@@ -149,7 +149,7 @@ export default defineCommand({
           status: "failure",
           title: "타임아웃 실패",
           description: blocked,
-          fields: [{ name: "대상", value: `<@${target.id}>`, inline: true }],
+          fields: [{ name: "대상", value: `<@${target.id}>` }],
           user: interaction.user,
         }),
       );
@@ -186,7 +186,7 @@ export default defineCommand({
           title: "타임아웃 실패",
           description: "타임아웃을 적용하지 못했습니다.",
           error,
-          fields: [{ name: "대상", value: `<@${target.id}>`, inline: true }],
+          fields: [{ name: "대상", value: `<@${target.id}>` }],
           user: interaction.user,
         }),
       );
@@ -227,13 +227,9 @@ export default defineCommand({
           after === null
             ? `<@${target.id}> 님의 타임아웃을 풀었습니다.`
             : `<@${target.id}> 님을 ${formatDuration(seconds ?? 0)} 동안 타임아웃했습니다.`,
-        // 대상은 본문이 이미 말했다 — 칸을 따로 두지 않는다.
         fields: [
-          {
-            name: "풀리는 시각",
-            value: `${describeTimeout(before)} → **${describeTimeout(after)}**`,
-            inline: true,
-          },
+          { name: "대상", value: `<@${target.id}>` },
+          { name: "풀리는 시각", value: `${describeTimeout(before)} → **${describeTimeout(after)}**` },
         ],
         user: interaction.user,
       }),
