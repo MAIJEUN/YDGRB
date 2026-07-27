@@ -1,6 +1,7 @@
 import { InteractionContextType, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
 import type { Guild, GuildMember, NonThreadGuildBasedChannel, Role } from "discord.js";
 
+import { describeError } from "../errors.js";
 import { logger } from "../logger.js";
 import { editResponse, response } from "../ui/response.js";
 import { defineCommand } from "../types.js";
@@ -20,13 +21,15 @@ const OPTION = { role: "역할" } as const;
 const PROGRESS_INTERVAL = 1_500;
 
 /**
- * 역할 이름을 그대로 코드로 적는다 — 역할 멘션을 쓰면 알림이 갈 수 있다.
- * (`@everyone` 을 멘션하면 서버 전체에 알림이 간다)
+ * 역할은 멘션으로 가리킨다 (규칙: 유저·역할을 가리킬 때는 항상 멘션).
  *
- * `@everyone` 과 `@here` 는 이름 자체에 `@` 가 들어 있어서 또 붙이면 `@@everyone` 이 된다.
+ * `Role#toString()` 이 `@everyone` 은 그 문자열로, 나머지는 `<@&id>` 로 만들어 준다.
+ * 이름을 직접 이어 붙이지 않으므로 `@@everyone` 이 될 일도 없다.
+ *
+ * 알림은 렌더러가 `allowed_mentions` 를 비워서 막는다 — 표시만 되고 알림은 안 간다.
  */
 function label(role: Role): string {
-  return `\`${role.name.startsWith("@") ? role.name : `@${role.name}`}\``;
+  return role.toString();
 }
 
 /** 이 역할의 채팅을 막을 수 있는지. */
@@ -185,7 +188,7 @@ export default defineCommand({
         );
       } catch (error) {
         tally.failed += 1;
-        logger.warn(`채팅뻥: #${channel.name} 실패 — ${String(error)}`);
+        logger.warn(`채팅뻥: #${channel.name} 실패 — ${describeError(error)}`);
       }
 
       tally.done += 1;

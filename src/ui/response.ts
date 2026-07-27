@@ -17,6 +17,7 @@ import type {
   InteractionUpdateOptions,
   MessageActionRowComponentBuilder,
   MessageCreateOptions,
+  MessageMentionOptions,
   User,
 } from "discord.js";
 
@@ -42,8 +43,9 @@ import { describeError } from "../errors.js";
  *        ── 가로줄
  *        footer (@유저)
  *
- *   5. 유저를 가리킬 때는 항상 멘션(`<@id>`)을 쓴다. 이름을 글자로 적지 않는다.
+ *   5. 유저와 역할을 가리킬 때는 항상 멘션을 쓴다. 이름을 글자로 적지 않는다.
  *      footer 만 예외 — 규칙이 `@유저` 텍스트다.
+ *      멘션 알림은 `NO_PINGS` 로 막는다 — 표시는 되고 알림만 안 간다.
  */
 
 export type Status = "success" | "failure" | "progress" | "info";
@@ -208,28 +210,49 @@ export function buildContainer(options: MessageOptions): ContainerBuilder {
 // 페이로드
 //
 // Components V2 메시지에는 content 도 embeds 도 실을 수 없다.
-// 그래서 어느 함수든 components 와 flags 만 돌려준다.
+// 그래서 어느 함수든 components · flags · allowedMentions 만 돌려준다.
 // ─────────────────────────────────────────────────────────────
+
+/**
+ * 멘션은 **보이기만** 하고 알림은 보내지 않는다.
+ *
+ * 규칙상 유저와 역할을 가리킬 때는 항상 멘션을 쓴다. 그런데 알림까지 나가면
+ * 랭킹 한 번에 열 명이 울리고, `@everyone` 을 적는 순간 서버 전체에 알림이 간다.
+ * `allowed_mentions` 를 비우면 표시는 그대로(파란 칩)이고 알림만 빠진다.
+ */
+const NO_PINGS: MessageMentionOptions = { parse: [] };
 
 /** `interaction.reply()` / `followUp()` 에 그대로 넘길 수 있는 페이로드. */
 export function response(options: MessageOptions): InteractionReplyOptions {
   const flags: (MessageFlags.Ephemeral | MessageFlags.IsComponentsV2)[] = [MessageFlags.IsComponentsV2];
   if (options.ephemeral !== false) flags.push(MessageFlags.Ephemeral);
 
-  return { components: [buildContainer(options)], flags };
+  return { components: [buildContainer(options)], flags, allowedMentions: NO_PINGS };
 }
 
 /** `interaction.update()` 용. ephemeral 여부는 메시지를 만들 때 정해지므로 건드리지 않는다. */
 export function updateResponse(options: MessageOptions): InteractionUpdateOptions {
-  return { components: [buildContainer(options)], flags: [MessageFlags.IsComponentsV2] };
+  return {
+    components: [buildContainer(options)],
+    flags: [MessageFlags.IsComponentsV2],
+    allowedMentions: NO_PINGS,
+  };
 }
 
 /** `interaction.editReply()` 용 — 이미 defer/reply 한 응답을 갈아 끼울 때. */
 export function editResponse(options: MessageOptions): InteractionEditReplyOptions {
-  return { components: [buildContainer(options)], flags: [MessageFlags.IsComponentsV2] };
+  return {
+    components: [buildContainer(options)],
+    flags: [MessageFlags.IsComponentsV2],
+    allowedMentions: NO_PINGS,
+  };
 }
 
 /** 인터랙션 응답이 아니라 채널이나 DM 으로 직접 보낼 때. */
 export function channelMessage(options: MessageOptions): MessageCreateOptions {
-  return { components: [buildContainer(options)], flags: [MessageFlags.IsComponentsV2] };
+  return {
+    components: [buildContainer(options)],
+    flags: [MessageFlags.IsComponentsV2],
+    allowedMentions: NO_PINGS,
+  };
 }
