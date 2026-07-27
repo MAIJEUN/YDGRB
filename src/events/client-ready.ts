@@ -2,6 +2,7 @@ import { ActivityType, Events } from "discord.js";
 
 import { logger } from "../logger.js";
 import { restoreExpirySchedules } from "../nickname/scheduler.js";
+import { restoreTasalbeo } from "../tasalbeo/scheduler.js";
 import { restoreTimeoutSchedules } from "../timeout/scheduler.js";
 import { defineEvent } from "../types.js";
 
@@ -20,5 +21,9 @@ export default defineEvent({
     // 타임아웃 종료 알림 예약도 마찬가지로 되살린다.
     const timeouts = await restoreTimeoutSchedules(client);
     if (timeouts > 0) logger.info(`타임아웃 종료 알림 예약 ${timeouts}건 복구`);
+
+    // 타살버는 예약뿐 아니라 역할 넣었다 빼는 반복까지 되살린다.
+    const tasalbeo = await restoreTasalbeo(client);
+    if (tasalbeo > 0) logger.info(`타살버 ${tasalbeo}건 복구`);
   },
 });

@@ -6,6 +6,7 @@ import { collectCommands } from "./loaders/commands.js";
 import { collectComponentHandlers } from "./loaders/components.js";
 import { registerEvents } from "./loaders/events.js";
 import { logger } from "./logger.js";
+import { stopAllLoops } from "./tasalbeo/runner.js";
 import { contextMenuKey } from "./types.js";
 
 async function main(): Promise<void> {
@@ -56,6 +57,10 @@ function installProcessHandlers(client: Client): void {
       shuttingDown = true;
 
       logger.info(`${signal} 수신 — 봇을 종료합니다.`);
+
+      // 타살버의 역할 넣었다 빼기 타이머가 남아 있으면 프로세스가 안 끝난다.
+      stopAllLoops();
+
       void Promise.resolve(client.destroy()).finally(() => {
         process.exit(0);
       });

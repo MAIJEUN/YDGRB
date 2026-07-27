@@ -8,9 +8,17 @@ import { Client, Collection, GatewayIntentBits } from "discord.js";
  *   Developer Portal > Bot > Privileged Gateway Intents 에서 **Server Members Intent** 를
  *   켜지 않으면 로그인 자체가 `Used disallowed intents` 로 실패한다.
  *
+ * - GuildMessages: `/타살버` 가 걸린 사람의 메시지에 반응을 달기 위해 필요하다.
+ *   메시지 **내용**은 읽지 않으므로 특권 인텐트(MessageContent)는 필요 없다 —
+ *   누가 보냈는지와 메시지 id 만 있으면 반응은 달 수 있다.
+ *
  * GuildPresences 와 MessageContent 도 특권 인텐트다. 필요해지면 같은 방식으로 켜고 추가한다.
  */
-const INTENTS = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers];
+const INTENTS = [
+  GatewayIntentBits.Guilds,
+  GatewayIntentBits.GuildMembers,
+  GatewayIntentBits.GuildMessages,
+];
 
 export function createClient(): Client {
   const client = new Client({ intents: INTENTS });
