@@ -1,9 +1,8 @@
 import type { Client } from "discord.js";
 
 import { logger } from "../logger.js";
-import { channelMessage } from "../ui/response.js";
+import { hasLeft, sendEndNotice } from "../ui/end-notice.js";
 import { allStates, takeState } from "./store.js";
-import { endNoticeView } from "./views.js";
 
 /**
  * 타임아웃이 끝나면 채널에 한 번 알린다.
@@ -93,30 +92,22 @@ async function announce(
       : `타임아웃 해제됨 (${key(guildId, userId)})`,
   );
 
-  if (state.channelId === null) return;
+  // 알림 footer 에 넣을 사람 — 타임아웃을 건 사람. 못 찾으면 봇 자신.
+  const actor = await client.users.fetch(state.appliedBy).catch(() => client.user);
+  if (actor === null) return;
 
-  try {
-    // 알림 footer 에 넣을 사람 — 타임아웃을 건 사람. 못 찾으면 봇 자신.
-    const actor = await client.users.fetch(state.appliedBy).catch(() => client.user);
-    if (actor === null) return;
-
-    const channel = await client.channels.fetch(state.channelId).catch(() => null);
-    if (channel === null || !channel.isSendable()) return;
-
-    await channel.send(
-      channelMessage(
-        endNoticeView({
-          targetId: userId,
-          until: new Date(state.until),
-          releasedBy,
-          user: actor,
-        }),
-      ),
-    );
-  } catch (error) {
-    // 알림에 실패해도 타임아웃 자체는 이미 끝났다. 로그만 남긴다.
-    logger.error(`타임아웃 종료 알림 실패 (${key(guildId, userId)})`, error);
-  }
+  await sendEndNotice(
+    client,
+    { channelId: state.channelId, messageId: state.messageId },
+    {
+      effect: "타임아웃",
+      target: `<@${userId}>`,
+      until: new Date(state.until),
+      reason: releasedBy === null ? { kind: "expired" } : { kind: "released", byId: releasedBy },
+      targetLeft: await hasLeft(client, guildId, userId),
+      user: actor,
+    },
+  );
 }
 
 /** 부팅 시 저장된 예약을 되살린다. 이미 지난 것은 바로 알린다. */

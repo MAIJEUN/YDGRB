@@ -38,6 +38,7 @@ async function updateSchedule(
   interaction: ChatInputCommandInteraction,
   guildId: string,
   options: RunOptions,
+  messageId: string | null,
 ): Promise<void> {
   const wholeServer = options.targetIds.length === 0;
   const slots: (string | null)[] = wholeServer ? [null] : [...options.targetIds];
@@ -50,6 +51,7 @@ async function updateSchedule(
         appliedAt: Date.now(),
         expiresAt: options.expiresAt,
         channelId: interaction.channelId,
+        messageId,
         targetId,
       });
 
@@ -111,8 +113,15 @@ export async function runNicknameChange(
     // 메시지를 만들 때 정해지고 나중에 바꿀 수 없기 때문이다.
     await interaction.reply(response(preparingView(view, run)));
 
+    // 만료 알림을 이 메시지에 답장으로 달기 위해 id 를 챙겨 둔다.
+    // 못 가져와도 작업 자체는 계속한다 — 그때는 채널에 그냥 남긴다.
+    const messageId = await interaction
+      .fetchReply()
+      .then((message) => message.id)
+      .catch(() => null);
+
     // 예약을 먼저 저장한다 — 작업 중에 봇이 꺼져도 만료 예약은 남아 있어야 한다.
-    await updateSchedule(interaction, guild.id, options);
+    await updateSchedule(interaction, guild.id, options, messageId);
 
     let result;
     try {

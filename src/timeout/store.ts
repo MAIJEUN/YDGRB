@@ -17,6 +17,8 @@ export interface TimeoutState {
   appliedAt: number;
   /** 알림을 보낼 채널. */
   channelId: string | null;
+  /** 타임아웃을 건 메시지 — 종료 알림을 여기에 답장으로 단다. */
+  messageId: string | null;
 }
 
 interface TimeoutData {

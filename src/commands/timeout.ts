@@ -196,12 +196,20 @@ export default defineCommand({
     // 끝날 때 알리기 위해 기억해 둔다.
     if (after !== null) {
       try {
+        // 종료 알림을 이 응답에 답장으로 달기 위해 id 를 챙겨 둔다.
+        // 못 가져와도 그냥 진행한다 — 그때는 채널에 남긴다.
+        const messageId = await interaction
+          .fetchReply()
+          .then((message) => message.id)
+          .catch(() => null);
+
         await setState(interaction.guildId, {
           userId: target.id,
           until: after.getTime(),
           appliedBy: interaction.user.id,
           appliedAt: Date.now(),
           channelId: interaction.channelId,
+          messageId,
         });
 
         scheduleEnd(interaction.client, interaction.guildId, target.id, after.getTime());

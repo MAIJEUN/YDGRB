@@ -20,6 +20,8 @@ export interface NicknameState {
   expiresAt: number | null;
   /** 만료 알림을 보낼 채널. */
   channelId: string | null;
+  /** 뚜따이를 건 메시지 — 만료 알림을 여기에 답장으로 단다. */
+  messageId: string | null;
   /** null 이면 서버 전체. */
   targetId: string | null;
 }
@@ -51,7 +53,7 @@ function normalize(raw: unknown): GuildNicknames {
 
   // 예전 형식 — 상태가 곧 서버 칸이었다.
   if (typeof value.nickname === "string") {
-    return { all: { ...(raw as NicknameState), targetId: null }, members: {} };
+    return { all: { ...(raw as NicknameState), targetId: null, messageId: null }, members: {} };
   }
 
   return { all: value.all ?? null, members: value.members ?? {} };
@@ -111,8 +113,11 @@ export async function statesWithExpiry(): Promise<{ guildId: string; state: Nick
 
     for (const state of [guild.all, ...Object.values(guild.members)]) {
       if (state !== null && state !== undefined && state.expiresAt !== null) {
-        // 옛 파일에는 targetId 가 없다.
-        found.push({ guildId, state: { ...state, targetId: state.targetId ?? null } });
+        // 옛 파일에는 targetId 도 messageId 도 없다.
+        found.push({
+          guildId,
+          state: { ...state, targetId: state.targetId ?? null, messageId: state.messageId ?? null },
+        });
       }
     }
   }

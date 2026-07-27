@@ -1,12 +1,12 @@
 import type { Client } from "discord.js";
 
 import { logger } from "../logger.js";
-import { channelMessage } from "../ui/response.js";
+import { hasLeft, sendEndNotice } from "../ui/end-notice.js";
 import { MODE } from "./ids.js";
 import { beginRun } from "./registry.js";
 import { applyNickname, memberFetchRetryDelay } from "./runner.js";
 import { clearState, getState, statesWithExpiry } from "./store.js";
-import { resultView } from "./views.js";
+import { tally } from "./views.js";
 
 /**
  * 뚜따이 기간이 지나면 자동으로 바사삭한다.
@@ -116,25 +116,29 @@ async function expire(client: Client, guildId: string, targetId: string | null):
     );
     if (result.failures.length > 0) logger.info(`  실패 사유 — ${result.failures.join(" / ")}`);
 
-    if (state.channelId === null || actor === null) return;
+    if (actor === null) return;
 
-    const channel = await client.channels.fetch(state.channelId).catch(() => null);
-    if (channel === null || !channel.isSendable()) return;
+    // 한 명도 못 바꿨으면 실패, 일부만 못 바꿨으면 진행중(노랑) — 다 됐으면 알림 기본색(파랑).
+    const outcome =
+      result.failed === 0
+        ? undefined
+        : {
+            status: result.changed + result.skipped === 0 ? ("failure" as const) : ("progress" as const),
+            fields: [{ name: "집계", value: tally({ ...result, done: result.total }) }],
+          };
 
-    await channel.send(
-      channelMessage({
-        ...resultView(
-          {
-            mode: MODE.basasak,
-            nickname: null,
-            expiresAt: null,
-            targetIds: targetId === null ? [] : [targetId],
-            user: actor,
-          },
-          result,
-        ),
-        title: "기간이 끝나 자동으로 바사삭했습니다",
-      }),
+    await sendEndNotice(
+      client,
+      { channelId: state.channelId, messageId: state.messageId },
+      {
+        effect: "뚜따이",
+        target: targetId === null ? "**서버 전원**" : `<@${targetId}>`,
+        until: new Date(state.expiresAt ?? Date.now()),
+        reason: { kind: "expired" },
+        outcome,
+        targetLeft: targetId === null ? false : await hasLeft(client, guildId, targetId),
+        user: actor,
+      },
     );
   } catch (error) {
     const wait = memberFetchRetryDelay(error);

@@ -27,7 +27,7 @@ function bar(done: number, total: number): string {
  * 전체 · 완료 · 실패만 보여 준다.
  * 이미 같은 별명이라 건너뛴 사람도 원하는 상태이므로 완료로 센다.
  */
-function tally(progress: Progress): string {
+export function tally(progress: Progress): string {
   return [
     `전체 **${progress.total}명**`,
     `완료 **${progress.changed + progress.skipped}명**`,

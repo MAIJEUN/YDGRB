@@ -50,6 +50,9 @@ import { describeError } from "../errors.js";
  *   6. 시각과 남은 시간은 반드시 디스코드 타임스탬프 마크다운으로 낸다.
  *      [time.ts](../time.ts) 의 `at()` · `countdown()` · `atWithCountdown()` 만 쓴다.
  *      날짜를 글자로 적으면 보는 사람의 시간대가 반영되지 않고, 남은 시간도 멈춰 버린다.
+ *
+ *   7. 나중에 저절로 풀리는 효과(뚜따이 기간, 타임아웃 …)는 끝날 때 **그 효과를 건 메시지에
+ *      답장**으로 안내를 남긴다. 모양은 [end-notice.ts](end-notice.ts) 한곳에서 정한다.
  */
 
 export type Status = "success" | "failure" | "progress" | "info";
@@ -223,8 +226,11 @@ export function buildContainer(options: MessageOptions): ContainerBuilder {
  * 규칙상 유저와 역할을 가리킬 때는 항상 멘션을 쓴다. 그런데 알림까지 나가면
  * 랭킹 한 번에 열 명이 울리고, `@everyone` 을 적는 순간 서버 전체에 알림이 간다.
  * `allowed_mentions` 를 비우면 표시는 그대로(파란 칩)이고 알림만 빠진다.
+ *
+ * `repliedUser` 도 꺼야 한다 — 답장은 기본값이 **알림 보냄**이라, 종료 알림처럼
+ * 답장으로 다는 메시지가 원본 작성자를 계속 울린다.
  */
-const NO_PINGS: MessageMentionOptions = { parse: [] };
+const NO_PINGS: MessageMentionOptions = { parse: [], repliedUser: false };
 
 /** `interaction.reply()` / `followUp()` 에 그대로 넘길 수 있는 페이로드. */
 export function response(options: MessageOptions): InteractionReplyOptions {
