@@ -71,7 +71,8 @@ export async function announceRelease(
   releasedBy: string | null,
 ): Promise<void> {
   cancelEnd(guildId, userId);
-  await announce(client, guildId, userId, releasedBy ?? client.user?.id ?? null);
+  // 못 찾았으면 null 그대로 둔다 — 봇 이름을 대신 적어도 알려 주는 게 없다.
+  await announce(client, guildId, userId, releasedBy);
 }
 
 async function announce(

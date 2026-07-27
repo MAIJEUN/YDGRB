@@ -328,6 +328,9 @@ export default defineEvent({
 대상은 내용이 이미 말하므로 칸을 따로 두지 않습니다. 효과 이름 뒤에 「효과」를 붙이는 것은
 조사 때문입니다 — `뚜따이이(가)` 같은 게 나오지 않습니다.
 
+**푼 사람이 봇이면 이름을 적지 않습니다.** 「@봇 님이 풀었습니다」 는 아무 정보도 주지
+않으므로 그냥 「풀렸습니다」 로 나갑니다. 감사 로그에서 푼 사람을 못 찾은 경우도 마찬가지입니다.
+
 답장이 원본 작성자를 계속 울리지 않도록 `allowedMentions` 에 `repliedUser: false` 가 들어갑니다.
 
 ### 안내를 못 다는 경우
@@ -639,7 +642,7 @@ await interaction.editReply(
 |-------------|-------------|
 | 기간이 다 됨 | [scheduler.ts](src/timeout/scheduler.ts) 의 예약 |
 | `/타임아웃` 으로 해제 | 명령이 직접 — 푼 사람을 정확히 알기 때문 |
-| 디스코드 화면에서 해제 | [guild-member-update.ts](src/events/guild-member-update.ts) 가 감사 로그에서 푼 사람을 찾음 |
+| 디스코드 화면에서 해제 | [guild-member-update.ts](src/events/guild-member-update.ts) 가 감사 로그에서 푼 사람을 찾음 (못 찾으면 이름 없이) |
 
 > **디스코드는 타임아웃이 저절로 풀릴 때 아무 이벤트도 보내지 않습니다.**
 > `guildMemberUpdate` 는 사람이 직접 풀 때만 옵니다. 그래서 기간 만료는 직접 예약해 둡니다.

@@ -104,6 +104,19 @@ export interface NoticeAnchor {
  *   - 봇이 그 채널에 글을 못 씀 → 마찬가지
  *   - 스레드가 보관됨 → 보내기가 실패하면 로그만
  */
+/**
+ * 푼 사람이 봇이면 이름을 지운다.
+ *
+ * 「<@봇> 님이 풀었습니다」 는 아무 정보도 주지 않는다 — 봇이 푸는 건 기간이 다 됐거나
+ * 누가 시켰거나 둘 중 하나이고, 어느 쪽이든 봇 이름은 읽는 사람에게 쓸모가 없다.
+ */
+function hideBot(client: Client, reason: EndReason): EndReason {
+  if (reason.kind !== "released") return reason;
+  if (reason.byId !== client.user?.id) return reason;
+
+  return { kind: "released", byId: null };
+}
+
 export async function sendEndNotice(
   client: Client,
   anchor: NoticeAnchor,
@@ -118,7 +131,7 @@ export async function sendEndNotice(
       return;
     }
 
-    const payload = channelMessage(endNoticeView(options));
+    const payload = channelMessage(endNoticeView({ ...options, reason: hideBot(client, options.reason) }));
 
     if (anchor.messageId !== null) {
       // 원본이 살아 있는지 먼저 확인한다. 없는 메시지에 답장하면 디스코드가 통째로 거부한다.
