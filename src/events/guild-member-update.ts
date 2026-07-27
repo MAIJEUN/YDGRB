@@ -52,6 +52,11 @@ export default defineEvent({
 
     const releasedBy = await whoReleased(newMember.guild, newMember.id);
 
+    // 봇이 푼 것 = `/타임아웃` 으로 푼 것이다. 그 명령이 **푼 사람을 정확히 알고**
+    // 이미 알렸으므로 여기서는 넘어간다. 감사 로그만 보면 실행자가 봇이라
+    // 여기서 알리면 "봇이 풀었다" 로 잘못 나간다.
+    if (releasedBy === newMember.client.user?.id) return;
+
     await announceRelease(newMember.client, newMember.guild.id, newMember.id, releasedBy);
   },
 });

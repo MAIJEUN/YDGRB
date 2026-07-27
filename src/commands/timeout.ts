@@ -193,6 +193,20 @@ export default defineCommand({
       return;
     }
 
+    // 해제했으면 **여기서 바로** 종료 알림을 낸다.
+    //
+    // 타임아웃을 풀면 guildMemberUpdate 도 같은 해제를 본다. 그쪽이 먼저 알리면
+    // 감사 로그의 실행자가 **봇**이라 푼 사람이 봇으로 찍힌다.
+    // 상태를 먼저 가져가면(takeState) 이벤트 쪽은 아무것도 못 찾고 지나간다.
+    if (after === null) {
+      await announceRelease(
+        interaction.client,
+        interaction.guildId,
+        target.id,
+        interaction.user.id,
+      );
+    }
+
     // 끝날 때 알리기 위해 기억해 둔다.
     if (after !== null) {
       try {
@@ -234,17 +248,5 @@ export default defineCommand({
         user: interaction.user,
       }),
     );
-
-    // 해제했으면 종료 알림도 한 번 남긴다. 여기서 직접 부르는 이유는 **푼 사람**을
-    // 정확히 알기 때문이다 — guildMemberUpdate 가 감사 로그로 찾으면 봇이 찍힌다.
-    // 상태를 가져가면서 지우므로 이벤트 쪽은 아무것도 못 찾고 조용히 지나간다.
-    if (after === null) {
-      await announceRelease(
-        interaction.client,
-        interaction.guildId,
-        target.id,
-        interaction.user.id,
-      );
-    }
   },
 });
