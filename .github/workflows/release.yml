@@ -93,12 +93,6 @@ jobs:
             --title "$NAME" \
             --notes-file "$RUNNER_TEMP/notes.md"
 
-      - name: 업데이트 채널 안내
-        env:
-          DISCORD_UPDATE_WEBHOOK_URL: ${{ secrets.DISCORD_UPDATE_WEBHOOK_URL }}
-          VERSION: ${{ steps.version.outputs.value }}
-        run: node scripts/announce-update.mjs "$VERSION" "$RUNNER_TEMP/notes.md"
-
       - name: 결과 알림
         # 앞 단계가 실패해도 알림은 보낸다.
         if: always()
