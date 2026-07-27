@@ -53,6 +53,10 @@ import { describeError } from "../errors.js";
  *
  *   7. 나중에 저절로 풀리는 효과(뚜따이 기간, 타임아웃 …)는 끝날 때 **그 효과를 건 메시지에
  *      답장**으로 안내를 남긴다. 모양은 [end-notice.ts](end-notice.ts) 한곳에서 정한다.
+ *
+ *   8. **결과만 적는다.** 명령이 무엇을 하는지, 앞으로 무슨 일이 일어날지 설명하지 않는다.
+ *      다른 칸이 이미 말한 것을 다시 적지도 않는다 (환불 금액은 변동 문구가 말한다).
+ *      실패한 이유는 그 자체가 결과이므로 적는다.
  */
 
 export type Status = "success" | "failure" | "progress" | "info";

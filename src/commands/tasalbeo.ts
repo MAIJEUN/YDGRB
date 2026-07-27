@@ -161,10 +161,7 @@ export default defineCommand({
           status: "success",
           title: "타살버 — 해제",
           description: `<@${target.id}> 님의 타살버를 풀었습니다.`,
-          fields: [
-            { name: "대상", value: `<@${target.id}>` },
-            { name: "별명", value: "원래대로 되돌렸습니다." },
-          ],
+          fields: [{ name: "대상", value: `<@${target.id}>` }],
           user: interaction.user,
         }),
       );
@@ -238,14 +235,6 @@ export default defineCommand({
         fields: [
           { name: "대상", value: `<@${target.id}>` },
           { name: "풀리는 시각", value: atWithCountdown(until) },
-          {
-            name: "걸린 것",
-            value: [
-              `별명이 \`${NICKNAME}\` 으로 바뀝니다.`,
-              "채팅이 2초 막혔다 5초 풀렸다 반복합니다.",
-              "보내는 메시지마다 반응이 무작위로 달립니다.",
-            ].join("\n"),
-          },
         ],
         user: interaction.user,
       }),

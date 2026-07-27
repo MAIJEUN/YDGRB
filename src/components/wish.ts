@@ -479,7 +479,7 @@ async function submitWish(interaction: ComponentInteraction, guildId: string): P
       noticeView({
         status: "success",
         title: "소원을 보냈습니다",
-        description: `<#${channelId}> 로 전달했어요. 관리자가 수락하거나 거절하면 알려드릴게요.`,
+        description: `<#${channelId}> 로 전달했습니다.`,
         fields: [{ name: "소원 내용", value: content.slice(0, 1000) }],
         balance: formatBalanceChange(spent),
         user: interaction.user,
@@ -645,7 +645,7 @@ async function notifyWisher(
           // 첨부파일은 원본 메시지에 붙어 있다. 링크로 안내한다
           // (DM 에 다시 올리면 파일이 두 벌이 되고, 저장된 URL 은 언젠가 만료된다).
           { name: "원본", value: `[소원 보러 가기](${messageUrl})` },
-          ...(accepted ? [] : [{ name: "안내", value: "소원권 1장을 돌려드렸어요." }]),
+          // 환불은 변동 문구(`소원권: 0장 → 1장`)가 이미 말한다. 따로 적지 않는다.
         ],
         balance: refundText,
         user: target,
