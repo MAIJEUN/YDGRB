@@ -1,7 +1,10 @@
 import { InteractionContextType, PermissionFlagsBits, SlashCommandBuilder } from "discord.js";
 import type { GuildMember } from "discord.js";
 
+import { logger } from "../logger.js";
 import { atWithCountdown, describeDurationError, formatDuration, parseDuration } from "../time.js";
+import { announceRelease, scheduleEnd } from "../timeout/scheduler.js";
+import { setState } from "../timeout/store.js";
 import { editResponse, response } from "../ui/response.js";
 import { defineCommand } from "../types.js";
 
@@ -9,6 +12,11 @@ import { defineCommand } from "../types.js";
  * 타임아웃 — 정해진 시각까지 말도 못 하고 반응도 못 달게 만든다.
  *
  * 기간을 비우면 **해제**한다. 걸린 걸 푸는 다른 방법이 없어서 같은 명령에 담았다.
+ *
+ * 끝날 때 한 번 더 알린다 (뚜따이 기간 만료와 같은 방식):
+ *   - 기간이 다 되어 저절로 풀림 → [scheduler](../timeout/scheduler.ts) 의 예약
+ *   - 이 명령으로 풀림 → 아래에서 바로 `announceRelease`
+ *   - 디스코드 화면에서 풀림 → [guildMemberUpdate](../events/guild-member-update.ts)
  */
 
 const OPTION = { user: "유저", duration: "기간" } as const;
@@ -185,6 +193,24 @@ export default defineCommand({
       return;
     }
 
+    // 끝날 때 알리기 위해 기억해 둔다.
+    if (after !== null) {
+      try {
+        await setState(interaction.guildId, {
+          userId: target.id,
+          until: after.getTime(),
+          appliedBy: interaction.user.id,
+          appliedAt: Date.now(),
+          channelId: interaction.channelId,
+        });
+
+        scheduleEnd(interaction.client, interaction.guildId, target.id, after.getTime());
+      } catch (error) {
+        // 알림 예약에 실패해도 타임아웃 자체는 이미 걸렸다. 결과는 그대로 보여 준다.
+        logger.error("타임아웃 종료 알림 예약 실패", error);
+      }
+    }
+
     await interaction.editReply(
       editResponse({
         status: "success",
@@ -200,5 +226,17 @@ export default defineCommand({
         user: interaction.user,
       }),
     );
+
+    // 해제했으면 종료 알림도 한 번 남긴다. 여기서 직접 부르는 이유는 **푼 사람**을
+    // 정확히 알기 때문이다 — guildMemberUpdate 가 감사 로그로 찾으면 봇이 찍힌다.
+    // 상태를 가져가면서 지우므로 이벤트 쪽은 아무것도 못 찾고 조용히 지나간다.
+    if (after === null) {
+      await announceRelease(
+        interaction.client,
+        interaction.guildId,
+        target.id,
+        interaction.user.id,
+      );
+    }
   },
 });
