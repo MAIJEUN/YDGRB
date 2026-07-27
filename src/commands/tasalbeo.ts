@@ -160,8 +160,8 @@ export default defineCommand({
         editResponse({
           status: "success",
           title: "타살버 — 해제",
+          // 대상은 내용이 이미 말했다 — 칸을 따로 두지 않는다.
           description: `<@${target.id}> 님의 타살버를 풀었습니다.`,
-          fields: [{ name: "대상", value: `<@${target.id}>` }],
           user: interaction.user,
         }),
       );
@@ -231,11 +231,9 @@ export default defineCommand({
       editResponse({
         status: "success",
         title: "타살버 — 적용",
+        // 대상은 내용이 이미 말했다 — 칸을 따로 두지 않는다.
         description: `<@${target.id}> 님에게 ${formatDuration(seconds)} 동안 타살버를 걸었습니다.`,
-        fields: [
-          { name: "대상", value: `<@${target.id}>` },
-          { name: "풀리는 시각", value: atWithCountdown(until) },
-        ],
+        fields: [{ name: "풀리는 시각", value: atWithCountdown(until) }],
         user: interaction.user,
       }),
     );

@@ -72,8 +72,8 @@ export function endNoticeView(options: EndNoticeOptions): MessageOptions {
     status: options.outcome?.status ?? "info",
     title: `${options.effect} — ${released ? "해제" : "기간 만료"}`,
     description: options.targetLeft === true ? `${description}\n_(서버를 떠난 사람입니다)_` : description,
+    // 대상은 내용이 이미 말했다 — 칸을 따로 두지 않는다.
     fields: [
-      { name: "대상", value: options.target },
       {
         // 시각은 반드시 타임스탬프 마크다운으로.
         name: released ? "원래 풀릴 시각" : "풀린 시각",

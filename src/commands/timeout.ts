@@ -223,12 +223,12 @@ export default defineCommand({
       editResponse({
         status: "success",
         title: after === null ? "타임아웃 — 해제" : "타임아웃 — 적용",
+        // 대상은 내용이 이미 말했다 — 칸을 따로 두지 않는다.
         description:
           after === null
             ? `<@${target.id}> 님의 타임아웃을 풀었습니다.`
             : `<@${target.id}> 님을 ${formatDuration(seconds ?? 0)} 동안 타임아웃했습니다.`,
         fields: [
-          { name: "대상", value: `<@${target.id}>` },
           { name: "풀리는 시각", value: `${describeTimeout(before)} → **${describeTimeout(after)}**` },
         ],
         user: interaction.user,
