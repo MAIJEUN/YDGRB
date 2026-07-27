@@ -1,5 +1,7 @@
 import { execFileSync } from "node:child_process";
 
+import { buildMessage, env, repository, send } from "./discord-message.mjs";
+
 /**
  * 배포 상황을 디스코드 웹훅으로 알린다.
  *
@@ -9,17 +11,10 @@ import { execFileSync } from "node:child_process";
  *   node scripts/notify-discord.mjs finish <success|failure|cancelled> [버전] [메시지 id]
  *       같은 메시지를 결과 색으로 고친다. id 가 없으면 새 메시지를 올린다.
  *
- * 봇 출력과 같은 규칙을 따른다 — 색은 성공(초록)·실패(빨강)·진행중(노랑) 세 가지뿐이고,
- * footer 에는 이름만 넣는다(프로필 사진은 쓰지 않는다).
+ * 모양은 [discord-message.mjs](discord-message.mjs) 가 정한다 — 저장소 활동 알림과 같다.
  *
  * 알림이 실패해도 배포 자체를 실패로 만들지 않는다. 경고만 남기고 0 으로 끝낸다.
  */
-
-const COLOR = {
-  success: 0x57f287, // 초록
-  failure: 0xed4245, // 빨강
-  progress: 0xfee75c, // 노랑
-};
 
 const TITLE = {
   progress: "배포 진행 중",
@@ -28,17 +23,12 @@ const TITLE = {
   cancelled: "배포 취소됨",
 };
 
-function env(name, fallback = "") {
-  const value = process.env[name];
-  return value === undefined || value === "" ? fallback : value;
+/** 배포 결과를 네 색 중 하나로. 취소는 끝까지 가지 못한 것이라 실패와 같이 본다. */
+function statusOf(state) {
+  if (state === "success") return "success";
+  if (state === "progress") return "progress";
+  return "failure";
 }
-
-const repository = env("GITHUB_REPOSITORY", "(로컬)");
-const serverUrl = env("GITHUB_SERVER_URL", "https://github.com");
-const sha = env("GITHUB_SHA");
-const actor = env("GITHUB_ACTOR", "unknown");
-const runId = env("GITHUB_RUN_ID");
-const branch = env("GITHUB_REF_NAME", "-");
 
 /** 마지막 커밋 제목. 무엇 때문에 도는 배포인지 한눈에 보이게. */
 function commitSubject() {
@@ -53,45 +43,33 @@ function commitSubject() {
   }
 }
 
-function link(text, path) {
-  return `[${text}](${serverUrl}/${repository}/${path})`;
-}
+export function buildPayload(state, version) {
+  const repo = repository();
+  const sha = env("GITHUB_SHA");
+  const runId = env("GITHUB_RUN_ID");
 
-function buildEmbed(state, version) {
   const fields = [
-    { name: "저장소", value: `\`${repository}\` · \`${branch}\``, inline: true },
-    { name: "커밋", value: sha === "" ? "—" : link(`\`${sha.slice(0, 7)}\``, `commit/${sha}`), inline: true },
-    { name: "실행 로그", value: runId === "" ? "—" : link(`#${runId}`, `actions/runs/${runId}`), inline: true },
+    {
+      name: "저장소",
+      value: `\`${repo.name === "" ? "(로컬)" : repo.name}\` · \`${env("GITHUB_REF_NAME", "-")}\``,
+    },
   ];
 
   if (version !== undefined && version !== "") {
-    fields.push({ name: "버전", value: `\`${version}\`` });
+    fields.push({ name: "버전", value: `\`YDGRB${version}\`` });
   }
 
-  const subject = commitSubject();
-
-  return {
-    color: COLOR[state === "success" ? "success" : state === "progress" ? "progress" : "failure"],
+  return buildMessage({
+    status: statusOf(state),
     title: TITLE[state] ?? TITLE.failure,
-    description: subject === "" ? undefined : subject,
+    body: commitSubject(),
     fields,
-    footer: { text: `@${actor}` },
-    timestamp: new Date().toISOString(),
-  };
-}
-
-async function request(url, method, embed) {
-  const response = await fetch(url, {
-    method,
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ embeds: [embed] }),
+    buttons: [
+      { label: "커밋", url: sha === "" ? "" : repo.link(`commit/${sha}`) },
+      { label: "실행 로그", url: runId === "" ? "" : repo.link(`actions/runs/${runId}`) },
+    ],
+    actor: env("GITHUB_ACTOR", "unknown"),
   });
-
-  if (!response.ok) {
-    throw new Error(`${method} ${response.status}: ${(await response.text()).slice(0, 200)}`);
-  }
-
-  return response.json();
 }
 
 async function main() {
@@ -101,11 +79,10 @@ async function main() {
     return;
   }
 
-  const [command, status, version, messageId] = process.argv.slice(2);
+  const [command, state, version, messageId] = process.argv.slice(2);
 
   if (command === "start") {
-    // wait=true 를 붙여야 응답으로 메시지 정보를 돌려준다 (나중에 이 메시지를 고치기 위해).
-    const message = await request(`${webhook}?wait=true`, "POST", buildEmbed("progress"));
+    const message = await send(webhook, buildPayload("progress"));
     process.stdout.write(`message_id=${message.id}\n`);
     return;
   }
@@ -114,19 +91,14 @@ async function main() {
     throw new Error(`알 수 없는 명령: ${command ?? "(없음)"}`);
   }
 
-  const embed = buildEmbed(status ?? "failure", version);
-
-  if (messageId !== undefined && messageId !== "") {
-    await request(`${webhook}/messages/${messageId}`, "PATCH", embed);
-    return;
-  }
-
-  // 시작 알림이 실패했거나 id 를 못 받은 경우 — 결과만 새로 올린다.
-  await request(webhook, "POST", embed);
+  // id 가 없으면(시작 알림이 실패했거나) 결과만 새로 올린다.
+  await send(webhook, buildPayload(state ?? "failure", version), messageId);
 }
 
-try {
-  await main();
-} catch (error) {
-  console.warn(`디스코드 알림 실패: ${error instanceof Error ? error.message : String(error)}`);
+if (process.env.NOTIFY_DISCORD_IMPORT_ONLY !== "1") {
+  try {
+    await main();
+  } catch (error) {
+    console.warn(`디스코드 알림 실패: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }

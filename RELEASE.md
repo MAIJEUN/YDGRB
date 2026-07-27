@@ -9,14 +9,36 @@ npm run ship -- "커밋 메시지"
    └ 커밋 → 푸시
         │
         └ GitHub Actions
-             ├ 🟡 디스코드에 "배포 진행 중" 알림
+             ├ 🔵 개발 채널에 "커밋 n개" 알림
+             ├ 🟡 개발 채널에 "배포 진행 중" 알림
              ├ npm ci → 타입 검사 → 빌드
              ├ 버전 계산 (예: 2026.725.0)
-             ├ 릴리스 생성 + tar.gz 첨부
-             └ 🟢/🔴 같은 알림 메시지를 결과로 갱신
+             ├ 릴리스 생성 + zip 첨부
+             ├ 🔵 업데이트 채널에 "무엇이 바뀌었다" 안내
+             └ 🟢/🔴 배포 알림 메시지를 결과로 갱신
 ```
 
-알림은 **메시지를 새로 쌓지 않고 하나를 고칩니다.** 노랑으로 시작해 초록이나 빨강으로 바뀝니다.
+배포 알림은 **메시지를 새로 쌓지 않고 하나를 고칩니다.** 노랑으로 시작해 초록이나 빨강으로 바뀝니다.
+
+---
+
+## 어떤 알림이 오나
+
+디스코드로 가는 메시지는 세 갈래입니다. 모양은 [scripts/discord-message.mjs](scripts/discord-message.mjs)
+한곳에서 정하므로 셋 다 봇 메시지와 똑같이 생겼습니다 —
+Components V2 컨테이너, 네 가지 색, 제목·내용·변동·가로줄·버튼·가로줄·footer.
+
+| 알림 | 언제 | 웹훅 |
+|------|------|------|
+| **저장소 활동** | 커밋 · 이슈 · PR · 릴리스 · 브랜치/태그 · 포크 · 별 | `DISCORD_WEBHOOK_URL` |
+| **배포** | 배포 시작 → 결과 (한 메시지를 고침) | `DISCORD_WEBHOOK_URL` |
+| **업데이트** | 릴리스가 만들어진 뒤, 무엇이 바뀌었는지 | `DISCORD_UPDATE_WEBHOOK_URL` |
+
+`main` 에 푸시하면 개발 채널에 **커밋 알림 + 배포 알림** 두 개가 옵니다.
+같은 일을 다르게 보는 것이라 일부러 나눠 두었습니다 — 커밋 알림은 *무엇이 올라갔는지*,
+배포 알림은 *그게 잘 나갔는지* 를 말합니다.
+
+모르는 이벤트가 와도 이름만이라도 알립니다. 조용히 삼키지 않습니다.
 
 ---
 
@@ -111,7 +133,7 @@ npm run ship -- "수정: 랭킹 정렬 오류"
 
 | 어느 채널 | 무엇이 오나 | 누가 보나 |
 |-----------|-------------|-----------|
-| 빌드 알림 채널 | 배포가 시작됐다 / 끝났다 · 실패했다 | 개발자 |
+| 개발 채널 | **저장소에서 일어나는 모든 일** — 커밋 · 배포 · 이슈 · PR · 릴리스 · 포크 · 별 | 개발자 |
 | **업데이트 채널** | 이번 버전에 무엇이 바뀌었다 · 받기 버튼 | 봇을 쓰는 사람 |
 
 업데이트 채널 하나만 쓰고 싶으면 같은 URL 을 두 시크릿에 넣어도 됩니다.
@@ -122,7 +144,7 @@ npm run ship -- "수정: 랭킹 정렬 오류"
 
 | 이름 | 값 |
 |------|-----|
-| `DISCORD_WEBHOOK_URL` | 빌드 알림 채널의 웹후크 URL |
+| `DISCORD_WEBHOOK_URL` | 개발 채널의 웹후크 URL |
 | `DISCORD_UPDATE_WEBHOOK_URL` | 업데이트 채널의 웹후크 URL |
 
 > `GITHUB_TOKEN` 은 Actions 가 자동으로 넣어 줍니다. 따로 만들 필요 없습니다.
@@ -245,9 +267,12 @@ npm ci --omit=dev
 | 파일 | 역할 |
 |------|------|
 | [.github/workflows/release.yml](.github/workflows/release.yml) | 빌드 → 버전 → 릴리스 → 안내 → 알림 |
+| [.github/workflows/activity.yml](.github/workflows/activity.yml) | 저장소 활동을 디스코드로 |
+| [scripts/discord-message.mjs](scripts/discord-message.mjs) | ★ CI 가 보내는 모든 메시지의 모양 |
 | [scripts/version.mjs](scripts/version.mjs) | YDGRB 버전 계산 |
 | [scripts/release-notes.mjs](scripts/release-notes.mjs) | 커밋에서 릴리스 설명 생성 |
-| [scripts/notify-discord.mjs](scripts/notify-discord.mjs) | 빌드 알림 (시작/결과) |
+| [scripts/notify-discord.mjs](scripts/notify-discord.mjs) | 배포 알림 (시작/결과) |
+| [scripts/notify-activity.mjs](scripts/notify-activity.mjs) | 저장소 활동 알림 |
 | [scripts/announce-update.mjs](scripts/announce-update.mjs) | 업데이트 채널 안내 |
 | [scripts/ship.mjs](scripts/ship.mjs) | 로컬에서 검사 후 커밋·푸시 |
 
@@ -262,6 +287,9 @@ npm ci --omit=dev
 |------|------|
 | 디스코드 알림이 안 옴 | `DISCORD_WEBHOOK_URL` 시크릿 미등록 또는 웹훅 삭제됨. Actions 로그에 `알림을 건너뜁니다` / `알림 실패` 가 남습니다 |
 | 업데이트 안내만 안 옴 | `DISCORD_UPDATE_WEBHOOK_URL` 미등록. 로그에 `업데이트 안내를 건너뜁니다` 가 남습니다 |
+| 시크릿을 넣었는데 안 옴 | 시크릿은 **실행 시점에** 읽힙니다. 이미 끝난 실행에는 반영되지 않으니 다음 푸시를 기다리세요 |
+| 활동 알림이 안 옴 | 저장소 → Settings → Actions → General 에서 Actions 가 켜져 있는지. 포크에서 온 이벤트는 시크릿을 못 읽습니다 |
+| 커밋 알림이 두 번 옴 | 커밋 알림과 배포 알림은 서로 다른 워크플로입니다. 하나만 원하면 `activity.yml` 의 `push:` 를 지우세요 |
 | 업데이트 안내가 400 으로 실패 | 릴리스 설명이 너무 긴 경우. 3000자에서 자르지만 커밋이 아주 많으면 넘칠 수 있습니다 |
 | 알림은 오는데 릴리스가 없음 | 빌드나 타입 검사가 실패한 것. 알림이 빨강이고 「실행 로그」 링크에 이유가 있습니다 |
 | `Resource not accessible by integration` | 저장소 → Settings → Actions → General → Workflow permissions 를 **Read and write** 로 |
