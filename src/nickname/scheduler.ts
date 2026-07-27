@@ -124,7 +124,7 @@ async function expire(client: Client, guildId: string, targetId: string | null):
         ? undefined
         : {
             status: result.changed + result.skipped === 0 ? ("failure" as const) : ("progress" as const),
-            fields: [{ name: "집계", value: tally({ ...result, done: result.total }) }],
+            fields: [{ name: "집계", value: tally({ ...result, done: result.total }), inline: true }],
           };
 
     await sendEndNotice(

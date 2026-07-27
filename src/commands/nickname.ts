@@ -112,7 +112,7 @@ export default defineCommand({
             status: "failure",
             title: "기간을 읽을 수 없습니다",
             description: describeDurationError(parsed.reason),
-            fields: [{ name: "입력한 값", value: `\`${rawDuration}\`` }],
+            fields: [{ name: "입력한 값", value: `\`${rawDuration}\``, inline: true }],
             user: interaction.user,
           }),
         );

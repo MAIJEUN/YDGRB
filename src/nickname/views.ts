@@ -52,7 +52,7 @@ function subject(options: ViewOptions): string {
 function expiryField(expiresAt: number | null): ResponseField[] {
   return expiresAt === null
     ? []
-    : [{ name: "자동 바사삭", value: atWithCountdown(new Date(expiresAt)) }];
+    : [{ name: "자동 바사삭", value: atWithCountdown(new Date(expiresAt)), inline: true }];
 }
 
 export interface ViewOptions {
@@ -96,8 +96,9 @@ export function progressView(
     title: `${MODE_LABEL[options.mode]} 진행 중`,
     description: subject(options),
     fields: [
+      // 진행 막대는 그 자체로 한 줄을 채운다 — 나란히 붙이면 오히려 접힌다.
       { name: "진행", value: bar(progress.done, progress.total) },
-      { name: "집계", value: tally(progress) },
+      { name: "집계", value: tally(progress), inline: true },
       ...expiryField(options.expiresAt),
     ],
     user: options.user,
@@ -133,7 +134,7 @@ export function resultView(
       ].join(" "),
       fields: [
         { name: "진행", value: bar(result.done, result.total) },
-        { name: "집계", value: tally(result) },
+        { name: "집계", value: tally(result), inline: true },
         ...expiryField(options.expiresAt),
       ],
       user: options.user,
@@ -152,7 +153,7 @@ export function resultView(
     description: subject(options),
     // 실패 원인은 화면에 늘어놓지 않는다 (로그에만 남긴다).
     fields: [
-      { name: "집계", value: tally({ ...result, done: result.total }) },
+      { name: "집계", value: tally({ ...result, done: result.total }), inline: true },
       ...expiryField(options.expiresAt),
     ],
     user: options.user,

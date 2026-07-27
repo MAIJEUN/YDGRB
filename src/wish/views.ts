@@ -61,7 +61,7 @@ export async function panelView(
       "**사용** — 소원권 1장으로 소원을 빕니다.",
       "**낭비** — 소원권이나 조각 1개를 버립니다.",
     ].join("\n"),
-    fields: [{ name: "내 보유", value: formatBalance(balance) }],
+    fields: [{ name: "내 보유", value: formatBalance(balance), inline: true }],
     user,
     rows: panelRows(panel),
   };
@@ -81,10 +81,11 @@ export async function checkView(
     title: "소원권 확인",
     description: `<@${targetId}> 님의 보유 현황입니다.`,
     fields: [
-      { name: "보유", value: formatBalance(balance) },
+      { name: "보유", value: formatBalance(balance), inline: true },
       {
         name: "제작 가능",
         value: `${craftable}장 _(조각 ${fragmentsPerTicket}개당 소원권 1장)_`,
+        inline: true,
       },
     ],
     user,
@@ -120,7 +121,7 @@ export async function rankView(
     status: "info",
     title: sort === "tickets" ? "소원권 랭킹" : "소원권 조각 랭킹",
     description: lines.length === 0 ? emptyMessage : lines.join("\n"),
-    fields: [{ name: "집계", value: `총 ${entries.length}명 · ${current + 1}/${pageCount} 페이지` }],
+    fields: [{ name: "집계", value: `총 ${entries.length}명 · ${current + 1}/${pageCount} 페이지`, inline: true }],
     user,
     rows: rankRows(sort, current, pageCount),
   };

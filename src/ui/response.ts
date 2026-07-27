@@ -53,6 +53,9 @@ import { describeError } from "../errors.js";
  *
  *   7. 나중에 저절로 풀리는 효과(뚜따이 기간, 타임아웃 …)는 끝날 때 **그 효과를 건 메시지에
  *      답장**으로 안내를 남긴다. 모양은 [end-notice.ts](end-notice.ts) 한곳에서 정한다.
+ *
+ *   8. 세로로 길어지지 않게 만든다. 짧은 변동 항목은 `inline` 을 켜서 한 줄에 나란히 붙이고,
+ *      본문이 이미 말한 것(대상 등)은 칸을 따로 두지 않는다.
  */
 
 export type Status = "success" | "failure" | "progress" | "info";
@@ -68,7 +71,18 @@ const COLOR: Record<Status, number> = {
 export interface ResponseField {
   readonly name: string;
   readonly value: string;
-  /** 컨테이너에는 좌우 배치가 없다. 호출부 호환을 위해 받기만 하고 무시한다. */
+  /**
+   * 짧은 항목은 켠다 — **한 줄에 나란히** 붙는다.
+   *
+   *   inline 아님          inline
+   *   **대상**             **대상** @마이즌 │ **풀린 시각** 3시간 후
+   *   @마이즌
+   *   **풀린 시각**
+   *   3시간 후
+   *
+   * 값이 길거나 줄바꿈이 들어 있으면 켜지 말 것 — 오히려 읽기 어려워진다.
+   * 연달아 켠 항목들만 한 줄로 묶이므로, 사이에 긴 항목을 두면 자연스럽게 나뉜다.
+   */
   readonly inline?: boolean;
 }
 
@@ -146,26 +160,58 @@ function errorLines(error: unknown): string {
     .join("\n");
 }
 
+/** 한 줄에 나란히 놓은 항목들을 나누는 글자. 값 안에 흔히 쓰는 `·` 와 겹치지 않게 골랐다. */
+const INLINE_GLUE = " │ ";
+
+/**
+ * 변동 칸.
+ *
+ * 항목 사이는 빈 줄 없이 한 줄씩만 띄운다. 빈 줄까지 넣으면 항목 서너 개에 화면이 꽉 찬다.
+ * `inline` 을 켠 항목이 연달아 오면 한 줄로 묶어 세로 길이를 더 줄인다.
+ */
+function changes(options: MessageOptions): string {
+  const lines: string[] = [];
+  let inline: string[] = [];
+
+  const flush = (): void => {
+    if (inline.length === 0) return;
+    lines.push(inline.join(INLINE_GLUE));
+    inline = [];
+  };
+
+  for (const field of options.fields ?? []) {
+    if (field.inline === true) {
+      inline.push(`**${field.name}** ${field.value}`);
+      continue;
+    }
+
+    flush();
+    lines.push(`**${field.name}**\n${field.value}`);
+  }
+
+  flush();
+
+  if (options.balance !== undefined && options.balance !== "") lines.push(options.balance);
+
+  return lines.join("\n");
+}
+
 function headerContent(options: MessageOptions): string {
-  const parts = [`### ${options.title}`];
+  // 제목 · 내용 · 변동 세 덩어리 사이에만 빈 줄을 둔다.
+  const blocks = [`### ${options.title}`];
 
   if (options.description !== undefined && options.description !== "") {
-    parts.push(options.description);
+    blocks.push(options.description);
   }
 
   if (options.error !== undefined) {
-    parts.push(errorLines(options.error));
+    blocks.push(errorLines(options.error));
   }
 
-  for (const field of options.fields ?? []) {
-    parts.push(`**${field.name}**\n${field.value}`);
-  }
+  const changed = changes(options);
+  if (changed !== "") blocks.push(changed);
 
-  if (options.balance !== undefined && options.balance !== "") {
-    parts.push(options.balance);
-  }
-
-  return parts.join("\n\n");
+  return blocks.join("\n\n");
 }
 
 export function buildContainer(options: MessageOptions): ContainerBuilder {

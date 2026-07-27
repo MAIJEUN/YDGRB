@@ -117,8 +117,8 @@ export default defineCommand({
           title: "채팅뻥 실패",
           description: blocked,
           fields: [
-            { name: "역할", value: label(role) },
-            { name: "채널", value: `<#${channel.id}>` },
+            { name: "역할", value: label(role), inline: true },
+            { name: "채널", value: `<#${channel.id}>`, inline: true },
           ],
           user: interaction.user,
         }),
@@ -150,8 +150,8 @@ export default defineCommand({
           description: "채널 권한을 바꾸지 못했습니다.",
           error,
           fields: [
-            { name: "역할", value: label(role) },
-            { name: "채널", value: `<#${channel.id}>` },
+            { name: "역할", value: label(role), inline: true },
+            { name: "채널", value: `<#${channel.id}>`, inline: true },
           ],
           user: interaction.user,
         }),
@@ -168,6 +168,7 @@ export default defineCommand({
           {
             name: "메시지 보내기",
             value: `${wasBlocked ? "차단" : "허용"} → **${wasBlocked ? "허용" : "차단"}**`,
+            inline: true,
           },
         ],
         user: interaction.user,

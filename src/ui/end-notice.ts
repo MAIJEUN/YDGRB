@@ -57,23 +57,29 @@ export function endNoticeView(options: EndNoticeOptions): MessageOptions {
   const released = options.reason.kind === "released";
   const by = options.reason.kind === "released" ? options.reason.byId : null;
 
+  // 「효과」를 붙여 조사 문제를 피한다 — 효과 이름마다 이/가 를 따지지 않아도 된다.
+  // 대상이 사람이 아니면(서버 전원 등) 「님」 도 붙이지 않는다.
+  const subject = `${options.target}${options.target.startsWith("<@") ? " 님의" : "의"} **${options.effect}** 효과`;
+
   const description = released
     ? by === null
-      ? `${options.target} 님의 ${options.effect}이(가) 풀렸습니다.`
-      : `${options.target} 님의 ${options.effect}이(가) <@${by}> 님에 의해 풀렸습니다.`
-    : `${options.target} 님의 ${options.effect}이(가) 끝났습니다.`;
+      ? `${subject}가 풀렸습니다.`
+      : `${subject}를 <@${by}> 님이 풀었습니다.`
+    : `${subject}가 끝났습니다.`;
 
   return {
     // 뒷정리가 있었으면 그 결과 색, 없으면 파랑(정보).
     status: options.outcome?.status ?? "info",
     title: `${options.effect} — ${released ? "해제" : "기간 만료"}`,
     description: options.targetLeft === true ? `${description}\n_(서버를 떠난 사람입니다)_` : description,
+    // 대상은 본문이 이미 말했으므로 칸을 따로 두지 않는다.
+    // 짧은 항목이라 한 줄에 나란히 놓는다.
     fields: [
-      { name: "대상", value: options.target },
       {
         // 시각은 반드시 타임스탬프 마크다운으로.
         name: released ? "원래 풀릴 시각" : "풀린 시각",
         value: atWithCountdown(options.until),
+        inline: true,
       },
       ...(options.outcome?.fields ?? []),
     ],
