@@ -130,6 +130,7 @@ export interface NoticeOptions {
   readonly status: Status;
   readonly title: string;
   readonly description?: string;
+  readonly error?: unknown;
   readonly fields?: readonly ResponseField[];
   readonly balance?: string;
   readonly user: User;
@@ -142,6 +143,7 @@ export function noticeView(options: NoticeOptions): MessageOptions {
     status: options.status,
     title: options.title,
     description: options.description,
+    error: options.error,
     fields: options.fields,
     balance: options.balance,
     user: options.user,

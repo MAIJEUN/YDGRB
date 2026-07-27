@@ -1,7 +1,6 @@
 import { MessageFlags, PermissionFlagsBits } from "discord.js";
 import type { ModalBuilder, ModalSubmitInteraction, User } from "discord.js";
 
-import { describeError } from "../errors.js";
 import { logger } from "../logger.js";
 import { channelMessage, response, updateResponse, type MessageOptions } from "../ui/response.js";
 import { defineComponentHandler, type ComponentInteraction } from "../types.js";
@@ -500,7 +499,7 @@ async function submitWish(interaction: ComponentInteraction, guildId: string): P
         status: "failure",
         title: "소원 전달 실패",
         description: "설정된 채널에 메시지를 보내지 못했습니다. 관리자에게 알려 주세요.",
-        fields: [{ name: "원인", value: `\`\`\`\n${describeError(error)}\n\`\`\`` }],
+        error,
         balance: refund.ok ? formatBalanceChange(refund) : undefined,
         user: interaction.user,
         panel: PANEL.user,
@@ -572,47 +571,43 @@ async function decideWish(
   const refundText = refund !== null && refund.ok ? formatBalanceChange(refund) : undefined;
 
   const status = accepted ? "success" : "failure";
-  const title = accepted ? "소원 수락됨" : "소원 거절됨";
-  const decidedFields = [
-    { name: "신청자", value: `<@${wish.userId}>` },
-    { name: "처리한 관리자", value: `<@${interaction.user.id}>` },
-  ];
 
-  // 메시지의 Components V2 여부는 만들 때 정해지고 나중에 못 바꾼다.
-  // 이 규칙을 정하기 전에 올라간 임베드 메시지는 컨테이너로 갈아 끼울 수 없다.
+  // ① 원본은 **내용을 그대로 두고** 결과 색과 눌리지 않는 버튼으로만 바꾼다.
+  //    이미지와 첨부가 여기 붙어 있어서, 결과를 원본에 덮어쓰면 그게 날아간다.
   if (interaction.message.flags.has(MessageFlags.IsComponentsV2)) {
-    // 원본을 결과 색으로 통째로 다시 그린다. 컨테이너가 곧 메시지 전체라 버튼만 바꿀 수 없다.
-    // 원래 붙어 있던 첨부는 id 그대로 다시 넘긴다 — 안 그러면 `attachment://` 참조가 풀려
-    // 이미지와 파일이 함께 사라진다.
+    // 컨테이너가 곧 메시지 전체라 버튼만 따로 갈아 끼울 수 없다 — 같은 내용으로 다시 그린다.
+    // 이때 원래 붙어 있던 첨부를 id 그대로 다시 넘겨야 `attachment://` 참조가 풀리지 않는다.
     const requester = await fetchUser(interaction, wish.userId);
 
     await interaction.update({
       ...updateResponse({
         ...wishMessage(wish.content, requester, wish.attachments, wish.id),
         status,
-        title,
-        fields: decidedFields,
-        balance: refundText,
         rows: wishDecidedRows(accepted),
       }),
       attachments: retained(interaction.message),
     });
   } else {
-    // 옛 메시지 — 버튼만 갈아 끼우고 결과는 답글로 남긴다.
+    // 이 규칙을 정하기 전에 올라간 임베드 메시지 — 메시지의 V2 여부는 나중에 못 바꾼다.
+    // embeds / attachments 를 아예 넘기지 않으면 디스코드가 그 필드를 손대지 않는다.
     await interaction.update({ components: wishDecidedRows(accepted) });
-
-    await interaction.message.reply(
-      channelMessage({
-        status,
-        title,
-        description: wish.content,
-        fields: decidedFields,
-        balance: refundText,
-        user: interaction.user,
-        ephemeral: false,
-      }),
-    );
   }
+
+  // ② 결과는 원본을 덮지 않고 **답글**로 남긴다.
+  await interaction.message.reply(
+    channelMessage({
+      status,
+      title: accepted ? "소원 수락됨" : "소원 거절됨",
+      description: wish.content,
+      fields: [
+        { name: "신청자", value: `<@${wish.userId}>` },
+        { name: "처리한 관리자", value: `<@${interaction.user.id}>` },
+      ],
+      balance: refundText,
+      user: interaction.user,
+      ephemeral: false,
+    }),
+  );
 
   await notifyWisher(interaction, wish, accepted, refundText, interaction.message.url);
 }

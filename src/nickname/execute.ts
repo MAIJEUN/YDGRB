@@ -1,7 +1,6 @@
 import { PermissionFlagsBits } from "discord.js";
 import type { ChatInputCommandInteraction } from "discord.js";
 
-import { describeError } from "../errors.js";
 import { logger } from "../logger.js";
 import { channelMessage, editResponse, response } from "../ui/response.js";
 import { MODE_LABEL, type Mode } from "./ids.js";
@@ -143,7 +142,7 @@ export async function runNicknameChange(
             : wholeServer
               ? "멤버 목록을 받아오지 못했습니다. 봇의 **서버 멤버(Server Members)** 특권 인텐트가 켜져 있는지 확인해 주세요."
               : "대상을 찾지 못했습니다. 서버에 없는 사람일 수 있어요.",
-          fields: [{ name: "원인", value: `\`\`\`\n${describeError(error)}\n\`\`\`` }],
+          error,
           user: interaction.user,
         }),
       );

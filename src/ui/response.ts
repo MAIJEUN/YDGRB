@@ -20,6 +20,8 @@ import type {
   User,
 } from "discord.js";
 
+import { describeError } from "../errors.js";
+
 /**
  * 봇의 모든 출력이 지나가는 단일 통로.
  *
@@ -31,7 +33,7 @@ import type {
  *   4. 순서는 아래 고정:
  *
  *        제목 (명령어 이름)
- *        내용
+ *        내용   — 오류가 있으면 `코드` 형식으로 최대 3줄
  *        변동 (권한, 소원권 갯수 …)
  *        ── 가로줄 (이미지가 있을 때만)
  *        이미지 묶음 / 첨부파일
@@ -39,6 +41,9 @@ import type {
  *        인터랙션
  *        ── 가로줄
  *        footer (@유저)
+ *
+ *   5. 유저를 가리킬 때는 항상 멘션(`<@id>`)을 쓴다. 이름을 글자로 적지 않는다.
+ *      footer 만 예외 — 규칙이 `@유저` 텍스트다.
  */
 
 export type Status = "success" | "failure" | "progress" | "info";
@@ -64,6 +69,13 @@ export interface MessageOptions {
   readonly title: string;
   /** 내용. */
   readonly description?: string;
+  /**
+   * 오류. 내용 바로 아래에 `코드` 형식으로 최대 3줄 붙는다.
+   *
+   * 원본 오류를 그대로 넘긴다 — 문구를 다듬는 건 [describeError](../errors.ts) 의 일이다.
+   * 스택 트레이스와 요청 URL(인터랙션 토큰이 섞여 있다)은 여기로 새 나가지 않는다.
+   */
+  readonly error?: unknown;
   /** 변동 — 권한, 보유 수량처럼 이번 동작으로 바뀐 것. */
   readonly fields?: readonly ResponseField[];
   /** 변동 중 소원권/조각 문구 (`formatBalanceChange` 결과). 변동 맨 끝에 붙는다. */
@@ -112,11 +124,28 @@ function divider(): SeparatorBuilder {
  * 세 구역을 각각 TextDisplay 로 나누면 줄간격이 벌어져 가로줄 없이도 칸이 나뉘어 보인다.
  * 가로줄로만 구역을 나눈다는 규칙을 지키려고 하나로 합친다.
  */
+/**
+ * 오류를 `코드` 형식 최대 3줄로.
+ *
+ * 코드블록(```) 대신 줄마다 인라인 코드를 쓴다 — 컨테이너에서 코드블록은 위아래 여백이 크고
+ * 한 줄짜리 오류에도 큰 덩어리가 생긴다.
+ */
+function errorLines(error: unknown): string {
+  return describeError(error)
+    .split("\n")
+    .map((line) => `\`${line}\``)
+    .join("\n");
+}
+
 function headerContent(options: MessageOptions): string {
   const parts = [`### ${options.title}`];
 
   if (options.description !== undefined && options.description !== "") {
     parts.push(options.description);
+  }
+
+  if (options.error !== undefined) {
+    parts.push(errorLines(options.error));
   }
 
   for (const field of options.fields ?? []) {

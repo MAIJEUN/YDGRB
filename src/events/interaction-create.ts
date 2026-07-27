@@ -1,7 +1,6 @@
 import { Events } from "discord.js";
 import type { Interaction, RepliableInteraction } from "discord.js";
 
-import { describeError } from "../errors.js";
 import { logger } from "../logger.js";
 import { response } from "../ui/response.js";
 import { contextMenuKey, defineEvent } from "../types.js";
@@ -12,13 +11,13 @@ import { contextMenuKey, defineEvent } from "../types.js";
  */
 async function replyWithError(
   interaction: RepliableInteraction,
-  detail: string,
+  error: unknown,
 ): Promise<void> {
   const payload = response({
     status: "failure",
     title: "처리 중 문제가 생겼어요",
     description: "잠시 후 다시 시도해 주세요. 계속 같은 문제가 나오면 관리자에게 알려 주세요.",
-    fields: [{ name: "원인", value: `\`\`\`\n${detail}\n\`\`\`` }],
+    error,
     user: interaction.user,
   });
 
@@ -122,7 +121,7 @@ export default defineEvent({
       logger.debug(`${describe(interaction)} 처리 완료 — ${interaction.user.tag}`);
     } catch (error) {
       logger.error(`${describe(interaction)} 처리 중 오류`, error);
-      if (interaction.isRepliable()) await replyWithError(interaction, describeError(error));
+      if (interaction.isRepliable()) await replyWithError(interaction, error);
     }
   },
 });
