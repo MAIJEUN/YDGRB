@@ -18,8 +18,7 @@ export default defineCommand({
         .addStringOption((option) =>
           option
             .setName("종류")
-            .setDescription("열 패널을 고르세요")
-            .setRequired(true)
+            .setDescription("비우면 관리자에게는 관리자 패널, 나머지에게는 유저 패널")
             .addChoices(
               { name: "유저", value: PANEL.user },
               { name: "관리자", value: PANEL.admin },
@@ -40,7 +39,14 @@ export default defineCommand({
       return;
     }
 
-    const kind = interaction.options.getString("종류", true);
+    const isAdmin =
+      interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) === true;
+
+    // 비우면 알아서 고른다 — 관리자는 관리자 패널, 나머지는 유저 패널.
+    // 관리자가 유저 패널을 쓰고 싶으면 `종류:유저` 로 고르면 된다.
+    const picked = interaction.options.getString("종류");
+    const kind = picked === null ? (isAdmin ? PANEL.admin : PANEL.user) : picked;
+
     if (!isPanelKind(kind)) {
       await interaction.reply(
         response({
@@ -54,10 +60,7 @@ export default defineCommand({
     }
 
     // 관리자 패널은 서버 관리자만.
-    if (
-      kind === PANEL.admin &&
-      interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) !== true
-    ) {
+    if (kind === PANEL.admin && !isAdmin) {
       await interaction.reply(
         response({
           status: "failure",
