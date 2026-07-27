@@ -1,7 +1,13 @@
 /**
  * 배포한 내용을 **업데이트 채널**에 안내한다.
  *
- *   node scripts/announce-update.mjs <버전> <설명 파일>
+ *   node scripts/announce-update.mjs <버전> [설명 파일]
+ *
+ * 설명 파일을 안 주면 지난 태그 이후의 커밋으로 직접 만든다 —
+ * 배포하지 않고 **미리 보내 보고 싶을 때** 쓴다.
+ *
+ *   $env:DISCORD_UPDATE_WEBHOOK_URL = "..."      (PowerShell)
+ *   node scripts/announce-update.mjs 0.0.0-test
  *
  * 빌드 알림(`notify-discord.mjs`)과는 다른 웹훅을 쓴다.
  * 저쪽은 "빌드가 돌고 있다/끝났다" 를 개발자에게 알리는 것이고,
@@ -102,6 +108,12 @@ function buildPayload(version, notes) {
   };
 }
 
+/** 커밋에서 설명을 만든다. release-notes 는 git 을 직접 읽으므로 저장소 안에서만 쓸 수 있다. */
+async function buildNotesFromGit() {
+  const { buildNotes, readCommits } = await import("./release-notes.mjs");
+  return buildNotes(readCommits());
+}
+
 async function main() {
   const webhook = env("DISCORD_UPDATE_WEBHOOK_URL");
   if (webhook === "") {
@@ -111,9 +123,12 @@ async function main() {
 
   const [version, notesPath] = process.argv.slice(2);
   if (version === undefined || version === "") throw new Error("버전을 넘겨 주세요.");
-  if (notesPath === undefined || notesPath === "") throw new Error("설명 파일을 넘겨 주세요.");
 
-  const notes = readFileSync(notesPath, "utf8");
+  // 파일을 안 주면 커밋에서 직접 만든다 (로컬에서 미리 보낼 때).
+  const notes =
+    notesPath === undefined || notesPath === ""
+      ? await buildNotesFromGit()
+      : readFileSync(notesPath, "utf8");
 
   const response = await fetch(webhook, {
     method: "POST",
