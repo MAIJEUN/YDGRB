@@ -124,7 +124,7 @@ export function resultView(
 ): MessageOptions {
   if (result.cancelled) {
     return {
-      // 끝까지 가지 못했으므로 성공도 실패도 아니다.
+      // 끝까지 가지 못했으므로 성공도 실패도 아니다 — 노랑.
       status: "progress",
       title: `${MODE_LABEL[options.mode]} 취소됨`,
       description: [
@@ -142,7 +142,7 @@ export function resultView(
     };
   }
 
-  // 한 명도 못 바꿨으면 실패, 일부만 못 바꿨으면 진행중(노랑)으로 구분한다.
+  // 한 명도 못 바꿨으면 실패(빨강), 일부만 못 바꿨으면 노랑 — 온전히 끝나지 못한 것이다.
   const status =
     result.failed === 0 ? "success" : result.changed + result.skipped === 0 ? "failure" : "progress";
 

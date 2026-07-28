@@ -118,7 +118,7 @@ async function expire(client: Client, guildId: string, targetId: string | null):
 
     if (actor === null) return;
 
-    // 한 명도 못 바꿨으면 실패, 일부만 못 바꿨으면 진행중(노랑) — 다 됐으면 알림 기본색(파랑).
+    // 한 명도 못 바꿨으면 빨강, 일부만 못 바꿨으면 노랑 — 다 됐으면 알림 기본색(파랑).
     const outcome =
       result.failed === 0
         ? undefined
