@@ -145,6 +145,14 @@ if "%CODE%"=="0" (
     goto stop
 )
 
+REM  `!y 재시작` 으로 일부러 끈 것. 연속 실패로 세면 다섯 번 만에 실행기가 멈춘다.
+if "%CODE%"=="26" (
+    echo.
+    echo  [*] 재시작 요청을 받았습니다.
+    set TRIES=0
+    goto bot_run
+)
+
 set /a TRIES+=1
 if %TRIES% GEQ 5 (
     echo.

@@ -96,3 +96,13 @@ export function cancelRun(
 export function activeRun(guildId: string): ActiveRun | undefined {
   return runs.get(guildId);
 }
+
+/** 디버그용 — 지금 돌고 있는 별명 작업 전부. */
+export function runningJobs(): { guildId: string; id: string; mode: Mode; cancelled: boolean }[] {
+  return [...runs.values()].map((run) => ({
+    guildId: run.guildId,
+    id: run.id,
+    mode: run.mode,
+    cancelled: run.cancelled,
+  }));
+}

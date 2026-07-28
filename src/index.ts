@@ -1,7 +1,9 @@
 import type { Client } from "discord.js";
 
-import { createClient } from "./client.js";
+import { PRIVILEGED_INTENTS, createClient } from "./client.js";
 import { loadConfig } from "./config.js";
+// 부팅 시각을 정확히 잡으려면 로그인보다 먼저 불러야 한다.
+import "./debug/runtime.js";
 import { collectCommands } from "./loaders/commands.js";
 import { collectComponentHandlers } from "./loaders/components.js";
 import { registerEvents } from "./loaders/events.js";
@@ -36,7 +38,38 @@ async function main(): Promise<void> {
 
   installProcessHandlers(client);
 
-  await client.login(config.token);
+  try {
+    await client.login(config.token);
+  } catch (error) {
+    throw explainLoginFailure(error);
+  }
+}
+
+/**
+ * 로그인 실패를 사람이 고칠 수 있는 말로 바꾼다.
+ *
+ * 특권 인텐트를 안 켰을 때 디스코드가 주는 것은 `Used disallowed intents` 한 줄뿐이라,
+ * **무엇을** 켜야 하는지가 안 나온다. 그게 이 봇에서 가장 흔한 첫 실패라서 여기서 붙여 준다.
+ */
+function explainLoginFailure(error: unknown): Error {
+  const text = error instanceof Error ? `${error.name} ${error.message}` : String(error);
+
+  if (/disallowed intents/iu.test(text)) {
+    return new Error(
+      [
+        "특권 인텐트가 꺼져 있어 로그인하지 못했습니다.",
+        "https://discord.com/developers/applications > 이 봇 > Bot > Privileged Gateway Intents 에서",
+        ...PRIVILEGED_INTENTS.map((name) => `  - ${name} 켜기`),
+        "켠 뒤 다시 실행해 주세요.",
+      ].join("\n"),
+    );
+  }
+
+  if (/token/iu.test(text) && /invalid/iu.test(text)) {
+    return new Error(".env 의 DISCORD_TOKEN 이 올바르지 않습니다. 토큰을 다시 발급해 주세요.");
+  }
+
+  return error instanceof Error ? error : new Error(text);
 }
 
 function installProcessHandlers(client: Client): void {

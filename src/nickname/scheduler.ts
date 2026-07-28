@@ -19,7 +19,13 @@ import { tally } from "./views.js";
 /** setTimeout 이 한 번에 감당하는 최대 지연 (약 24.8일). 더 길면 잘라서 다시 예약한다. */
 const MAX_DELAY_MS = 2 ** 31 - 1;
 
-const timers = new Map<string, NodeJS.Timeout>();
+/** 타이머와 **언제 터지는지**를 같이 들고 있는다 — `!y 예약` 이 그 시각을 보여 준다. */
+interface Reservation {
+  readonly timer: NodeJS.Timeout;
+  readonly at: number;
+}
+
+const timers = new Map<string, Reservation>();
 
 function key(guildId: string, targetId: string | null): string {
   return targetId === null ? guildId : `${guildId}:${targetId}`;
@@ -27,19 +33,27 @@ function key(guildId: string, targetId: string | null): string {
 
 export function cancelExpiry(guildId: string, targetId: string | null): void {
   const id = key(guildId, targetId);
-  const timer = timers.get(id);
-  if (timer !== undefined) clearTimeout(timer);
+  const reservation = timers.get(id);
+  if (reservation !== undefined) clearTimeout(reservation.timer);
   timers.delete(id);
 }
 
 /** 서버 전체 바사삭 — 그 서버의 예약을 전부 지운다. */
 export function cancelAllExpiry(guildId: string): void {
-  for (const id of [...timers.keys()]) {
+  for (const [id, reservation] of [...timers]) {
     if (id === guildId || id.startsWith(`${guildId}:`)) {
-      clearTimeout(timers.get(id));
+      clearTimeout(reservation.timer);
       timers.delete(id);
     }
   }
+}
+
+/** 디버그용 — 지금 걸려 있는 예약. `targetId` 가 null 이면 서버 전원. */
+export function reservations(): { guildId: string; targetId: string | null; at: number }[] {
+  return [...timers].map(([id, reservation]) => {
+    const [guildId = "", targetId] = id.split(":");
+    return { guildId, targetId: targetId ?? null, at: reservation.at };
+  });
 }
 
 export function scheduleExpiry(
@@ -54,21 +68,22 @@ export function scheduleExpiry(
   const id = key(guildId, targetId);
 
   if (delay > MAX_DELAY_MS) {
-    timers.set(
-      id,
-      setTimeout(() => {
+    // 잘라서 다시 예약하더라도 `at` 은 **진짜 만료 시각**을 그대로 둔다.
+    timers.set(id, {
+      at: expiresAt,
+      timer: setTimeout(() => {
         scheduleExpiry(client, guildId, targetId, expiresAt);
       }, MAX_DELAY_MS),
-    );
+    });
     return;
   }
 
-  timers.set(
-    id,
-    setTimeout(() => {
+  timers.set(id, {
+    at: expiresAt,
+    timer: setTimeout(() => {
       void expire(client, guildId, targetId);
     }, Math.max(delay, 0)),
-  );
+  });
 }
 
 async function expire(client: Client, guildId: string, targetId: string | null): Promise<void> {

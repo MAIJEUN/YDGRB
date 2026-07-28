@@ -16,6 +16,20 @@ function isEventHandler(value: unknown): value is AnyEventHandler {
   return typeof candidate.name === "string" && typeof candidate.execute === "function";
 }
 
+/** 무엇을 연결했는지 — `!y 커맨드` 가 읽어 간다. */
+export interface RegisteredEvent {
+  readonly name: string;
+  readonly once: boolean;
+  /** 저장소 기준 경로. 어느 파일이 걸렸는지 바로 알 수 있게. */
+  readonly file: string;
+}
+
+const registeredEventList: RegisteredEvent[] = [];
+
+export function registeredEvents(): readonly RegisteredEvent[] {
+  return registeredEventList;
+}
+
 /** src/events 의 default export 들을 클라이언트에 연결하고, 등록한 개수를 돌려준다. */
 export async function registerEvents(client: Client): Promise<number> {
   let registered = 0;
@@ -52,6 +66,11 @@ export async function registerEvents(client: Client): Promise<number> {
     else client.on(handler.name, listener);
 
     registered += 1;
+    registeredEventList.push({
+      name: handler.name,
+      once: handler.once === true,
+      file: relativePath.replaceAll("\\", "/"),
+    });
     logger.debug(`이벤트 등록: ${handler.name}${handler.once === true ? " (once)" : ""} (${relativePath})`);
   }
 

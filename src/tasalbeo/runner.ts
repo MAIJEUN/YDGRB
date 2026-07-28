@@ -82,6 +82,14 @@ export function startLoop(client: Client, guildId: string, userId: string, roleI
   void step(true);
 }
 
+/** 디버그용 — 지금 돌고 있는 반복. `failures` 가 쌓이면 곧 포기한다는 뜻이다. */
+export function runningLoops(): { guildId: string; userId: string; failures: number }[] {
+  return [...loops].map(([id, loop]) => {
+    const [guildId = "", userId = ""] = id.split(":");
+    return { guildId, userId, failures: loop.failures };
+  });
+}
+
 /** 모든 반복을 멈춘다 — 종료할 때 타이머를 남기지 않기 위해. */
 export function stopAllLoops(): void {
   for (const [id, loop] of loops) {

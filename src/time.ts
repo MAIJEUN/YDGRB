@@ -148,6 +148,15 @@ export function countdown(date: Date): string {
   return time(date, TimestampStyles.RelativeTime);
 }
 
+/**
+ * `오후 6:12` — 날짜 없이 시각만.
+ *
+ * 로그처럼 여러 줄을 늘어놓을 때 쓴다. 긴 형식을 줄마다 붙이면 글자 수가 감당이 안 된다.
+ */
+export function clock(date: Date): string {
+  return time(date, TimestampStyles.ShortTime);
+}
+
 /** 시각과 남은 시간을 함께 — `2026년 7월 25일 오후 6시 12분 (3시간 후)` */
 export function atWithCountdown(date: Date): string {
   return `${at(date)} (${countdown(date)})`;

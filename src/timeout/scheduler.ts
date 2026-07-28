@@ -18,7 +18,13 @@ import { allStates, takeState } from "./store.js";
 /** setTimeout 이 한 번에 감당하는 최대 지연 (약 24.8일). 더 길면 잘라서 다시 예약한다. */
 const MAX_DELAY_MS = 2 ** 31 - 1;
 
-const timers = new Map<string, NodeJS.Timeout>();
+/** 타이머와 **언제 터지는지**를 같이 들고 있는다 — `!y 예약` 이 그 시각을 보여 준다. */
+interface Reservation {
+  readonly timer: NodeJS.Timeout;
+  readonly at: number;
+}
+
+const timers = new Map<string, Reservation>();
 
 function key(guildId: string, userId: string): string {
   return `${guildId}:${userId}`;
@@ -26,8 +32,8 @@ function key(guildId: string, userId: string): string {
 
 export function cancelEnd(guildId: string, userId: string): void {
   const id = key(guildId, userId);
-  const timer = timers.get(id);
-  if (timer !== undefined) clearTimeout(timer);
+  const reservation = timers.get(id);
+  if (reservation !== undefined) clearTimeout(reservation.timer);
   timers.delete(id);
 }
 
@@ -38,21 +44,30 @@ export function scheduleEnd(client: Client, guildId: string, userId: string, unt
   const id = key(guildId, userId);
 
   if (delay > MAX_DELAY_MS) {
-    timers.set(
-      id,
-      setTimeout(() => {
+    // 잘라서 다시 예약하더라도 `at` 은 **진짜 끝나는 시각**을 그대로 둔다.
+    timers.set(id, {
+      at: until,
+      timer: setTimeout(() => {
         scheduleEnd(client, guildId, userId, until);
       }, MAX_DELAY_MS),
-    );
+    });
     return;
   }
 
-  timers.set(
-    id,
-    setTimeout(() => {
+  timers.set(id, {
+    at: until,
+    timer: setTimeout(() => {
       void announce(client, guildId, userId, null);
     }, Math.max(delay, 0)),
-  );
+  });
+}
+
+/** 디버그용 — 지금 걸려 있는 예약. */
+export function reservations(): { guildId: string; userId: string; at: number }[] {
+  return [...timers].map(([id, reservation]) => {
+    const [guildId = "", userId = ""] = id.split(":");
+    return { guildId, userId, at: reservation.at };
+  });
 }
 
 /**
