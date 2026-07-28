@@ -8,6 +8,7 @@ import {
   SeparatorBuilder,
   SeparatorSpacingSize,
   TextDisplayBuilder,
+  ThumbnailBuilder,
 } from "discord.js";
 import type { ButtonBuilder } from "discord.js";
 import type {
@@ -63,6 +64,9 @@ import { describeError } from "../errors.js";
  *   9. **내용에 이미 나온 대상을 변동 칸에 또 적지 않는다.**
  *      「<@마이즌> 님을 타임아웃했습니다」 밑에 「대상: <@마이즌>」 을 두지 않는다.
  *      내용이 대상을 말하지 않을 때만(실패 이유 등) 칸으로 둔다.
+ *
+ * 예외 하나 — `/서ser버ber정jung보bow` 와 `/프로필쀼` 는 정보를 늘어놓는 **카드**라서
+ * 4번(이미지는 가로줄 아래)을 지키지 않는다. 아이콘·아바타는 `thumbnail` 로 본문 옆에 붙인다.
  */
 
 export type Status = "success" | "failure" | "progress" | "info";
@@ -117,6 +121,15 @@ export interface MessageOptions {
    * 액션 로우는 항상 한 줄을 통째로 차지한다. Section 의 액세서리로 넣어야 제목과 같은 줄에 붙는다.
    */
   readonly accessoryButton?: ButtonBuilder;
+  /**
+   * 본문 **오른쪽**에 붙는 작은 이미지.
+   *
+   * 순서 규칙(이미지는 가로줄 아래)의 **예외**다. `/서ser버ber정jung보bow` 와 `/프로필쀼` 만 쓴다 —
+   * 그 둘은 정보를 늘어놓는 카드라서, 아이콘·아바타가 본문 옆에 붙어야 카드처럼 읽힌다.
+   *
+   * 액세서리 자리는 하나뿐이라 `accessoryButton` 과 같이 쓸 수 없다. 버튼이 있으면 버튼이 이긴다.
+   */
+  readonly thumbnail?: string;
   /** 기본값 true. 채널에 공개로 남겨야 하는 메시지만 false. */
   readonly ephemeral?: boolean;
 }
@@ -184,12 +197,19 @@ export function buildContainer(options: MessageOptions): ContainerBuilder {
 
   const header = new TextDisplayBuilder().setContent(headerContent(options));
 
-  if (options.accessoryButton === undefined) {
-    container.addTextDisplayComponents(header);
-  } else {
+  // 액세서리 자리는 하나뿐이다 — 버튼이 있으면 버튼, 없고 썸네일이 있으면 썸네일.
+  if (options.accessoryButton !== undefined) {
     container.addSectionComponents(
       new SectionBuilder().addTextDisplayComponents(header).setButtonAccessory(options.accessoryButton),
     );
+  } else if (options.thumbnail !== undefined) {
+    container.addSectionComponents(
+      new SectionBuilder()
+        .addTextDisplayComponents(header)
+        .setThumbnailAccessory(new ThumbnailBuilder().setURL(options.thumbnail)),
+    );
+  } else {
+    container.addTextDisplayComponents(header);
   }
 
   const images = (options.images ?? []).slice(0, MAX_GALLERY_ITEMS);

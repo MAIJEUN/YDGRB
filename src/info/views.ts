@@ -1,30 +1,24 @@
-import { PermissionFlagsBits } from "discord.js";
 import type { Guild, GuildMember, User } from "discord.js";
 
 import { at, atWithCountdown } from "../time.js";
 import type { MessageOptions, ResponseField } from "../ui/response.js";
-import {
-  channelCounts,
-  contentFilter,
-  count,
-  features,
-  mfaLevel,
-  notifications,
-  nsfwLevel,
-  orNone,
-  premiumTier,
-  verificationLevel,
-} from "./format.js";
+import { channelCounts, count, orNone, premiumTier } from "./format.js";
 
 /**
  * 서버·유저 정보 화면.
  *
  * 둘 다 아무것도 바꾸지 않고 보여 주기만 하므로 **파랑(정보)** 이다.
  * 시각은 전부 타임스탬프 마크다운, 사람과 역할·채널은 전부 멘션으로 낸다.
+ *
+ * **이미지 배치는 순서 규칙의 예외다.** 이 둘은 정보를 늘어놓는 카드라서,
+ * 아이콘·아바타를 본문 옆 썸네일로 붙여야 카드처럼 읽힌다.
+ * 배너는 넓은 그림이라 아래에 그대로 크게 둔다.
  */
 
-/** 이미지는 이 크기로 가져온다. 너무 크면 메시지가 무거워진다. */
-const IMAGE_SIZE = 512;
+/** 썸네일은 작게 붙으므로 큰 파일을 받을 이유가 없다. */
+const THUMBNAIL_SIZE = 256;
+/** 배너는 넓게 깔리므로 조금 크게. */
+const BANNER_SIZE = 512;
 
 /** 역할을 다 적으면 글자 수 한계를 넘는다. 위에서부터 이만큼만. */
 const MAX_ROLES = 20;
@@ -39,10 +33,8 @@ function field(name: string, value: string | null): ResponseField[] {
 // ─────────────────────────────────────────────────────────────
 
 export function serverView(guild: Guild, user: User): MessageOptions {
-  const icon = guild.iconURL({ size: IMAGE_SIZE, extension: "png" });
-  const banner = guild.bannerURL({ size: IMAGE_SIZE, extension: "png" });
-
-  const boosts = guild.premiumSubscriptionCount ?? 0;
+  const icon = guild.iconURL({ size: THUMBNAIL_SIZE, extension: "png" });
+  const banner = guild.bannerURL({ size: BANNER_SIZE, extension: "png" });
 
   return {
     status: "info",
@@ -59,26 +51,22 @@ export function serverView(guild: Guild, user: User): MessageOptions {
         name: "이모지 · 스티커",
         value: `이모지 **${count(guild.emojis.cache.size)}개** · 스티커 **${count(guild.stickers.cache.size)}개**`,
       },
-      { name: "부스트", value: `${premiumTier(guild.premiumTier)} · **${count(boosts)}회**` },
       {
-        name: "보안",
-        value: [
-          `인증 ${verificationLevel(guild.verificationLevel)}`,
-          `콘텐츠 필터 ${contentFilter(guild.explicitContentFilter)}`,
-          `2단계 인증 ${mfaLevel(guild.mfaLevel)}`,
-          `NSFW ${nsfwLevel(guild.nsfwLevel)}`,
-        ].join("\n"),
+        name: "부스트",
+        value: `${premiumTier(guild.premiumTier)} · **${count(guild.premiumSubscriptionCount ?? 0)}회**`,
       },
-      { name: "기본 알림", value: notifications(guild.defaultMessageNotifications) },
-      ...field("잠수 채널", guild.afkChannelId === null ? null : `<#${guild.afkChannelId}> _(${guild.afkTimeout / 60}분)_`),
+      ...field(
+        "잠수 채널",
+        guild.afkChannelId === null ? null : `<#${guild.afkChannelId}> _(${guild.afkTimeout / 60}분)_`,
+      ),
       ...field("시스템 채널", guild.systemChannelId === null ? null : `<#${guild.systemChannelId}>`),
       ...field("규칙 채널", guild.rulesChannelId === null ? null : `<#${guild.rulesChannelId}>`),
       ...field("맞춤 초대", guild.vanityURLCode === null ? null : `\`${guild.vanityURLCode}\``),
-      { name: "언어", value: `\`${guild.preferredLocale}\`` },
-      { name: "기능", value: features(guild) },
       ...field("설명", orNone(guild.description) === "없음" ? null : guild.description),
     ],
-    images: [icon, banner].filter((url): url is string => url !== null),
+    // 아이콘은 본문 옆, 배너는 아래 넓게.
+    ...(icon === null ? {} : { thumbnail: icon }),
+    images: banner === null ? [] : [banner],
     user,
   };
 }
@@ -86,29 +74,6 @@ export function serverView(guild: Guild, user: User): MessageOptions {
 // ─────────────────────────────────────────────────────────────
 // 유저
 // ─────────────────────────────────────────────────────────────
-
-/** 눈에 띄는 권한만. 전부 적으면 마흔 줄이 넘는다. */
-const NOTABLE = [
-  { flag: PermissionFlagsBits.Administrator, name: "관리자" },
-  { flag: PermissionFlagsBits.ManageGuild, name: "서버 관리" },
-  { flag: PermissionFlagsBits.ManageRoles, name: "역할 관리" },
-  { flag: PermissionFlagsBits.ManageChannels, name: "채널 관리" },
-  { flag: PermissionFlagsBits.ManageMessages, name: "메시지 관리" },
-  { flag: PermissionFlagsBits.ManageNicknames, name: "별명 관리" },
-  { flag: PermissionFlagsBits.ModerateMembers, name: "타임아웃" },
-  { flag: PermissionFlagsBits.KickMembers, name: "추방" },
-  { flag: PermissionFlagsBits.BanMembers, name: "차단" },
-  { flag: PermissionFlagsBits.MentionEveryone, name: "everyone 멘션" },
-] as const;
-
-function notablePermissions(member: GuildMember): string {
-  // checkAdmin 을 끄지 않으면 관리자에게 전부 true 가 나와 뭘 가졌는지 알 수 없다.
-  const found = NOTABLE.filter((entry) => member.permissions.has(entry.flag, false)).map(
-    (entry) => entry.name,
-  );
-
-  return found.length === 0 ? "눈에 띄는 권한 없음" : found.join(" · ");
-}
 
 /** 위에서부터 몇 개만. @everyone 은 모두가 가지므로 뺀다. */
 function roles(member: GuildMember): string {
@@ -126,7 +91,6 @@ function roles(member: GuildMember): string {
 
 export function profileView(member: GuildMember, banner: string | null, user: User): MessageOptions {
   const timeout = member.isCommunicationDisabled() ? member.communicationDisabledUntil : null;
-  const avatar = member.displayAvatarURL({ size: IMAGE_SIZE, extension: "png" });
 
   return {
     status: "info",
@@ -142,11 +106,11 @@ export function profileView(member: GuildMember, banner: string | null, user: Us
       ...field("부스트 시작", member.premiumSince === null ? null : at(member.premiumSince)),
       ...field("타임아웃", timeout === null ? null : `${atWithCountdown(timeout)} 까지`),
       { name: `역할 (${count(Math.max(member.roles.cache.size - 1, 0))}개)`, value: roles(member) },
-      { name: "최고 역할", value: member.roles.highest.id === member.guild.id ? "없음" : member.roles.highest.toString() },
-      { name: "주요 권한", value: notablePermissions(member) },
       ...field("봇", member.user.bot ? "네" : null),
     ],
-    images: [avatar, banner].filter((url): url is string => url !== null),
+    // 아바타는 본문 옆, 배너는 아래 넓게.
+    thumbnail: member.displayAvatarURL({ size: THUMBNAIL_SIZE, extension: "png" }),
+    images: banner === null ? [] : [banner],
     user,
   };
 }
