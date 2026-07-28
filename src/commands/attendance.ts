@@ -67,14 +67,17 @@ export default defineCommand({
     // 하루에 한 번.
     const already = await getToday(interaction.guildId);
     if (already !== null) {
+      // 「오늘의 출헉」 자체를 링크로 건다. 링크를 못 만들면 글자만 남는다.
+      const label =
+        already.messageId === null
+          ? "오늘의 출헉"
+          : `[오늘의 출헉](https://discord.com/channels/${interaction.guildId}/${already.channelId}/${already.messageId})`;
+
       await interaction.reply(
         response({
           status: "failure",
           title: "오늘은 이미 올렸습니다",
-          description:
-            already.messageId === null
-              ? "오늘의 출헉이 이미 올라와 있어요."
-              : `오늘의 출헉이 이미 올라와 있어요. [보러 가기](https://discord.com/channels/${interaction.guildId}/${already.channelId}/${already.messageId})`,
+          description: `${label}이 이미 올라와 있어요.`,
           user: interaction.user,
         }),
       );
