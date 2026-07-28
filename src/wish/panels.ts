@@ -71,6 +71,25 @@ export function panelRows(panel: PanelKind): Row[] {
 }
 
 /**
+ * 제목 오른쪽 끝에 붙는 패널 전환 버튼.
+ *
+ * **관리자에게만** 준다 — 일반 유저에게 관리자 패널로 가는 버튼을 보여 줄 이유가 없다
+ * (눌러도 막히지만, 없는 문을 두드리게 하지 않는다).
+ *
+ * 액션 로우는 한 줄을 통째로 차지하므로 이 버튼은 `accessoryButton` 으로 넘긴다.
+ */
+export function panelSwitchButton(panel: PanelKind, isAdmin: boolean): ButtonBuilder | undefined {
+  if (!isAdmin) return undefined;
+
+  const target = panel === PANEL.admin ? PANEL.user : PANEL.admin;
+
+  return new ButtonBuilder()
+    .setCustomId(customId(WISH, ACTION.panel, target))
+    .setLabel(target === PANEL.admin ? "관리자 패널" : "유저 패널")
+    .setStyle(ButtonStyle.Secondary);
+}
+
+/**
  * 확인 화면 — 다른 유저를 골라서 볼 수 있다.
  *
  * 이 화면은 채널에 **공개로** 올라간다. 누구나 드롭다운으로 다른 사람을 조회할 수 있고,

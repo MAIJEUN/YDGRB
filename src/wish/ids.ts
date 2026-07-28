@@ -5,6 +5,8 @@
 export const WISH = "wish";
 
 export const ACTION = {
+  /** 유저 패널 ↔ 관리자 패널 전환 — `wish:panel:<유저|관리자>` */
+  panel: "panel",
   /** 패널에서 확인 화면을 공개로 연다. */
   check: "check",
   /** 공개된 확인 화면의 유저 드롭다운 — 그 메시지를 갱신한다. */

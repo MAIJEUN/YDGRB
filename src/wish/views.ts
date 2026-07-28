@@ -3,7 +3,7 @@ import type { User } from "discord.js";
 import type { MessageOptions, ResponseField, Status } from "../ui/response.js";
 import { formatBalance, formatBalanceBy } from "./format.js";
 import { PANEL, RANK_PAGE_SIZE, type PanelKind } from "./ids.js";
-import { checkRows, panelRows, rankRows } from "./panels.js";
+import { checkRows, panelRows, panelSwitchButton, rankRows } from "./panels.js";
 import { getBalance, getRanking, getSettings, type RankSort } from "./store.js";
 
 /**
@@ -17,8 +17,10 @@ export async function panelView(
   guildId: string,
   panel: PanelKind,
   user: User,
+  isAdmin: boolean,
 ): Promise<MessageOptions> {
   const settings = await getSettings(guildId);
+  const accessoryButton = panelSwitchButton(panel, isAdmin);
 
   if (panel === PANEL.admin) {
     return {
@@ -45,6 +47,7 @@ export async function panelView(
         },
       ],
       user,
+      accessoryButton,
       rows: panelRows(panel),
     };
   }
@@ -63,6 +66,7 @@ export async function panelView(
     ].join("\n"),
     fields: [{ name: "내 보유", value: formatBalance(balance) }],
     user,
+    accessoryButton,
     rows: panelRows(panel),
   };
 }
@@ -135,6 +139,8 @@ export interface NoticeOptions {
   readonly balance?: string;
   readonly user: User;
   readonly panel: PanelKind;
+  /** 관리자면 패널 전환 버튼도 그대로 달아 둔다. */
+  readonly isAdmin?: boolean;
 }
 
 /** 동작 결과 화면. 패널 버튼을 그대로 달아 두어 이어서 쓸 수 있게 한다. */
@@ -147,6 +153,7 @@ export function noticeView(options: NoticeOptions): MessageOptions {
     fields: options.fields,
     balance: options.balance,
     user: options.user,
+    accessoryButton: panelSwitchButton(options.panel, options.isAdmin === true),
     rows: panelRows(options.panel),
   };
 }

@@ -25,6 +25,7 @@ import {
   WISH,
   isDirection,
   isItem,
+  isPanelKind,
   type Item,
 } from "../wish/ids.js";
 import { bloodModal, configModal, grantModal, useModal, wasteModal } from "../wish/modals.js";
@@ -45,7 +46,7 @@ import {
   type RankSort,
 } from "../wish/store.js";
 import type { WishAttachment, WishRecord } from "../wish/types.js";
-import { checkView, noticeView, rankView } from "../wish/views.js";
+import { checkView, noticeView, panelView, rankView } from "../wish/views.js";
 
 /**
  * 소원권 시스템의 모든 버튼 · 셀렉트 메뉴 · 모달을 처리한다.
@@ -66,6 +67,10 @@ export default defineComponentHandler({
       // 비활성 버튼(페이지 표시) — 눌려도 아무 일도 하지 않는다.
       case ACTION.noop:
         await interaction.deferUpdate();
+        return;
+
+      case ACTION.panel:
+        await switchPanel(interaction, guildId, rest[0]);
         return;
 
       // ── 확인 · 랭킹 ─────────────────────────────────────────
@@ -238,6 +243,32 @@ async function openPublicView(
   await interaction.followUp(response({ ...view, ephemeral: false }));
 }
 
+/**
+ * 유저 패널 ↔ 관리자 패널 전환.
+ *
+ * 버튼은 관리자에게만 보이지만, 눌린 것을 그대로 믿지 않고 여기서 다시 확인한다 —
+ * customId 는 누구나 흉내 낼 수 있다.
+ */
+async function switchPanel(
+  interaction: ComponentInteraction,
+  guildId: string,
+  target: string | undefined,
+): Promise<void> {
+  const admin = isAdmin(interaction);
+  const kind = isPanelKind(target) ? target : PANEL.user;
+
+  if (kind === PANEL.admin && !admin) {
+    await fail(
+      interaction,
+      "권한이 없습니다",
+      "관리자 패널은 **관리자** 권한을 가진 사람만 열 수 있어요.",
+    );
+    return;
+  }
+
+  await replaceView(interaction, await panelView(guildId, kind, interaction.user, admin));
+}
+
 /** 패널과 무관한 단발성 오류 안내 (새 임시 메시지). */
 async function fail(
   interaction: ComponentInteraction,
@@ -299,6 +330,7 @@ async function craft(interaction: ComponentInteraction, guildId: string): Promis
         fields: [{ name: "현재 보유", value: formatBalance(result.before) }],
         user: interaction.user,
         panel: PANEL.user,
+        isAdmin: isAdmin(interaction),
       }),
     );
     return;
@@ -313,6 +345,7 @@ async function craft(interaction: ComponentInteraction, guildId: string): Promis
       balance: formatBalanceChange(result),
       user: interaction.user,
       panel: PANEL.user,
+      isAdmin: isAdmin(interaction),
     }),
   );
 }
@@ -334,6 +367,7 @@ async function submitWaste(interaction: ComponentInteraction, guildId: string): 
         description: "항목을 고르지 않았습니다.",
         user: interaction.user,
         panel: PANEL.user,
+        isAdmin: isAdmin(interaction),
       }),
     );
     return;
@@ -351,6 +385,7 @@ async function submitWaste(interaction: ComponentInteraction, guildId: string): 
         fields: [{ name: "현재 보유", value: formatBalance(result.before) }],
         user: interaction.user,
         panel: PANEL.user,
+        isAdmin: isAdmin(interaction),
       }),
     );
     return;
@@ -365,6 +400,7 @@ async function submitWaste(interaction: ComponentInteraction, guildId: string): 
       balance: formatBalanceChange(result),
       user: interaction.user,
       panel: PANEL.user,
+      isAdmin: isAdmin(interaction),
     }),
   );
 }
@@ -389,6 +425,7 @@ async function openWishModal(interaction: ComponentInteraction, guildId: string)
         description: "관리자가 아직 **소원 전달 채널**을 설정하지 않았어요.",
         user: interaction.user,
         panel: PANEL.user,
+        isAdmin: isAdmin(interaction),
       }),
     );
     return;
@@ -405,6 +442,7 @@ async function openWishModal(interaction: ComponentInteraction, guildId: string)
         fields: [{ name: "현재 보유", value: formatBalance(balance) }],
         user: interaction.user,
         panel: PANEL.user,
+        isAdmin: isAdmin(interaction),
       }),
     );
     return;
@@ -429,6 +467,7 @@ async function submitWish(interaction: ComponentInteraction, guildId: string): P
         description: "관리자가 아직 **소원 전달 채널**을 설정하지 않았어요.",
         user: interaction.user,
         panel: PANEL.user,
+        isAdmin: isAdmin(interaction),
       }),
     );
     return;
@@ -446,6 +485,7 @@ async function submitWish(interaction: ComponentInteraction, guildId: string): P
         fields: [{ name: "현재 보유", value: formatBalance(spent.before) }],
         user: interaction.user,
         panel: PANEL.user,
+        isAdmin: isAdmin(interaction),
       }),
     );
     return;
@@ -484,6 +524,7 @@ async function submitWish(interaction: ComponentInteraction, guildId: string): P
         balance: formatBalanceChange(spent),
         user: interaction.user,
         panel: PANEL.user,
+        isAdmin: isAdmin(interaction),
       }),
     );
   } catch (error) {
@@ -503,6 +544,7 @@ async function submitWish(interaction: ComponentInteraction, guildId: string): P
         balance: refund.ok ? formatBalanceChange(refund) : undefined,
         user: interaction.user,
         panel: PANEL.user,
+        isAdmin: isAdmin(interaction),
       }),
     );
   }
@@ -717,6 +759,7 @@ async function submitGrant(interaction: ComponentInteraction, guildId: string): 
       balance: changed.length > 0 ? changed.join("\n\n") : undefined,
       user: interaction.user,
       panel: PANEL.admin,
+      isAdmin: isAdmin(interaction),
     }),
   );
 }
@@ -732,6 +775,7 @@ function adminFailure(
     description,
     user: interaction.user,
     panel: PANEL.admin,
+    isAdmin: isAdmin(interaction),
   });
 }
 
@@ -805,6 +849,7 @@ async function submitBlood(interaction: ComponentInteraction, guildId: string): 
         fields: [{ name: "현재 보유", value: formatBalance(drained.before) }],
         user: interaction.user,
         panel: PANEL.admin,
+        isAdmin: isAdmin(interaction),
       }),
     );
     return;
@@ -830,6 +875,7 @@ async function submitBlood(interaction: ComponentInteraction, guildId: string): 
       balance: [formatBalanceChangeFor(from, drained), formatBalanceChangeFor(to, gained)].join("\n\n"),
       user: interaction.user,
       panel: PANEL.admin,
+      isAdmin: isAdmin(interaction),
     }),
   );
 }
@@ -887,6 +933,7 @@ async function submitConfig(interaction: ComponentInteraction, guildId: string):
       ],
       user: interaction.user,
       panel: PANEL.admin,
+      isAdmin: isAdmin(interaction),
     }),
   );
 }
