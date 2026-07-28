@@ -38,6 +38,12 @@ const SHAPES: readonly Shape[] = [
     describe: (guild) =>
       `기록 ${size(guild["records"])}명 · 오늘 ${guild["today"] === null ? "없음" : "있음"}`,
   },
+  {
+    name: "디버그 허용",
+    file: "debug.json",
+    describe: (guild) =>
+      `${Array.isArray(guild["allowed"]) ? guild["allowed"].length : 0}명`,
+  },
 ];
 
 export interface DataFile {

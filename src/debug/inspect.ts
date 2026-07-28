@@ -40,15 +40,24 @@ export type Resolved =
  *
  * 스노플레이크는 종류를 구분하지 않아서 값만 봐서는 알 수 없다. 그래서 차례로 물어본다.
  * 캐시를 먼저 보고, 캐시에 없는 것만 REST 로 한 번씩 시도한다.
+ *
+ * `revealOtherGuilds` 가 false 면 **다른 서버의 이름은 감춘다** — 이 서버의 관리자가
+ * 저 서버의 이름까지 알아낼 이유는 없다. 주인만 true 로 부른다.
  */
 export async function resolveId(
   client: Client,
   guild: Guild,
   here: TextBasedChannel | null,
   id: string,
+  revealOtherGuilds: boolean,
 ): Promise<Resolved> {
   const found = client.guilds.cache.get(id);
-  if (found !== undefined) return { kind: "서버", label: `\`${found.name}\`` };
+  if (found !== undefined) {
+    if (found.id !== guild.id && !revealOtherGuilds) {
+      return { kind: "서버", label: "_이 봇이 들어가 있는 다른 서버_" };
+    }
+    return { kind: "서버", label: `\`${found.name}\`` };
+  }
 
   if (client.channels.cache.has(id)) return { kind: "채널", label: `<#${id}>` };
 

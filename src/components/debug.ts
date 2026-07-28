@@ -1,7 +1,8 @@
 import type { ButtonInteraction, Client, Message } from "discord.js";
 
-import { isOwner } from "../debug/access.js";
-import { findCommand } from "../debug/commands.js";
+import { atLeast, levelOf } from "../debug/access.js";
+import type { Level } from "../debug/access.js";
+import { canUse, findCommand } from "../debug/commands.js";
 import { asViews } from "../debug/handle.js";
 import { NAMESPACE, RESTART_EXIT_CODE } from "../debug/ids.js";
 import { card } from "../debug/views.js";
@@ -15,17 +16,26 @@ import { updateResponse } from "../ui/response.js";
  *
  * customId 규칙: `debug:<동작>[:항목]`
  *
- * 버튼도 **누를 때마다** 주인인지 다시 본다. 메시지는 채널에 남아 있어서
- * 지나가던 사람이 누를 수 있고, customId 는 누구나 볼 수 있다.
+ * 버튼도 **누를 때마다** 등급을 다시 본다. 메시지는 채널에 남아 있어서 지나가던 사람이
+ * 누를 수 있고, customId 는 누구나 볼 수 있다. 지정이 거둬들여진 뒤에 옛 메시지의
+ * 버튼을 누르는 경우도 여기서 막힌다.
  */
 export default defineComponentHandler({
   namespace: NAMESPACE,
 
   async execute(interaction, args) {
     if (!interaction.isButton()) return;
+    if (!interaction.inGuild()) return;
 
-    if (!(await isOwner(interaction.client, interaction.user.id))) {
-      logger.debug(`디버그 버튼: 주인이 아닌 사람의 시도 — ${interaction.user.id}`);
+    const level = await levelOf(
+      interaction.client,
+      interaction.guildId,
+      interaction.user.id,
+      interaction.memberPermissions,
+    );
+
+    if (level === null) {
+      logger.debug(`디버그 버튼: 쓸 수 없는 사람의 시도 — ${interaction.user.id}`);
       await interaction.deferUpdate();
       return;
     }
@@ -34,7 +44,7 @@ export default defineComponentHandler({
 
     switch (action) {
       case "refresh":
-        await refresh(interaction, target);
+        await refresh(interaction, target, level);
         return;
 
       case "cancel":
@@ -50,7 +60,7 @@ export default defineComponentHandler({
 
       case "restart":
       case "stop":
-        await finish(interaction, action === "restart");
+        await finish(interaction, action === "restart", level);
         return;
 
       default:
@@ -66,16 +76,22 @@ export default defineComponentHandler({
  * 원래 명령을 친 메시지가 아니라 **봇이 답한 메시지**를 넘긴다. 서버·채널·클라이언트는
  * 그대로라 화면을 다시 만드는 데 부족한 것이 없다.
  */
-async function refresh(interaction: ButtonInteraction, target: string | undefined): Promise<void> {
+async function refresh(
+  interaction: ButtonInteraction,
+  target: string | undefined,
+  level: Level,
+): Promise<void> {
   const command = findCommand(target);
   const message: Message = interaction.message;
 
-  if (command === undefined || !message.inGuild()) {
+  if (command === undefined || !message.inGuild() || !canUse(command, level)) {
     await interaction.deferUpdate();
     return;
   }
 
-  const [view] = asViews(await command.run({ message, args: [], user: interaction.user }));
+  const [view] = asViews(
+    await command.run({ message, args: [], user: interaction.user, level }),
+  );
 
   if (view === undefined) {
     await interaction.deferUpdate();
@@ -85,18 +101,37 @@ async function refresh(interaction: ButtonInteraction, target: string | undefine
   await interaction.update(updateResponse(view));
 }
 
-async function finish(interaction: ButtonInteraction, restarting: boolean): Promise<void> {
+async function finish(
+  interaction: ButtonInteraction,
+  restarting: boolean,
+  level: Level,
+): Promise<void> {
+  const name = restarting ? "재시작" : "종료";
+
+  // 확인 화면을 띄운 뒤에 등급이 바뀌었을 수도 있다. 끄기 직전에 한 번 더 본다.
+  if (!atLeast(level, "owner")) {
+    await interaction.update(
+      updateResponse(
+        card(name, interaction.user, {
+          status: "failure",
+          description: "**주인** 만 쓸 수 있는 항목입니다.",
+        }),
+      ),
+    );
+    return;
+  }
+
   // 끄기 전에 화면부터 바꾼다 — 끄고 나면 응답할 방법이 없다.
   await interaction.update(
     updateResponse(
-      card(restarting ? "재시작" : "종료", interaction.user, {
+      card(name, interaction.user, {
         status: "progress",
         description: restarting ? "지금 끕니다. 실행기가 다시 켭니다." : "지금 끕니다.",
       }),
     ),
   );
 
-  logger.warn(`디버그: ${restarting ? "재시작" : "종료"} 요청 — ${interaction.user.id}`);
+  logger.warn(`디버그: ${name} 요청 — ${interaction.user.id}`);
 
   await shutdown(interaction.client, restarting ? RESTART_EXIT_CODE : 0);
 }

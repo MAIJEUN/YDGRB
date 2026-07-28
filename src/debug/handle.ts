@@ -3,8 +3,9 @@ import type { Message } from "discord.js";
 import { logger } from "../logger.js";
 import { channelMessage } from "../ui/response.js";
 import type { MessageOptions } from "../ui/response.js";
-import { isOwner } from "./access.js";
-import { COMMANDS, findCommand } from "./commands.js";
+import { LEVEL_LABEL, levelOf } from "./access.js";
+import type { Level } from "./access.js";
+import { COMMANDS, canUse, findCommand } from "./commands.js";
 import type { DebugContext } from "./commands.js";
 import { PREFIX } from "./ids.js";
 import { card } from "./views.js";
@@ -14,8 +15,9 @@ import { card } from "./views.js";
  *
  * 처리했으면 true — 부르는 쪽(messageCreate)이 거기서 멈추면 된다.
  *
- * 봇 주인이 아니면 **아무 대답도 하지 않는다.** 「권한이 없습니다」 라고 답하면
- * 그 자체가 「여기 뭔가 있다」 는 신호가 된다. 디버그는 있는 줄도 모르는 게 낫다.
+ * 아무 등급도 아니면 **아무 대답도 하지 않는다.** 「권한이 없습니다」 라고 답하면
+ * 그 자체가 「여기 뭔가 있다」 는 신호가 된다. 쓸 수 없는 사람에게는 있는 줄도 모르는 게 낫다.
+ * 등급은 있는데 그 항목만 못 쓰는 경우는 다르다 — 그건 알려 준다.
  */
 export async function handleDebugMessage(message: Message<true>): Promise<boolean> {
   const content = message.content.trim();
@@ -23,8 +25,15 @@ export async function handleDebugMessage(message: Message<true>): Promise<boolea
   // `!yo` 같은 것에 걸리지 않게, 접두사 뒤는 공백이거나 끝이어야 한다.
   if (content !== PREFIX && !content.startsWith(`${PREFIX} `)) return false;
 
-  if (!(await isOwner(message.client, message.author.id))) {
-    logger.debug(`디버그: 주인이 아닌 사람의 시도 — ${message.author.id}`);
+  const level = await levelOf(
+    message.client,
+    message.guildId,
+    message.author.id,
+    message.member?.permissions ?? null,
+  );
+
+  if (level === null) {
+    logger.debug(`디버그: 쓸 수 없는 사람의 시도 — ${message.author.id}`);
     return true;
   }
 
@@ -35,14 +44,19 @@ export async function handleDebugMessage(message: Message<true>): Promise<boolea
     .filter((token) => token !== "");
 
   const command = findCommand(name);
-  const context: DebugContext = { message, args, user: message.author };
+  const context: DebugContext = { message, args, user: message.author, level };
 
   if (command === undefined) {
     await send(message, [unknownView(context, name)]);
     return true;
   }
 
-  logger.debug(`디버그: ${PREFIX} ${command.name} — ${message.author.id}`);
+  if (!canUse(command, level)) {
+    await send(message, [deniedView(context, command.name, command.level ?? "guest")]);
+    return true;
+  }
+
+  logger.debug(`디버그: ${PREFIX} ${command.name} — ${message.author.id} (${level})`);
 
   try {
     await send(message, asViews(await command.run(context)));
@@ -75,9 +89,23 @@ function unknownView(context: DebugContext, name: string): MessageOptions {
     fields: [
       {
         name: "할 수 있는 것",
-        value: COMMANDS.map((command) => `\`${command.usage}\` — ${command.summary}`).join("\n"),
+        value: COMMANDS.filter((command) => canUse(command, context.level))
+          .map((command) => `\`${command.usage}\` — ${command.summary}`)
+          .join("\n"),
       },
     ],
+  });
+}
+
+export function deniedView(
+  context: DebugContext,
+  name: string,
+  required: Level,
+): MessageOptions {
+  return card(name, context.user, {
+    status: "failure",
+    description: `**${LEVEL_LABEL[required]}** 만 쓸 수 있는 항목입니다.`,
+    fields: [{ name: "내 등급", value: `**${LEVEL_LABEL[context.level]}**` }],
   });
 }
 

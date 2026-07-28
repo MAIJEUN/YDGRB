@@ -4,6 +4,9 @@ import { ChannelType, IntentsBitField, Status as GatewayStatus } from "discord.j
 import type { Guild, Message, User } from "discord.js";
 
 import { getRecord } from "../attendance/store.js";
+import { LEVEL_LABEL, atLeast } from "./access.js";
+import type { Level } from "./access.js";
+import { allow, allowedIds, disallow } from "./store.js";
 import { channelCounts, count } from "../info/format.js";
 import { registeredEvents } from "../loaders/events.js";
 import { LOG_LEVELS, isLogLevel, logLevel, recentLogs, setLogLevel } from "../logger.js";
@@ -60,6 +63,8 @@ export interface DebugContext {
   /** 서브커맨드 뒤에 붙은 것들. */
   readonly args: readonly string[];
   readonly user: User;
+  /** 이 사람이 어느 등급인지. 화면 내용도 여기에 따라 달라진다. */
+  readonly level: Level;
 }
 
 export interface DebugCommand {
@@ -68,7 +73,30 @@ export interface DebugCommand {
   /** 도움말에 그대로 찍히는 사용법. */
   readonly usage: string;
   readonly summary: string;
+  /** 쓰려면 최소 이 등급이어야 한다. 안 적으면 셋 다 쓸 수 있다. */
+  readonly level?: Level;
   run(context: DebugContext): Promise<MessageOptions | readonly MessageOptions[]>;
+}
+
+/** 이 사람이 쓸 수 있는 항목인지. */
+export function canUse(command: DebugCommand, level: Level): boolean {
+  return atLeast(level, command.level ?? "guest");
+}
+
+/**
+ * 도움말 한 줄. 자기 등급으로 못 쓰는 것은 그렇다고 적어 준다 —
+ * 목록에서 아예 빼면 「왜 안 되지」 하고 헤매게 된다.
+ */
+function helpLines(level: Level): string {
+  return COMMANDS.map((command) => {
+    const locked = canUse(command, level) ? "" : ` _(${LEVEL_LABEL[command.level ?? "guest"]} 전용)_`;
+    return `\`${command.usage}\` — ${command.summary}${locked}`;
+  }).join("\n");
+}
+
+/** 호스트 경로는 주인에게만. 계정 이름이 섞여 있다. */
+function showPath(level: Level, full: string): string {
+  return atLeast(level, "owner") ? `\`${full}\`` : `\`…${path.sep}${path.basename(full)}\``;
 }
 
 /** 목록이 길어지면 컨테이너 글자 수 한계에 걸린다. 화면마다 이만큼만. */
@@ -163,14 +191,12 @@ export const COMMANDS: readonly DebugCommand[] = [
     aliases: ["help", "?", ""],
     usage: `${PREFIX}`,
     summary: "이 목록",
-    async run({ user }) {
+    async run({ user, level }) {
       return card("도움", user, {
-        description: `봇 주인만 쓸 수 있어요. 이름 대신 영문 별칭도 통합니다.`,
+        description: "이름 대신 영문 별칭도 통합니다.",
         fields: [
-          {
-            name: "할 수 있는 것",
-            value: COMMANDS.map((command) => `\`${command.usage}\` — ${command.summary}`).join("\n"),
-          },
+          { name: "내 등급", value: `**${LEVEL_LABEL[level]}**` },
+          { name: "할 수 있는 것", value: helpLines(level) },
         ],
       });
     },
@@ -253,7 +279,7 @@ export const COMMANDS: readonly DebugCommand[] = [
     aliases: ["runtime", "시스템"],
     usage: `${PREFIX} 런타임`,
     summary: "Node · 프로세스 · 메모리 상세",
-    async run({ user }) {
+    async run({ user, level }) {
       const info = await versions();
       const used = memory();
       const lag = loopLag();
@@ -262,7 +288,7 @@ export const COMMANDS: readonly DebugCommand[] = [
         fields: [
           { name: "Node", value: `\`v${info.node}\` · discord.js \`v${info.discord}\`` },
           { name: "플랫폼", value: `\`${info.platform}/${info.arch}\` · PID \`${info.pid}\`` },
-          { name: "실행 폴더", value: `\`${info.cwd}\`` },
+          { name: "실행 폴더", value: showPath(level, info.cwd) },
           { name: "켜진 시각", value: atWithCountdown(BOOTED_AT) },
           { name: "가동", value: `**${formatDuration(process.uptime())}** · CPU 평균 **${cpuPercent()}%**` },
           {
@@ -395,8 +421,17 @@ export const COMMANDS: readonly DebugCommand[] = [
     aliases: ["guild", "길드"],
     usage: `${PREFIX} 서버 [서버id]`,
     summary: "서버 하나 뜯어보기 (봇 권한 포함)",
-    async run({ message, user, args }) {
+    async run({ message, user, args, level }) {
       const id = parseId(args[0]) ?? message.guild.id;
+
+      // 다른 서버는 주인만. 이 서버의 관리자가 저 서버를 볼 이유는 없다.
+      if (id !== message.guild.id && !atLeast(level, "owner")) {
+        return card("서버", user, {
+          status: "failure",
+          description: "다른 서버는 봇 주인만 볼 수 있어요.",
+        });
+      }
+
       const guild = message.client.guilds.cache.get(id);
 
       if (guild === undefined) {
@@ -669,13 +704,13 @@ export const COMMANDS: readonly DebugCommand[] = [
     aliases: ["data", "데이터"],
     usage: `${PREFIX} 저장소`,
     summary: "data 폴더의 파일 상태",
-    async run({ user }) {
+    async run({ user, level }) {
       const files = await dataFiles();
       const broken = files.some((file) => file.problem !== null);
 
       return card("저장소", user, {
         status: broken ? "failure" : "info",
-        description: `\`${path.resolve(process.cwd(), "data")}\``,
+        description: showPath(level, path.resolve(process.cwd(), "data")),
         fields: files.map((file) => ({ name: file.name, value: describeDataFile(file) })),
         accessoryButton: refreshButton("저장소"),
       });
@@ -766,7 +801,7 @@ export const COMMANDS: readonly DebugCommand[] = [
     aliases: ["id", "스노플레이크"],
     usage: `${PREFIX} 조회 <id>`,
     summary: "id 가 무엇인지 · 언제 만들어졌는지",
-    async run({ message, user, args }) {
+    async run({ message, user, args, level }) {
       const id = parseId(args[0]);
 
       if (id === null) {
@@ -776,7 +811,13 @@ export const COMMANDS: readonly DebugCommand[] = [
         });
       }
 
-      const found = await resolveId(message.client, message.guild, message.channel, id);
+      const found = await resolveId(
+        message.client,
+        message.guild,
+        message.channel,
+        id,
+        atLeast(level, "owner"),
+      );
 
       return card("조회", user, {
         status: found === null ? "progress" : "info",
@@ -817,6 +858,86 @@ export const COMMANDS: readonly DebugCommand[] = [
         fields: [
           { name: "읽은 값", value: `**${count(parsed.seconds)}초** = ${formatDuration(parsed.seconds)}` },
           { name: "지금 걸면", value: `${at(until)} 에 끝납니다 (${countdown(until)})` },
+        ],
+      });
+    },
+  },
+
+  {
+    name: "허용",
+    aliases: ["allow", "지정"],
+    usage: `${PREFIX} 허용 [대상]`,
+    summary: "관리자가 아닌 사람에게 디버그 열어 주기",
+    // 지정할 수 있는 것은 관리자부터. 지정된 사람이 또 다른 사람을 부르지는 못한다.
+    level: "admin",
+    async run({ message, user, args, level }) {
+      const listed = await allowedIds(message.guild.id);
+
+      if (args.length === 0) {
+        return card("허용", user, {
+          fields: [
+            {
+              name: `지정된 사람 (${listed.length}명)`,
+              value: lines(
+                listed.map((id) => `<@${id}>`),
+                MAX_ROWS,
+              ),
+            },
+            { name: "내 등급", value: `**${LEVEL_LABEL[level]}**` },
+            {
+              name: "따로 지정하지 않아도 되는 사람",
+              value: "봇 주인과 이 서버의 **관리자**는 지정 없이 그냥 쓸 수 있어요.",
+            },
+          ],
+        });
+      }
+
+      const id = parseId(args[0]);
+      if (id === null) {
+        return card("허용", user, {
+          status: "failure",
+          description: "지정할 사람을 멘션하거나 id 를 붙여 주세요.",
+        });
+      }
+
+      const added = await allow(message.guild.id, id);
+
+      return card("허용", user, {
+        status: added ? "success" : "progress",
+        description: added ? `<@${id}> 님이 디버그를 쓸 수 있습니다.` : `<@${id}> 님은 이미 지정돼 있어요.`,
+        fields: [{ name: "지정된 사람", value: `**${listed.length + (added ? 1 : 0)}명**` }],
+      });
+    },
+  },
+
+  {
+    name: "해제",
+    aliases: ["disallow", "취소"],
+    usage: `${PREFIX} 해제 <대상>`,
+    summary: "지정 거둬들이기",
+    level: "admin",
+    async run({ message, user, args }) {
+      const id = parseId(args[0]);
+
+      if (id === null) {
+        return card("해제", user, {
+          status: "failure",
+          description: "거둬들일 사람을 멘션하거나 id 를 붙여 주세요.",
+        });
+      }
+
+      const removed = await disallow(message.guild.id, id);
+      const left = await allowedIds(message.guild.id);
+
+      return card("해제", user, {
+        status: removed ? "success" : "progress",
+        description: removed ? `<@${id}> 님의 지정을 거뒀습니다.` : `<@${id}> 님은 지정돼 있지 않았어요.`,
+        fields: [
+          { name: "지정된 사람", value: `**${left.length}명**` },
+          ...field(
+            "그래도 쓸 수 있는 경우",
+            removed ? "관리자 권한이 있으면 지정과 상관없이 계속 쓸 수 있어요." : null,
+          ),
         ],
       });
     },
@@ -871,6 +992,8 @@ export const COMMANDS: readonly DebugCommand[] = [
     aliases: ["restart"],
     usage: `${PREFIX} 재시작`,
     summary: "봇 껐다 켜기 (run.bat 이 다시 켬)",
+    // 프로세스를 끄는 것이라 이 서버뿐 아니라 **다른 서버까지** 끊긴다. 주인만.
+    level: "owner",
     async run({ user }) {
       return card("재시작", user, {
         status: "progress",
@@ -891,6 +1014,7 @@ export const COMMANDS: readonly DebugCommand[] = [
     aliases: ["stop", "끄기"],
     usage: `${PREFIX} 종료`,
     summary: "봇 끄기 (다시 켜지지 않음)",
+    level: "owner",
     async run({ user }) {
       return card("종료", user, {
         status: "progress",
