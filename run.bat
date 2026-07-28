@@ -1,7 +1,25 @@
 @echo off
+rem ---------------------------------------------------------------
+rem  Everything above :main must stay ASCII-only.
+rem
+rem  cmd reads a batch file by byte offset and decodes it with the
+rem  code page that is active at that moment. Calling chcp in the
+rem  middle of the file shifts those offsets, which cuts multi-byte
+rem  lines in half and makes cmd run the leftover as a command.
+rem  So: switch the code page first, then re-run this file. The whole
+rem  script is then parsed under one code page.
+rem ---------------------------------------------------------------
+if "%YDGRB_UTF8%"=="1" goto main
+set "YDGRB_UTF8=1"
 chcp 65001 >nul
+cmd /d /s /c ""%~f0" %*"
+exit /b %errorlevel%
+
+:main
 cd /d "%~dp0"
 title 소원권 봇
+
+set "REPO=MAIJEUN/YDGRB"
 
 echo.
 echo  ==========================================
@@ -47,6 +65,15 @@ if errorlevel 1 (
     goto stop
 )
 
+REM  업데이트를 막 받았다면 의존성이 늘었을 수 있으므로 다시 설치한다.
+if exist ".update-applied" (
+    del /q ".update-applied" >nul 2>nul
+    echo  [*] 업데이트를 적용했습니다. 패키지를 다시 확인합니다.
+    echo.
+    call npm ci --omit=dev
+    echo.
+)
+
 if not exist "node_modules" (
     echo  [*] 처음 실행이라 필요한 패키지를 설치합니다. 몇 분 걸릴 수 있습니다.
     echo.
@@ -60,8 +87,11 @@ if not exist "node_modules" (
 )
 
 REM  예약 실행이나 바로가기용:  run.bat bot   /   run.bat deploy
+REM  그때는 물어볼 사람이 없으므로 업데이트 확인을 건너뛴다.
 if /i "%~1"=="bot" goto bot
 if /i "%~1"=="deploy" goto deploy
+
+call :check_update
 
 REM ---------------------------------------------------------------
 REM  메뉴
@@ -78,6 +108,14 @@ set /p "CHOICE=  번호: "
 if "%CHOICE%"=="1" goto bot
 if "%CHOICE%"=="2" goto deploy
 if "%CHOICE%"=="3" exit /b 0
+
+REM  입력이 끊기면(파이프로 실행되는 등) set /p 가 그냥 지나간다.
+REM  그대로 두면 메뉴가 무한히 돌므로 몇 번 비면 끝낸다.
+set /a EMPTY+=1
+if not defined CHOICE if %EMPTY% GEQ 3 (
+    echo  [X] 입력을 읽지 못했습니다.
+    exit /b 1
+)
 goto menu
 
 :deploy
@@ -124,3 +162,98 @@ goto bot_run
 echo.
 if "%~1"=="" pause
 exit /b 1
+
+REM ---------------------------------------------------------------
+REM  업데이트 확인
+REM
+REM  GitHub 최신 릴리스의 태그를 VERSION 파일과 견준다.
+REM  받겠다고 하면 zip 을 받아 풀고, 덮어쓰기는 임시 폴더의 도우미가 한다 —
+REM  실행 중인 run.bat 을 자기 자신이 덮어쓸 수는 없기 때문이다.
+REM ---------------------------------------------------------------
+
+:check_update
+if not exist "VERSION" (
+    REM  소스에서 바로 돌리는 경우. 견줄 값이 없으니 조용히 넘어간다.
+    goto :eof
+)
+
+set "CURRENT="
+set /p "CURRENT=" < "VERSION"
+if not defined CURRENT goto :eof
+
+echo  [*] 업데이트를 확인합니다...
+
+set "LATEST="
+REM  -TimeoutSec 를 꼭 준다. 없으면 인터넷이 막혀 있을 때 실행기가 통째로 멈춰 버린다.
+for /f "usebackq delims=" %%A in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference='SilentlyContinue'; try { (Invoke-RestMethod 'https://api.github.com/repos/%REPO%/releases/latest' -Headers @{'User-Agent'='ydgrb'} -TimeoutSec 5).tag_name } catch { '' }"`) do set "LATEST=%%A"
+
+if not defined LATEST (
+    echo  [!] 확인하지 못했습니다. 그냥 진행합니다.
+    goto :eof
+)
+
+if "%LATEST%"=="%CURRENT%" (
+    echo  [*] 최신 버전입니다 ^(YDGRB%CURRENT%^).
+    goto :eof
+)
+
+echo.
+echo  ------------------------------------------
+echo    새 버전이 있습니다
+echo      지금  YDGRB%CURRENT%
+echo      최신  YDGRB%LATEST%
+echo  ------------------------------------------
+echo.
+set "ANSWER="
+set /p "ANSWER=  지금 업데이트할까요? (Y/N): "
+if /i not "%ANSWER%"=="Y" (
+    echo  [*] 건너뜁니다.
+    goto :eof
+)
+
+goto :do_update
+
+:do_update
+set "ZIP=%TEMP%\YDGRB%LATEST%.zip"
+set "UNPACK=%TEMP%\ydgrb-update"
+set "HELPER=%TEMP%\ydgrb-apply.bat"
+
+echo.
+echo  [*] 내려받는 중...
+curl -L --fail --silent --show-error -o "%ZIP%" "https://github.com/%REPO%/releases/download/%LATEST%/YDGRB%LATEST%.zip"
+if errorlevel 1 (
+    echo  [X] 내려받지 못했습니다. 그냥 진행합니다.
+    goto :eof
+)
+
+if exist "%UNPACK%" rd /s /q "%UNPACK%"
+mkdir "%UNPACK%"
+
+echo  [*] 푸는 중...
+tar -xf "%ZIP%" -C "%UNPACK%"
+if errorlevel 1 (
+    echo  [X] 압축을 풀지 못했습니다. 그냥 진행합니다.
+    goto :eof
+)
+
+REM  덮어쓰기는 이 창이 닫힌 뒤에 해야 한다. 도우미를 만들어 넘긴다.
+REM  ^> ^& %% 는 지금 실행되지 않고 파일에 그대로 적히도록 escape 한 것이다.
+REM
+REM  VERSION 은 zip 에 든 것을 덮어쓰고 나서 방금 받은 태그로 다시 적는다 —
+REM  zip 에 VERSION 이 빠져 있어도 버전이 어긋나 매번 다시 묻는 일이 없도록.
+(
+    echo @echo off
+    echo chcp 65001 ^>nul
+    echo ping -n 3 127.0.0.1 ^>nul
+    echo xcopy /e /i /y "%UNPACK%\*" "%CD%\" ^>nul
+    echo ^<nul set /p "=%LATEST%"^> "%CD%\VERSION"
+    echo echo 1^> "%CD%\.update-applied"
+    echo rd /s /q "%UNPACK%"
+    echo del /q "%ZIP%"
+    echo start "" "%CD%\run.bat"
+    echo ^(goto^) 2^>nul ^& del "%%~f0"
+) > "%HELPER%"
+
+echo  [*] 적용하고 다시 시작합니다.
+start "" "%HELPER%"
+exit /b 0

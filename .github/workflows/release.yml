@@ -63,6 +63,7 @@ jobs:
       - name: 릴리스 묶음 만들기
         env:
           NAME: ${{ steps.version.outputs.name }}
+          VERSION: ${{ steps.version.outputs.value }}
         run: |
           set -euo pipefail
           mkdir -p release
@@ -74,6 +75,8 @@ jobs:
             fi
             cp -r "$item" release/
           done
+          # run.bat 이 업데이트 여부를 판단하는 기준. 줄바꿈 없이 버전만 넣는다.
+          printf '%s' "$VERSION" > release/VERSION
           (cd release && zip -qr "../${NAME}.zip" .)
           unzip -l "${NAME}.zip"
 

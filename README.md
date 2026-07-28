@@ -1183,8 +1183,9 @@ npm start
 
 `dist/` 와 `node_modules/`, `.env` 가 있으면 실행됩니다. `SIGINT`/`SIGTERM` 을 받으면 게이트웨이 연결을 정리하고 종료하므로 프로세스 매니저와 함께 쓰기 좋습니다.
 
-윈도우에서는 **`run.bat` 을 더블클릭**하면 Node 확인 · `.env` 준비 · 패키지 설치 · 실행을 한 번에 처리합니다.
-릴리스 zip 에도 함께 들어갑니다 — 자세한 내용은 [RELEASE.md](RELEASE.md#릴리스에-담기는-것) 참고.
+윈도우에서는 **`run.bat` 을 더블클릭**하면 Node 확인 · `.env` 준비 · 패키지 설치 · 업데이트 확인 · 실행을 한 번에 처리합니다.
+업데이트는 **묻고 나서** 받으며, `.env` 와 `data/` 는 건드리지 않습니다.
+릴리스 zip 에도 함께 들어갑니다 — 자세한 내용은 [RELEASE.md](RELEASE.md#업데이트--물어보고-받습니다) 참고.
 
 데이터는 실행 위치 기준 `data/` 아래에 쌓입니다
 (`wishes.json` · `nicknames.json` · `timeouts.json` · `tasalbeo.json` · `attendance.json`).
