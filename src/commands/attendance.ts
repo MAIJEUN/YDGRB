@@ -7,8 +7,16 @@ import {
 
 import { MAX_TEXT_LENGTH } from "../attendance/ids.js";
 import { renderText } from "../attendance/image.js";
-import { attachMessage, clearToday, dateKey, getToday, setToday, topAttender } from "../attendance/store.js";
-import { IMAGE_NAME, todayView } from "../attendance/views.js";
+import {
+  addExtra,
+  attachMessage,
+  clearToday,
+  dateKey,
+  getToday,
+  setToday,
+  topAttender,
+} from "../attendance/store.js";
+import { IMAGE_NAME, alreadyView, todayView } from "../attendance/views.js";
 import { logger } from "../logger.js";
 import { channelMessage, editResponse, response } from "../ui/response.js";
 import { defineCommand } from "../types.js";
@@ -64,26 +72,6 @@ export default defineCommand({
       return;
     }
 
-    // 하루에 한 번.
-    const already = await getToday(interaction.guildId);
-    if (already !== null) {
-      // 「오늘의 출헉」 자체를 링크로 건다. 링크를 못 만들면 글자만 남는다.
-      const label =
-        already.messageId === null
-          ? "오늘의 출헉"
-          : `[오늘의 출헉](https://discord.com/channels/${interaction.guildId}/${already.channelId}/${already.messageId})`;
-
-      await interaction.reply(
-        response({
-          status: "failure",
-          title: "오늘은 이미 올렸습니다",
-          description: `${label}이 이미 올라와 있어요.`,
-          user: interaction.user,
-        }),
-      );
-      return;
-    }
-
     const text = interaction.options.getString(OPTION.text, true).trim();
     if (text === "") {
       await interaction.reply(
@@ -94,6 +82,23 @@ export default defineCommand({
           user: interaction.user,
         }),
       );
+      return;
+    }
+
+    // 하루에 한 번. 그래도 올리고 싶으면 버튼으로 — 대신 출헉으로 세지 않는다.
+    const already = await getToday(interaction.guildId);
+    if (already !== null) {
+      // 「오늘의 출헉」 자체를 링크로 건다. 링크를 못 만들면 글자만 남는다.
+      const label =
+        already.messageId === null
+          ? "오늘의 출헉"
+          : `[오늘의 출헉](https://discord.com/channels/${interaction.guildId}/${already.channelId}/${already.messageId})`;
+
+      // 방금 적은 글자를 덤 자리에 담아 둔다 — 버튼을 누르면 그대로 올라간다.
+      // customId 에 글자를 실을 수는 없다. 그게 곧 정답이다.
+      const extra = await addExtra(interaction.guildId, text);
+
+      await interaction.reply(response(alreadyView(label, extra.id, interaction.user)));
       return;
     }
 

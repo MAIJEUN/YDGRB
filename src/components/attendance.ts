@@ -1,10 +1,26 @@
-import { LabelBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } from "discord.js";
+import {
+  AttachmentBuilder,
+  LabelBuilder,
+  ModalBuilder,
+  PermissionFlagsBits,
+  TextInputBuilder,
+  TextInputStyle,
+} from "discord.js";
 
-import { ACTION, ATTENDANCE, FIELD, MAX_TEXT_LENGTH, MODAL_ID, REWARD_EVERY, REWARD_FRAGMENTS } from "../attendance/ids.js";
-import { checkIn, getToday } from "../attendance/store.js";
-import { successView } from "../attendance/views.js";
+import {
+  ACTION,
+  ATTENDANCE,
+  FIELD,
+  MAX_TEXT_LENGTH,
+  MODAL_ID,
+  REWARD_EVERY,
+  REWARD_FRAGMENTS,
+} from "../attendance/ids.js";
+import { renderText } from "../attendance/image.js";
+import { checkIn, getExtra, getToday } from "../attendance/store.js";
+import { IMAGE_NAME, extraSuccessView, successView, todayView } from "../attendance/views.js";
 import { logger } from "../logger.js";
-import { response } from "../ui/response.js";
+import { channelMessage, response } from "../ui/response.js";
 import { customId, defineComponentHandler, type ComponentInteraction } from "../types.js";
 import { formatBalanceChange } from "../wish/format.js";
 import { applyBalanceChange } from "../wish/store.js";
@@ -12,26 +28,35 @@ import { applyBalanceChange } from "../wish/store.js";
 /**
  * 출헉 버튼과 받아쓰기 모달.
  *
- * 버튼은 오늘의 출헉 메시지에 붙어 있고, 그 메시지는 봇을 재시작해도 그대로 남는다.
- * customId 에 상태를 싣지 않고 저장된 「오늘의 출헉」을 그때그때 읽으므로,
+ * 버튼은 출헉 메시지에 붙어 있고, 그 메시지는 봇을 재시작해도 그대로 남는다.
+ * customId 에 정답을 싣지 않고 저장된 것을 그때그때 읽으므로,
  * 어제 메시지의 버튼을 눌러도 오늘 것으로 판정되지 않는다.
+ *
+ * 덤(「그래도 계속」으로 올린 것)은 id 를 customId 에 실어 구분한다.
+ * 받아쓰기는 똑같이 하지만 출헉으로 세지 않는다.
  */
 export default defineComponentHandler({
   namespace: ATTENDANCE,
   async execute(interaction, args) {
+    const [action, extraId] = args;
+
     const guildId = interaction.guildId;
     if (guildId === null) {
       await fail(interaction, "서버 전용", "이 기능은 서버 안에서만 쓸 수 있어요.");
       return;
     }
 
-    switch (args[0]) {
+    switch (action) {
       case ACTION.check:
-        await openModal(interaction, guildId);
+        await openAnswerModal(interaction, guildId, extraId);
         return;
 
-      case MODAL_ID.check:
-        await submit(interaction, guildId);
+      case ACTION.again:
+        await postExtra(interaction, guildId, extraId);
+        return;
+
+      case MODAL_ID.answer:
+        await submitAnswer(interaction, guildId, extraId);
         return;
 
       default:
@@ -53,10 +78,18 @@ async function fail(
   );
 }
 
-/** 받아쓰기 모달. 정답은 여기 싣지 않는다 — 모달 내용은 클라이언트가 다 볼 수 있다. */
-function checkModal(): ModalBuilder {
+// ─────────────────────────────────────────────────────────────
+// 받아쓰기
+// ─────────────────────────────────────────────────────────────
+
+/** 정답은 여기 싣지 않는다 — 모달 내용은 클라이언트가 다 볼 수 있다. */
+function answerModal(extraId: string | undefined): ModalBuilder {
   return new ModalBuilder()
-    .setCustomId(customId(ATTENDANCE, MODAL_ID.check))
+    .setCustomId(
+      extraId === undefined
+        ? customId(ATTENDANCE, MODAL_ID.answer)
+        : customId(ATTENDANCE, MODAL_ID.answer, extraId),
+    )
     .setTitle("출헉")
     .addLabelComponents(
       new LabelBuilder()
@@ -71,16 +104,26 @@ function checkModal(): ModalBuilder {
     );
 }
 
-async function openModal(interaction: ComponentInteraction, guildId: string): Promise<void> {
+/** 이 버튼이 가리키는 글자. 오늘 것이 아니면 null. */
+async function textOf(guildId: string, extraId: string | undefined): Promise<string | null> {
+  if (extraId !== undefined) return (await getExtra(guildId, extraId))?.text ?? null;
+  return (await getToday(guildId))?.text ?? null;
+}
+
+async function openAnswerModal(
+  interaction: ComponentInteraction,
+  guildId: string,
+  extraId: string | undefined,
+): Promise<void> {
   if (!interaction.isButton()) return;
 
   // 어제 메시지의 버튼일 수 있다.
-  if ((await getToday(guildId)) === null) {
-    await fail(interaction, "오늘의 출헉이 없습니다", "관리자가 오늘의 출헉을 올리면 참여할 수 있어요.");
+  if ((await textOf(guildId, extraId)) === null) {
+    await fail(interaction, "지난 출헉입니다", "오늘 올라온 출헉에서만 참여할 수 있어요.");
     return;
   }
 
-  await interaction.showModal(checkModal());
+  await interaction.showModal(answerModal(extraId));
 }
 
 /** 받아 적은 글자를 견준다. 앞뒤 공백만 봐 주고 나머지는 그대로 맞아야 한다. */
@@ -88,18 +131,27 @@ function matches(answer: string, text: string): boolean {
   return answer.trim() === text.trim();
 }
 
-async function submit(interaction: ComponentInteraction, guildId: string): Promise<void> {
+async function submitAnswer(
+  interaction: ComponentInteraction,
+  guildId: string,
+  extraId: string | undefined,
+): Promise<void> {
   if (!interaction.isModalSubmit()) return;
 
-  const today = await getToday(guildId);
-  if (today === null) {
-    await fail(interaction, "오늘의 출헉이 없습니다", "관리자가 오늘의 출헉을 올리면 참여할 수 있어요.");
+  const text = await textOf(guildId, extraId);
+  if (text === null) {
+    await fail(interaction, "지난 출헉입니다", "오늘 올라온 출헉에서만 참여할 수 있어요.");
     return;
   }
 
-  const answer = interaction.fields.getTextInputValue(FIELD.answer);
-  if (!matches(answer, today.text)) {
+  if (!matches(interaction.fields.getTextInputValue(FIELD.answer), text)) {
     await fail(interaction, "출헉 실패", "적은 글자가 이미지와 다릅니다. 다시 확인해 주세요.");
+    return;
+  }
+
+  // 덤은 맞혀도 출헉으로 세지 않는다.
+  if (extraId !== undefined) {
+    await interaction.reply(response(extraSuccessView(interaction.user)));
     return;
   }
 
@@ -119,6 +171,57 @@ async function submit(interaction: ComponentInteraction, guildId: string): Promi
     else logger.warn(`출헉: 조각을 주지 못했습니다 (${interaction.user.id})`);
   }
 
-  // 성공은 모두가 보게 남긴다 (successView 가 ephemeral: false 로 만든다).
+  // 성공은 누른 사람에게만 보인다 (response 기본값이 나만 보기).
   await interaction.reply(response(successView(result.record, rewarded, interaction.user)));
+}
+
+// ─────────────────────────────────────────────────────────────
+// 그래도 계속 — 기록되지 않는 덤을 하나 더
+// ─────────────────────────────────────────────────────────────
+
+async function postExtra(
+  interaction: ComponentInteraction,
+  guildId: string,
+  extraId: string | undefined,
+): Promise<void> {
+  if (!interaction.isButton()) return;
+
+  // 버튼은 관리자에게만 갔지만, 눌린 것을 그대로 믿지 않는다.
+  if (interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) !== true) {
+    await fail(interaction, "권한이 없습니다", "출헉은 **관리자** 권한을 가진 사람만 올릴 수 있어요.");
+    return;
+  }
+
+  const extra = extraId === undefined ? null : await getExtra(guildId, extraId);
+  if (extra === null) {
+    await fail(interaction, "올릴 수 없습니다", "올릴 내용을 찾지 못했어요. 명령을 다시 써 주세요.");
+    return;
+  }
+
+  const channel = interaction.channel;
+  if (channel === null || !channel.isSendable()) {
+    await fail(interaction, "출헉 실패", "이 채널에 메시지를 보낼 수 없어요.");
+    return;
+  }
+
+  await interaction.deferUpdate();
+
+  try {
+    await channel.send({
+      ...channelMessage(todayView(null, interaction.user, extra.id)),
+      files: [new AttachmentBuilder(renderText(extra.text), { name: IMAGE_NAME })],
+    });
+  } catch (error) {
+    logger.error("출헉 덤 올리기 실패", error);
+
+    await interaction.followUp(
+      response({
+        status: "failure",
+        title: "출헉 실패",
+        description: "출헉을 올리지 못했습니다.",
+        error,
+        user: interaction.user,
+      }),
+    );
+  }
 }

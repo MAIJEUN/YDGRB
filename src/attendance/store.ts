@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import path from "node:path";
 
 import { JsonFile } from "../storage/json-file.js";
@@ -30,9 +31,22 @@ export interface TodayCheck {
   messageId: string | null;
 }
 
+/**
+ * 오늘 이미 출헉이 올라온 뒤에 「그래도 계속」으로 올린 덤.
+ *
+ * 받아쓰기는 똑같이 하지만 **출헉으로 세지 않는다.** 그래서 오늘의 출헉과 따로 둔다.
+ * 여러 개 올릴 수 있으므로 id 로 구분하고, 버튼 customId 에 그 id 를 싣는다.
+ */
+export interface ExtraCheck {
+  id: string;
+  date: string;
+  text: string;
+}
+
 interface GuildAttendance {
   today: TodayCheck | null;
   records: Record<string, AttendanceRecord>;
+  extras: Record<string, ExtraCheck>;
 }
 
 interface AttendanceData {
@@ -45,8 +59,12 @@ const file = new JsonFile<AttendanceData>(
 );
 
 function guildOf(data: AttendanceData, guildId: string): GuildAttendance {
-  data.guilds[guildId] ??= { today: null, records: {} };
-  return data.guilds[guildId];
+  const guild = (data.guilds[guildId] ??= { today: null, records: {}, extras: {} });
+
+  // 예전 파일에는 extras 가 없다.
+  guild.extras ??= {};
+
+  return guild;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -137,6 +155,39 @@ export async function checkIn(
 
     return { ok: true, record, rewarded: record.total % rewardEvery === 0 } as const;
   });
+}
+
+// ─────────────────────────────────────────────────────────────
+// 덤 — 「그래도 계속」으로 올린 것. 받아쓰기는 되지만 출헉으로 세지 않는다.
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * 덤 자리를 하나 잡아 둔다.
+ *
+ * 글자를 customId 에 실을 수는 없다 — 그게 곧 정답이고, customId 는 누구나 볼 수 있다.
+ * 그래서 여기에 저장하고 id 만 버튼에 싣는다.
+ */
+export async function addExtra(guildId: string, text: string): Promise<ExtraCheck> {
+  const extra: ExtraCheck = { id: randomBytes(4).toString("hex"), date: dateKey(), text };
+
+  await file.update((data) => {
+    const guild = guildOf(data, guildId);
+
+    // 지난 날 것은 치운다. 안 그러면 계속 쌓이기만 한다.
+    for (const [id, old] of Object.entries(guild.extras)) {
+      if (old.date !== extra.date) delete guild.extras[id];
+    }
+
+    guild.extras[extra.id] = extra;
+  });
+
+  return extra;
+}
+
+/** 오늘 올린 덤만 돌려준다. 어제 메시지의 버튼을 눌러도 통하지 않게. */
+export async function getExtra(guildId: string, id: string): Promise<ExtraCheck | null> {
+  const extra = (await file.read()).guilds[guildId]?.extras?.[id];
+  return extra !== undefined && extra.date === dateKey() ? extra : null;
 }
 
 export async function getRecord(
