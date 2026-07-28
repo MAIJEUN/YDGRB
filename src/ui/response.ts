@@ -34,17 +34,22 @@ import { describeError } from "../errors.js";
  *   3. 색은 네 가지뿐 — 초록(완료) · 노랑(끝나지 않음) · 빨강(실패) · 파랑(정보/알림)
  *      노랑은 **아직 도는 중**이거나 **온전히 끝나지 못한** 것에 쓴다 —
  *      진행 중 · 중간에 취소됨 · 일부만 실패. 전부 실패면 빨강이다.
- *   4. 순서는 아래 고정:
+ *   4. 순서:
  *
- *        제목 (명령어 이름)
+ *        제목 (명령어 이름)          ← 고정
  *        내용   — 오류가 있으면 `코드` 형식으로 최대 3줄
  *        변동 (권한, 소원권 갯수 …)
  *        ── 가로줄 (이미지가 있을 때만)
- *        이미지 묶음 / 첨부파일
+ *        이미지 묶음 / 첨부파일       ← 권장
  *        ── 가로줄 (인터랙션이 있을 때만)
- *        인터랙션
+ *        인터랙션                    ← 권장
  *        ── 가로줄
- *        footer (@유저)
+ *        footer (@유저)             ← 고정
+ *
+ *      **이미지와 인터랙션의 자리는 권장일 뿐이다.** 그 명령·시스템에 더 어울리는 배치가
+ *      있으면 마음대로 놓아도 된다 — `order` 로 둘의 순서를 바꾸거나,
+ *      `thumbnail`·`accessoryButton` 으로 본문 옆에 붙일 수 있다.
+ *      고정인 것은 **제목·내용·변동이 맨 위, footer 가 가로줄 아래 맨 끝**이라는 것뿐이다.
  *
  *   5. 유저와 역할을 가리킬 때는 항상 멘션을 쓴다. 이름을 글자로 적지 않는다.
  *      footer 만 예외 — 규칙이 `@유저` 텍스트다.
@@ -64,9 +69,6 @@ import { describeError } from "../errors.js";
  *   9. **내용에 이미 나온 대상을 변동 칸에 또 적지 않는다.**
  *      「<@마이즌> 님을 타임아웃했습니다」 밑에 「대상: <@마이즌>」 을 두지 않는다.
  *      내용이 대상을 말하지 않을 때만(실패 이유 등) 칸으로 둔다.
- *
- * 예외 하나 — `/서ser버ber정jung보bow` 와 `/프로필쀼` 는 정보를 늘어놓는 **카드**라서
- * 4번(이미지는 가로줄 아래)을 지키지 않는다. 아이콘·아바타는 `thumbnail` 로 본문 옆에 붙인다.
  */
 
 export type Status = "success" | "failure" | "progress" | "info";
@@ -124,18 +126,29 @@ export interface MessageOptions {
   /**
    * 본문 **오른쪽**에 붙는 작은 이미지.
    *
-   * 순서 규칙(이미지는 가로줄 아래)의 **예외**다. `/서ser버ber정jung보bow` 와 `/프로필쀼` 만 쓴다 —
-   * 그 둘은 정보를 늘어놓는 카드라서, 아이콘·아바타가 본문 옆에 붙어야 카드처럼 읽힌다.
+   * 이미지를 가로줄 아래에 크게 두는 대신 쓴다 — 정보를 늘어놓는 카드(서버 정보·프로필)는
+   * 아이콘·아바타가 본문 옆에 붙어야 카드처럼 읽힌다.
    *
    * 액세서리 자리는 하나뿐이라 `accessoryButton` 과 같이 쓸 수 없다. 버튼이 있으면 버튼이 이긴다.
    */
   readonly thumbnail?: string;
+  /**
+   * 이미지와 인터랙션을 놓는 순서. 기본은 이미지가 먼저다.
+   *
+   * 그 명령에 더 어울리는 배치가 있으면 뒤집어도 된다 — 예를 들어 버튼을 먼저 보여 주고
+   * 그림을 아래에 깔고 싶으면 `["rows", "images"]`.
+   * 적지 않은 것은 뒤에 기본 순서대로 붙으므로 하나만 적어도 된다.
+   */
+  readonly order?: readonly ("images" | "rows")[];
   /** 기본값 true. 채널에 공개로 남겨야 하는 메시지만 false. */
   readonly ephemeral?: boolean;
 }
 
 /** MediaGallery 한 개에 들어갈 수 있는 최대 항목 수. */
 const MAX_GALLERY_ITEMS = 10;
+
+/** 권장 순서 — 이미지 다음 인터랙션. `order` 로 바꿀 수 있다. */
+const BLOCK_ORDER = ["images", "rows"] as const;
 
 /**
  * footer 표기는 이름만. 프로필 사진은 넣지 않는다.
@@ -214,26 +227,35 @@ export function buildContainer(options: MessageOptions): ContainerBuilder {
 
   const images = (options.images ?? []).slice(0, MAX_GALLERY_ITEMS);
   const files = options.files ?? [];
-
-  if (images.length > 0 || files.length > 0) {
-    container.addSeparatorComponents(divider());
-  }
-
-  if (images.length > 0) {
-    container.addMediaGalleryComponents(
-      new MediaGalleryBuilder().addItems(images.map((url) => new MediaGalleryItemBuilder().setURL(url))),
-    );
-  }
-
-  for (const url of files) {
-    container.addFileComponents(new FileBuilder().setURL(url));
-  }
-
   const rows = options.rows ?? [];
-  if (rows.length > 0) {
-    container.addSeparatorComponents(divider());
-    container.addActionRowComponents(...rows);
-  }
+
+  const block = {
+    images: () => {
+      if (images.length === 0 && files.length === 0) return;
+
+      container.addSeparatorComponents(divider());
+
+      if (images.length > 0) {
+        container.addMediaGalleryComponents(
+          new MediaGalleryBuilder().addItems(
+            images.map((url) => new MediaGalleryItemBuilder().setURL(url)),
+          ),
+        );
+      }
+
+      for (const url of files) container.addFileComponents(new FileBuilder().setURL(url));
+    },
+
+    rows: () => {
+      if (rows.length === 0) return;
+
+      container.addSeparatorComponents(divider());
+      container.addActionRowComponents(...rows);
+    },
+  };
+
+  // 적지 않은 것은 뒤에 기본 순서대로 붙는다 — 하나만 적어도 나머지가 사라지지 않게.
+  for (const name of [...new Set([...(options.order ?? []), ...BLOCK_ORDER])]) block[name]();
 
   container.addSeparatorComponents(divider());
   container.addTextDisplayComponents(
