@@ -8,12 +8,18 @@ rem  middle of the file shifts those offsets, which cuts multi-byte
 rem  lines in half and makes cmd run the leftover as a command.
 rem  So: switch the code page first, then re-run this file. The whole
 rem  script is then parsed under one code page.
+rem
+rem  The run-and-exit below is ONE line on purpose. cmd reads a whole
+rem  line into memory before running it, so once this line is read the
+rem  file may be replaced underneath us without derailing what follows.
+rem  An update does exactly that. Do not split it back into two lines.
+rem  (exit /b takes no code here: %errorlevel% would be expanded when
+rem  the line is read, which is before the child has even started.)
 rem ---------------------------------------------------------------
 if "%YDGRB_UTF8%"=="1" goto main
 set "YDGRB_UTF8=1"
 chcp 65001 >nul
-cmd /d /s /c ""%~f0" %*"
-exit /b %errorlevel%
+cmd /d /s /c ""%~f0" %*" & exit /b
 
 :main
 cd /d "%~dp0"
@@ -175,11 +181,15 @@ REM ---------------------------------------------------------------
 REM  업데이트 확인
 REM
 REM  GitHub 최신 릴리스의 태그를 VERSION 파일과 견준다.
-REM  받겠다고 하면 zip 을 받아 풀고, 덮어쓰기는 임시 폴더의 도우미가 한다 —
-REM  실행 중인 run.bat 을 자기 자신이 덮어쓸 수는 없기 때문이다.
+REM  받겠다고 하면 이 창에서 그대로 받아 풀고 덮어쓴다 — 새 창을 띄우지 않는다.
 REM ---------------------------------------------------------------
 
 :check_update
+if defined YDGRB_UPDATED (
+    REM  방금 업데이트하고 다시 켜진 참이다. 또 물어볼 이유가 없다.
+    goto :eof
+)
+
 if not exist "VERSION" (
     REM  소스에서 바로 돌리는 경우. 견줄 값이 없으니 조용히 넘어간다.
     goto :eof
@@ -219,12 +229,9 @@ if /i not "%ANSWER%"=="Y" (
     goto :eof
 )
 
-goto :do_update
-
 :do_update
 set "ZIP=%TEMP%\YDGRB%LATEST%.zip"
 set "UNPACK=%TEMP%\ydgrb-update"
-set "HELPER=%TEMP%\ydgrb-apply.bat"
 
 echo.
 echo  [*] 내려받는 중...
@@ -244,24 +251,43 @@ if errorlevel 1 (
     goto :eof
 )
 
-REM  덮어쓰기는 이 창이 닫힌 뒤에 해야 한다. 도우미를 만들어 넘긴다.
-REM  ^> ^& %% 는 지금 실행되지 않고 파일에 그대로 적히도록 escape 한 것이다.
-REM
+REM  지금 실행 중이라 덮어쓸 수 없는 파일은 run.bat **하나뿐**이다.
+REM  그것만 빼 두면 나머지는 이 창에서 지금 그대로 옮길 수 있다.
+if exist "%UNPACK%\run.bat" move /y "%UNPACK%\run.bat" "%UNPACK%\run.bat.new" >nul
+
+echo  [*] 적용하는 중...
+xcopy /e /i /y "%UNPACK%\*" "%CD%\" >nul
+if errorlevel 1 (
+    echo  [X] 파일을 옮기지 못했습니다. 그냥 진행합니다.
+    goto :eof
+)
+
 REM  VERSION 은 zip 에 든 것을 덮어쓰고 나서 방금 받은 태그로 다시 적는다 —
 REM  zip 에 VERSION 이 빠져 있어도 버전이 어긋나 매번 다시 묻는 일이 없도록.
-(
-    echo @echo off
-    echo chcp 65001 ^>nul
-    echo ping -n 3 127.0.0.1 ^>nul
-    echo xcopy /e /i /y "%UNPACK%\*" "%CD%\" ^>nul
-    echo ^<nul set /p "=%LATEST%"^> "%CD%\VERSION"
-    echo echo 1^> "%CD%\.update-applied"
-    echo rd /s /q "%UNPACK%"
-    echo del /q "%ZIP%"
-    echo start "" "%CD%\run.bat"
-    echo ^(goto^) 2^>nul ^& del "%%~f0"
-) > "%HELPER%"
+<nul set /p "=%LATEST%">"%CD%\VERSION"
 
-echo  [*] 적용하고 다시 시작합니다.
-start "" "%HELPER%"
-exit /b 0
+REM  새 버전에서 의존성이 늘었을 수 있다. 다시 켜질 때 npm ci 를 돌리라는 표식.
+> "%CD%\.update-applied" echo 1
+
+rd /s /q "%UNPACK%" 2>nul
+del /q "%ZIP%" 2>nul
+
+echo  [*] 다시 시작합니다.
+echo.
+set "YDGRB_UPDATED=1"
+
+REM ---------------------------------------------------------------
+REM  아래 한 줄이 핵심이다. 셋을 한 줄에 몰아넣었다 —
+REM    ① run.bat 을 새것으로 바꾸고  ② 그것을 이 창에서 실행하고  ③ 끝낸다.
+REM
+REM  cmd 는 배치를 줄 단위로 읽어 들인 뒤 실행한다. 이 줄을 읽은 다음에는
+REM  run.bat 이 바뀌어도 뒤따르는 명령이 흔들리지 않는다. 줄을 나누면
+REM  바뀐 파일을 옛 위치부터 다시 읽어 엉뚱한 것을 실행하게 된다.
+REM
+REM  `start` 를 쓰지 않으므로 새 창이 뜨지 않는다 — 이 창에서 그대로 이어진다.
+REM
+REM  exit /b 가 아니라 exit 인 이유: 여기는 call :check_update 로 불려 온
+REM  서브루틴 안이라, exit /b 는 :menu 로 돌아가 버린다. 그러면 이미 바뀐
+REM  run.bat 을 옛 위치부터 읽게 된다. 이 프로세스는 여기서 끝나야 한다.
+REM ---------------------------------------------------------------
+if exist "%CD%\run.bat.new" move /y "%CD%\run.bat.new" "%~f0" >nul & cmd /d /s /c ""%~f0" %*" & exit
