@@ -12,6 +12,8 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
+    "pretest": "npm run build",
+    "test": "node scripts/checks/run.mjs",
     "deploy": "tsx src/deploy-commands.ts",
     "ship": "node scripts/ship.mjs",
     "version:next": "node scripts/version.mjs"

@@ -52,6 +52,11 @@ jobs:
       - name: 빌드
         run: npm run build
 
+      # 규칙을 어긴 코드가 릴리스로 나가지 않게 여기서 막는다.
+      # (cmd.exe 가 필요한 run.bat 검사는 리눅스에서 알아서 건너뛴다)
+      - name: 검사
+        run: node scripts/checks/run.mjs
+
       - name: 버전 계산
         id: version
         run: |

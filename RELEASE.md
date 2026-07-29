@@ -270,9 +270,13 @@ npm ci --omit=dev
 | [scripts/release-notes.mjs](scripts/release-notes.mjs) | 커밋에서 릴리스 설명 생성 |
 | [scripts/notify-discord.mjs](scripts/notify-discord.mjs) | 디스코드 웹훅 알림 (시작/결과) |
 | [scripts/ship.mjs](scripts/ship.mjs) | 로컬에서 검사 후 커밋·푸시 |
+| [scripts/checks/](scripts/checks/) | 검증 스크립트 (`npm test`) — [README](README.md#검사--npm-test) |
 
 `scripts/` 는 TypeScript 빌드 대상이 아닙니다. CI 에서 `npm ci` 전에도 돌아야 해서
 의존성 없는 순수 Node 스크립트(`.mjs`)로 두었습니다.
+
+워크플로는 **빌드 다음, 릴리스 만들기 전에** `scripts/checks/run.mjs` 를 돌립니다.
+규칙을 어긴 코드가 zip 으로 나가지 않게 하려는 것이라, 검사가 깨지면 배포가 멈춥니다.
 
 ---
 

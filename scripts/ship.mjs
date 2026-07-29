@@ -47,6 +47,10 @@ run("npm", ["run", "typecheck"], { shell: process.platform === "win32" });
 console.log("▶ 빌드");
 run("npm", ["run", "build"], { shell: process.platform === "win32" });
 
+// CI 도 릴리스 전에 같은 것을 돌린다. 여기서 먼저 걸러야 왕복이 줄어든다.
+console.log("▶ 검사");
+run(process.execPath, ["scripts/checks/run.mjs"]);
+
 console.log("▶ 커밋");
 run("git", ["add", "-A"]);
 
