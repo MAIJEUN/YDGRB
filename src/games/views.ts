@@ -13,12 +13,11 @@ import { maxPlayersOf, minPlayersOf, sessionTitle } from "./types.js";
  * 미니게임 화면.
  *
  * 색은 판이 어디까지 왔는지를 그대로 따른다 —
- *   모집 중 · 진행 중 · 인원 미달로 접힘 → **노랑** (아직 도는 중이거나 온전히 끝나지 못함)
- *   끝남                              → **초록**
- *   열지 못함                          → **빨강**
- *   목록                              → **파랑**
+ *   모집 중 · 진행 중 · 취소됨 → **노랑** (아직 도는 중이거나 온전히 끝나지 못함)
+ *   끝남                     → **초록**
+ *   열지 못함                 → **빨강**
  *
- * 게임이 직접 화면을 만들지 않고 결과만 넘기게 해서, 게임을 몇 개를 붙이든
+ * 게임이 직접 화면을 만들지 않고 내용과 결과만 넘기게 해서, 게임을 몇 개를 붙이든
  * 형식이 갈라지지 않게 한다.
  */
 
@@ -32,7 +31,7 @@ function playerList(players: readonly string[]): string {
   return shown.join(" ");
 }
 
-/** `**3명** / 최소 2명 · 최대 6명` — 최대가 없으면 그렇게 적는다. */
+/** `**3명** (최소 2명 · 최대 6명)` — 최대가 없으면 그렇게 적는다. */
 function headcount(game: GameDefinition, session: GameSession): string {
   const max = maxPlayersOf(game);
   const limits = [`최소 **${minPlayersOf(game)}명**`, max === null ? "최대 없음" : `최대 **${max}명**`];
@@ -40,9 +39,19 @@ function headcount(game: GameDefinition, session: GameSession): string {
   return `**${count(session.players.length)}명** _(${limits.join(" · ")})_`;
 }
 
-function recruitRows(
-  session: GameSession,
-): ActionRowBuilder<MessageActionRowComponentBuilder>[] {
+/** 게임이 판마다 다른 내용을 줬으면 그것, 아니면 게임 설명. */
+function body(game: GameDefinition, session: GameSession): string {
+  return session.body ?? game.description;
+}
+
+/** 마감·종료 시각. 없으면 칸을 만들지 않는다. */
+function deadline(session: GameSession, name: string): ResponseField[] {
+  return session.closesAt === null
+    ? []
+    : [{ name, value: atWithCountdown(new Date(session.closesAt)) }];
+}
+
+function recruitRows(session: GameSession): ActionRowBuilder<MessageActionRowComponentBuilder>[] {
   return [
     new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
       new ButtonBuilder()
@@ -74,12 +83,10 @@ export function recruitView(
   return {
     status: "progress",
     title: `${sessionTitle(game, session)} — 모집 중`,
-    description: game.description,
+    description: body(game, session),
     fields: [
       { name: "인원", value: headcount(game, session) },
-      ...(session.closesAt === null
-        ? []
-        : [{ name: "마감", value: atWithCountdown(new Date(session.closesAt)) }]),
+      ...deadline(session, "마감"),
       { name: "참가한 사람", value: playerList(session.players) },
     ],
     rows: recruitRows(session),
@@ -88,7 +95,12 @@ export function recruitView(
   };
 }
 
-/** 판이 시작됐다. 모집 패널을 이걸로 갈아 끼운다. */
+/**
+ * 판이 시작됐다. 모집 패널을 이걸로 갈아 끼우고, 즉시 시작 게임은 이게 첫 화면이다.
+ *
+ * 참가자 칸은 **모집 게임만** 둔다 — 즉시 시작은 하면서 들어오는 것이라, 시작하는 순간에
+ * 늘어놓아 봐야 연 사람 하나뿐이다.
+ */
 export function startedView(
   game: GameDefinition,
   session: GameSession,
@@ -97,9 +109,17 @@ export function startedView(
   return {
     status: "progress",
     title: `${sessionTitle(game, session)} — 시작`,
-    description: game.description,
+    description: body(game, session),
     fields: [
-      { name: `참가한 사람 (${count(session.players.length)}명)`, value: playerList(session.players) },
+      ...deadline(session, "종료"),
+      ...(game.mode === "recruit"
+        ? [
+            {
+              name: `참가한 사람 (${count(session.players.length)}명)`,
+              value: playerList(session.players),
+            },
+          ]
+        : []),
     ],
     user: host,
     ephemeral: false,
@@ -133,7 +153,7 @@ export function endedView(
   };
 }
 
-/** 접힌 판 — 사람이 접었거나, 마감까지 인원이 안 찼거나, 봇이 꺼졌거나. */
+/** 취소된 판 — 사람이 접었거나, 5분이 지났거나, 봇이 꺼졌거나. */
 export function cancelledView(
   game: GameDefinition,
   session: GameSession,
@@ -142,9 +162,9 @@ export function cancelledView(
 ): MessageOptions {
   return {
     status: "progress",
-    title: `${sessionTitle(game, session)} — 접힘`,
+    title: `${sessionTitle(game, session)} — 취소`,
     description: reason,
-    fields: [{ name: "인원", value: headcount(game, session) }],
+    fields: session.phase === "recruiting" ? [{ name: "인원", value: headcount(game, session) }] : [],
     user: host,
     ephemeral: false,
   };
@@ -158,22 +178,4 @@ export function refusedView(title: string, description: string, user: User): Mes
 /** 짧은 알림 — 참가했다 · 나갔다처럼 누른 사람에게만 보이는 것. */
 export function noticeView(title: string, description: string, user: User): MessageOptions {
   return { status: "success", title, description, user };
-}
-
-const MODE_LABEL = { recruit: "모집", instant: "즉시 시작" } as const;
-
-export function listView(games: readonly GameDefinition[], user: User): MessageOptions {
-  return {
-    status: "info",
-    title: "게임",
-    description: games.length === 0 ? "아직 등록된 게임이 없습니다." : undefined,
-    fields:
-      games.length === 0
-        ? []
-        : games.map((game) => ({
-            name: `${game.name} _(${MODE_LABEL[game.mode]})_`,
-            value: `\`${game.id}\` — ${game.description}`,
-          })),
-    user,
-  };
 }

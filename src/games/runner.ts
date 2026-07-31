@@ -3,11 +3,7 @@ import type { Client, GuildTextBasedChannel, Message, User } from "discord.js";
 import { logger } from "../logger.js";
 import { channelMessage, messageEdit } from "../ui/response.js";
 import type { MessageOptions } from "../ui/response.js";
-import {
-  DEFAULT_RECRUIT_SECONDS,
-  MAX_RECRUIT_SECONDS,
-  MIN_RECRUIT_SECONDS,
-} from "./ids.js";
+import { RECRUIT_TIMEOUT_SECONDS } from "./ids.js";
 import { getGame } from "./registry.js";
 import { cancelClose, scheduleClose } from "./scheduler.js";
 import {
@@ -29,15 +25,19 @@ import { cancelledView, endedView, recruitView, startedView } from "./views.js";
  * 판 하나의 일생.
  *
  *   열기 → (모집 → 시작) → 진행 → 끝
- *            └ 인원 미달 · 주최자가 접음 · 마감 → 접힘
+ *            └ 5분 지남 · 주최자가 접음 → 취소
  *
  * 게임 파일은 `start()` 안쪽만 신경 쓰면 된다. 사람을 세고 · 화면을 갈아 끼우고 ·
- * 마감을 예약하고 · 재시작을 견디는 일은 전부 여기서 한다.
+ * 시계를 재고 · 재시작을 견디는 일은 전부 여기서 한다.
  */
 
-function recruitSecondsOf(game: GameDefinition): number {
-  const wanted = game.recruitSeconds ?? DEFAULT_RECRUIT_SECONDS;
-  return Math.min(Math.max(wanted, MIN_RECRUIT_SECONDS), MAX_RECRUIT_SECONDS);
+export interface OpenOptions {
+  /** 판 제목. 모든 게임에 있는 선택 칸. */
+  readonly title?: string | null;
+  /** 화면 내용 (퀴즈의 문제 같은 것). 없으면 게임 설명. */
+  readonly body?: string | null;
+  /** 즉시 시작 게임의 진행 시간. 다 되면 `onTimeout` 이 불린다. */
+  readonly durationSeconds?: number | null;
 }
 
 export type OpenResult =
@@ -53,23 +53,29 @@ export async function openGame(
   guildId: string,
   channelId: string,
   host: User,
-  title: string | null = null,
+  options: OpenOptions = {},
 ): Promise<OpenResult> {
   const recruiting = game.mode === "recruit";
+  const duration = options.durationSeconds ?? null;
 
   const session: GameSession = {
     id: newSessionId(),
     gameId: game.id,
     guildId,
     channelId,
-    title,
+    title: options.title ?? null,
+    body: options.body ?? null,
     messageId: null,
     hostId: host.id,
     // 모집 게임도 연 사람은 참가한 것으로 본다. 자기 판에 따로 참가 버튼을 누를 이유가 없다.
     players: [host.id],
     phase: recruiting ? "recruiting" : "playing",
     openedAt: Date.now(),
-    closesAt: recruiting ? Date.now() + recruitSecondsOf(game) * 1000 : null,
+    closesAt: recruiting
+      ? Date.now() + RECRUIT_TIMEOUT_SECONDS * 1000
+      : duration === null
+        ? null
+        : Date.now() + duration * 1000,
   };
 
   const opened = await openSession(session);
@@ -98,11 +104,22 @@ export async function attach(
     return;
   }
 
-  if (withMessage.closesAt !== null) {
-    scheduleClose(session.guildId, session.id, withMessage.closesAt, () => {
-      void closeRecruiting(client, session.guildId, session.id, host);
-    });
-  }
+  armClock(client, withMessage, host);
+}
+
+/**
+ * 시계를 건다.
+ *
+ * 모집 중이면 5분 뒤 **취소**, 진행 중이면 기간이 다 됐을 때 `onTimeout`.
+ */
+function armClock(client: Client, session: GameSession, host: User): void {
+  if (session.closesAt === null) return;
+
+  scheduleClose(session.guildId, session.id, session.closesAt, () => {
+    void (session.phase === "recruiting"
+      ? expireRecruiting(client, session.guildId, session.id, host)
+      : timeOut(client, session.guildId, session.id, host));
+  });
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -129,43 +146,47 @@ export async function join(
   if (!result.ok) return result;
 
   const max = maxPlayersOf(game);
-  return { ok: true, session: result.session, full: max !== null && result.session.players.length >= max };
+
+  // 다 찼으면 기다릴 이유가 없다 — 부르는 쪽이 바로 시작시킨다.
+  return {
+    ok: true,
+    session: result.session,
+    full: max !== null && result.session.players.length >= max,
+  };
 }
 
 export async function leave(guildId: string, sessionId: string, userId: string) {
   return removePlayer(guildId, sessionId, userId);
 }
 
-/** 모집을 끝낸다 — 인원이 찼으면 시작하고, 아니면 접는다. */
-export async function closeRecruiting(
+/**
+ * 모집 시간이 다 됐다 — **취소한다.**
+ *
+ * 인원이 찼더라도 시작하지 않는다. 형식이 「5분 안에 시작되지 않으면 취소」라고 정했고,
+ * 시작하는 것은 사람이 하는 일이다.
+ */
+export async function expireRecruiting(
   client: Client,
   guildId: string,
   sessionId: string,
   host: User,
-  reason = "모집 시간이 끝났습니다.",
+  reason = "5분 안에 시작되지 않아 판을 접었습니다.",
 ): Promise<void> {
   const session = await getSession(guildId, sessionId);
   if (session === undefined || session.phase !== "recruiting") return;
 
+  cancelClose(guildId, sessionId);
+
+  // 단계를 먼저 옮겨 둔다 — 마감 타이머와 「접기」 버튼이 겹쳐도 한 번만 처리되게.
+  const closed = await advance(guildId, sessionId, "recruiting", "ended");
+  if (closed === undefined) return;
+
   const game = getGame(session.gameId);
-  if (game === undefined) {
-    await abort(client, session, "게임을 찾지 못했습니다.", host);
-    return;
+  if (game !== undefined) {
+    await replaceMessage(client, closed, cancelledView(game, closed, host, reason));
   }
 
-  if (session.players.length < minPlayersOf(game)) {
-    cancelClose(guildId, sessionId);
-
-    // 단계를 먼저 옮겨 둔다 — 마감 타이머와 「접기」 버튼이 겹쳐도 한 번만 처리되게.
-    const closed = await advance(guildId, sessionId, "recruiting", "ended");
-    if (closed === undefined) return;
-
-    await replaceMessage(client, closed, cancelledView(game, closed, host, `${reason} 인원이 모자랍니다.`));
-    await dropSession(guildId, sessionId);
-    return;
-  }
-
-  await startNow(client, guildId, sessionId, host);
+  await dropSession(guildId, sessionId);
 }
 
 /** 지금 시작한다. 인원이 모자라면 아무것도 하지 않고 false. */
@@ -203,17 +224,7 @@ export async function cancel(
   const session = await getSession(guildId, sessionId);
   if (session === undefined || session.phase !== "recruiting") return false;
 
-  cancelClose(guildId, sessionId);
-
-  const ended = await advance(guildId, sessionId, "recruiting", "ended");
-  if (ended === undefined) return false;
-
-  const game = getGame(session.gameId);
-  if (game !== undefined) {
-    await replaceMessage(client, ended, cancelledView(game, ended, host, "주최자가 판을 접었습니다."));
-  }
-
-  await dropSession(guildId, sessionId);
+  await expireRecruiting(client, guildId, sessionId, host, "주최자가 판을 접었습니다.");
   return true;
 }
 
@@ -232,6 +243,14 @@ export async function refreshPanel(
 // ─────────────────────────────────────────────────────────────
 // 진행
 // ─────────────────────────────────────────────────────────────
+
+/**
+ * 지금 돌고 있는 판들.
+ *
+ * 채팅으로 겨루는 게임(`onMessage`)에 메시지를 넘기려면 살아 있는 문맥이 있어야 한다.
+ * 진행 중인 판은 재시작을 견디지 않으므로 메모리에만 둔다.
+ */
+const live = new Map<string, { readonly game: GameDefinition; readonly context: GameContext }>();
 
 /** 두 번 끝나지 않게 하는 표식. 게임이 여러 갈래로 끝나도 한 번만 정리된다. */
 const finished = new Set<string>();
@@ -264,6 +283,9 @@ async function beginPlay(
     },
   };
 
+  live.set(session.id, { game, context });
+  armClock(client, session, host);
+
   try {
     await game.start(context);
   } catch (error) {
@@ -272,6 +294,51 @@ async function beginPlay(
       status: "failure",
       description: "게임이 끝까지 돌지 못했습니다.",
     });
+  }
+}
+
+/** 기간이 다 됐다. 게임이 마무리를 맡지 않으면 그냥 끝낸다. */
+async function timeOut(
+  client: Client,
+  guildId: string,
+  sessionId: string,
+  host: User,
+): Promise<void> {
+  const running = live.get(sessionId);
+  if (running === undefined) return;
+
+  try {
+    if (running.game.onTimeout === undefined) await running.context.end();
+    else await running.game.onTimeout(running.context);
+  } catch (error) {
+    logger.error(`게임 ${running.game.id} 마무리 중 오류 (${sessionId})`, error);
+    await running.context.end({ status: "failure", description: "게임이 끝까지 돌지 못했습니다." });
+  }
+
+  // 게임이 end() 를 잊었을 수도 있다. 판을 남겨 두면 그 채널이 영영 막힌다.
+  if (live.has(sessionId)) {
+    const session = await getSession(guildId, sessionId);
+    if (session !== undefined) await end(client, running.game, session, host, undefined);
+  }
+}
+
+/**
+ * 그 채널에서 돌고 있는 판에 메시지를 넘긴다.
+ *
+ * 저장소를 뒤지지 않는다 — 살아 있는 판은 메모리에 있고, 메시지마다 파일을 읽을 수는 없다.
+ */
+export async function handleGameMessage(message: Message<true>): Promise<void> {
+  for (const { game, context } of live.values()) {
+    if (game.onMessage === undefined) continue;
+    if (context.session.channelId !== message.channelId) continue;
+    if (context.session.guildId !== message.guildId) continue;
+
+    try {
+      await game.onMessage(context, message);
+    } catch (error) {
+      logger.error(`게임 ${game.id} 메시지 처리 중 오류 (${context.session.id})`, error);
+    }
+    return;
   }
 }
 
@@ -284,6 +351,9 @@ async function end(
 ): Promise<void> {
   if (finished.has(session.id)) return;
   finished.add(session.id);
+
+  cancelClose(session.guildId, session.id);
+  live.delete(session.id);
 
   try {
     const ended = (await advance(session.guildId, session.id, "playing", "ended")) ?? session;
@@ -331,15 +401,18 @@ export async function restoreGames(
     }
 
     if (session.closesAt === null || session.closesAt <= Date.now()) {
-      // 꺼져 있는 동안 마감이 지났다 — 지금 판정한다.
-      await closeRecruiting(client, session.guildId, session.id, host, "봇이 꺼져 있는 동안 모집이 끝났습니다.");
+      // 꺼져 있는 동안 5분이 지났다.
+      await expireRecruiting(
+        client,
+        session.guildId,
+        session.id,
+        host,
+        "봇이 꺼져 있는 동안 모집 시간이 지났습니다.",
+      );
     } else {
-      scheduleClose(session.guildId, session.id, session.closesAt, () => {
-        void closeRecruiting(client, session.guildId, session.id, host);
-      });
+      armClock(client, session, host);
+      restored += 1;
     }
-
-    restored += 1;
   }
 
   return { restored, aborted };
@@ -352,6 +425,7 @@ async function abort(
   host: User,
 ): Promise<void> {
   cancelClose(session.guildId, session.id);
+  live.delete(session.id);
 
   const game = getGame(session.gameId);
   if (game !== undefined) {

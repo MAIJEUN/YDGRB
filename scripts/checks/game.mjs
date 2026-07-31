@@ -1,14 +1,12 @@
-// 미니게임 골격 검증 — 두 모드 · 모집 · 정원 · 마감 · 재시작 · 화면.
+// 미니게임 형식 검증 — 두 방식 · 모집 · 정원 · 5분 마감 · 재시작 · 제목 · 화면.
 //
-// 게임 자체는 아직 없다. 가짜 게임 셋(모집 · 무제한 모집 · 즉시 시작)을 끼워 넣고
-// 골격이 어떻게 구는지 본다. 실제 게임이 붙으면 이 골격을 그대로 타게 된다.
-import { mkdtempSync, mkdirSync } from "node:fs";
+// 가짜 게임 넷을 끼워 넣고 골격이 어떻게 구는지 본다. 실제 게임(/퀴즈)은 quiz 검사에서.
+import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { DIST, PROJECT, assert, finish } from "./_harness.mjs";
 
-const { readFileSync } = await import("node:fs");
 const read = (rel) => readFileSync(`${PROJECT}/${rel}`, "utf8");
 
 // 저장소는 import 시점의 cwd 로 data/ 를 잡는다.
@@ -16,6 +14,7 @@ const sandbox = mkdtempSync(path.join(tmpdir(), "game-"));
 mkdirSync(path.join(sandbox, "data"));
 process.chdir(sandbox);
 
+const ids = await import(`${DIST}/games/ids.js`);
 const registry = await import(`${DIST}/games/registry.js`);
 const runner = await import(`${DIST}/games/runner.js`);
 const scheduler = await import(`${DIST}/games/scheduler.js`);
@@ -34,8 +33,9 @@ const P4 = "666666666666666666";
 
 const host = { id: HOST, username: "주최자" };
 
-// ── 가짜 게임 셋 ───────────────────────────────────────────
+// ── 가짜 게임들 ────────────────────────────────────────────
 const played = [];
+const heard = [];
 
 registry.registerGame({
   id: "duo",
@@ -44,7 +44,6 @@ registry.registerGame({
   mode: "recruit",
   minPlayers: 2,
   maxPlayers: 3,
-  recruitSeconds: 60,
   start: async (context) => {
     played.push({ id: "duo", players: [...context.session.players] });
     await context.end({ description: "끝났습니다.", fields: [{ name: "이긴 사람", value: `<@${HOST}>` }] });
@@ -64,15 +63,22 @@ registry.registerGame({
   },
 });
 
+// 채팅으로 겨루고 기간이 있는 게임 — 퀴즈와 같은 모양.
 registry.registerGame({
-  id: "now",
-  name: "바로하기",
-  description: "누르면 바로 시작.",
+  id: "chat",
+  name: "받아치기",
+  description: "채널에 적으면 된다.",
   mode: "instant",
-  start: async (context) => {
-    await context.join(P2);
-    played.push({ id: "now", players: [...context.session.players] });
-    await context.end({ description: "바로 끝." });
+  start: () => {},
+  onMessage: async (context, message) => {
+    heard.push(message.content);
+    if (message.content === "정답") {
+      await context.join(message.author.id);
+      await context.end({ description: "맞혔습니다." });
+    }
+  },
+  onTimeout: async (context) => {
+    await context.end({ status: "progress", description: "아무도 못 맞혔습니다." });
   },
 });
 
@@ -122,10 +128,11 @@ function makeClient() {
   };
 }
 
-/** 판을 열고 메시지를 붙이는 것까지 — 커맨드가 하는 일을 흉내 낸다. */
-async function open(client, gameId, channelId = CH, title = null) {
+/** 판을 열고 메시지를 붙이는 것까지 — 게임 커맨드가 하는 일을 흉내 낸다. */
+async function open(client, gameId, options = {}) {
   const game = registry.getGame(gameId);
-  const opened = await runner.openGame(game, G, channelId, host, title);
+  const channelId = options.channelId ?? CH;
+  const opened = await runner.openGame(game, G, channelId, host, options);
   if (!opened.ok) return opened;
 
   const message = await client.makeChannel(channelId).send({ view: opened.view });
@@ -134,20 +141,22 @@ async function open(client, gameId, channelId = CH, title = null) {
   return { ...opened, message, game };
 }
 
-function bodyOf(view) {
+const bodyOf = (view) => {
   const head = buildContainer(view).toJSON().components[0];
   return head.type === 9 ? head.components[0].content : head.content;
-}
+};
+const headOf = (view) => bodyOf(view).split("\n")[0];
 
-// ── 1. 정의 ────────────────────────────────────────────────
-console.log("\n=== 1. 게임 정의 ===");
-assert("모집 · 즉시 두 가지", new Set(registry.allGames().map((g) => g.mode)).size === 2);
-assert("최소 인원 기본은 2", minPlayersOf({ id: "x", name: "x", mode: "recruit" }) === 2);
-assert("최대 인원은 안 적으면 제한 없음", maxPlayersOf({ id: "x", name: "x", mode: "recruit" }) === null);
+// ── 1. 형식 ────────────────────────────────────────────────
+console.log("\n=== 1. 형식 ===");
+assert("방식은 두 가지뿐", new Set(registry.allGames().map((g) => g.mode)).size === 2);
+assert("모집 마감은 5분", ids.RECRUIT_TIMEOUT_SECONDS === 5 * 60, String(ids.RECRUIT_TIMEOUT_SECONDS));
+assert("  └ 게임이 고를 수 없음", !read("src/games/types.ts").includes("recruitSeconds"));
+assert("최소 인원 기본은 2", minPlayersOf({ mode: "recruit" }) === 2);
+assert("최대 인원은 안 적으면 제한 없음", maxPlayersOf({ mode: "recruit" }) === null);
 assert("  └ null 도 제한 없음", maxPlayersOf({ maxPlayers: null }) === null);
 assert("  └ 적으면 그 수", maxPlayersOf({ maxPlayers: 4 }) === 4);
-assert("id 로 찾음", registry.getGame("duo")?.name === "둘이서");
-assert("  └ 없는 id 는 undefined", registry.getGame("없음") === undefined);
+assert("/게임 같은 공통 커맨드는 없음", !read("README.md").includes("/게임 종류"));
 
 // ── 2. 모집 ────────────────────────────────────────────────
 console.log("\n=== 2. 모집 ===");
@@ -157,7 +166,11 @@ console.log("\n=== 2. 모집 ===");
 
   assert("모집 단계로 열림", session.phase === "recruiting", session.phase);
   assert("  └ 연 사람은 이미 참가", session.players.length === 1 && session.players[0] === HOST);
-  assert("  └ 마감 시각이 잡힘", typeof session.closesAt === "number" && session.closesAt > Date.now());
+  assert(
+    "  └ 마감이 5분 뒤",
+    Math.abs(session.closesAt - Date.now() - 5 * 60 * 1000) < 2000,
+    String(session.closesAt - Date.now()),
+  );
   assert("  └ 마감이 예약됨", scheduler.reservations().some((r) => r.sessionId === session.id));
 
   const joined = await runner.join(G, session.id, P2);
@@ -178,7 +191,7 @@ console.log("\n=== 2. 모집 ===");
   assert("  └ 마감 예약도 사라짐", !scheduler.reservations().some((r) => r.sessionId === session.id));
 }
 
-// ── 3. 정원 ────────────────────────────────────────────────
+// ── 3. 정원이 차면 자동 시작 ───────────────────────────────
 console.log("\n=== 3. 정원 ===");
 {
   played.length = 0;
@@ -187,17 +200,21 @@ console.log("\n=== 3. 정원 ===");
 
   await runner.join(G, session.id, P2);
   const third = await runner.join(G, session.id, P3);
-  assert("정원이 차면 알려 줌", third.ok && third.full === true, JSON.stringify(third));
+  assert("정원이 차면 알려 줌 (full)", third.ok && third.full === true, JSON.stringify(third));
 
   const fourth = await runner.join(G, session.id, P4);
   assert("  └ 넘치면 막힘", !fourth.ok && fourth.reason === "full", JSON.stringify(fourth));
 
-  // 정원이 찼으면 기다릴 이유가 없다 — 커맨드 쪽에서 바로 시작시킨다.
   await runner.startNow(client, G, session.id, host);
-  assert("정원이 차면 시작할 수 있음", played.length === 1, JSON.stringify(played));
+  assert("정원이 차면 시작", played.length === 1, JSON.stringify(played));
   assert("  └ 참가자가 그대로 넘어감", played[0]?.players.length === 3, JSON.stringify(played[0]));
   assert("  └ 끝나면 판이 사라짐", (await store.getSession(G, session.id)) === undefined);
 }
+
+assert(
+  "버튼 쪽이 full 이면 바로 시작시킴",
+  /result\.full[\s\S]{0,120}startNow/u.test(read("src/components/game.ts")),
+);
 
 console.log("\n=== 4. 최대 인원이 없는 판 ===");
 {
@@ -206,18 +223,17 @@ console.log("\n=== 4. 최대 인원이 없는 판 ===");
 
   for (const id of [P2, P3, P4]) await runner.join(G, session.id, id);
 
-  const full = await runner.join(G, session.id, "888888888888888888");
-  assert("계속 받음", full.ok && full.full === false, JSON.stringify(full));
+  const more = await runner.join(G, session.id, "888888888888888888");
+  assert("계속 받음", more.ok && more.full === false, JSON.stringify(more));
 
-  const panel = views.recruitView(game, (await store.getSession(G, session.id)), host);
-  const text = bodyOf(panel);
+  const text = bodyOf(views.recruitView(game, await store.getSession(G, session.id), host));
   assert("화면에 「최대 없음」 이라고 적음", text.includes("최대 없음"), text);
 
   await runner.cancel(client, G, session.id, host);
 }
 
-// ── 5. 최소 인원 ───────────────────────────────────────────
-console.log("\n=== 5. 최소 인원 ===");
+// ── 5. 최소 인원 · 5분 마감 ────────────────────────────────
+console.log("\n=== 5. 최소 인원과 마감 ===");
 {
   played.length = 0;
   const client = makeClient();
@@ -228,75 +244,114 @@ console.log("\n=== 5. 최소 인원 ===");
   assert("  └ 판은 그대로 모집 중", (await store.getSession(G, session.id))?.phase === "recruiting");
   assert("  └ 게임도 안 돌았음", played.length === 0);
 
-  // 마감이 왔는데도 모자라면 접힌다.
-  await runner.closeRecruiting(client, G, session.id, host);
-  assert("마감에 모자라면 접힘", (await store.getSession(G, session.id)) === undefined);
+  await runner.expireRecruiting(client, G, session.id, host);
+  assert("5분이 지나면 취소", (await store.getSession(G, session.id)) === undefined);
   assert("  └ 게임은 안 돌았음", played.length === 0);
 
-  const last = client.sent.at(-1) ?? { payload: {} };
-  const closed = client.messages.get(String(session.messageId ?? ""));
-  const shown = JSON.stringify(closed?.payload ?? last.payload);
-  assert("  └ 접혔다고 알림", shown.includes("접힘"), shown.slice(0, 200));
-  assert("  └ 인원이 모자랐다고 말함", shown.includes("인원이 모자랍니다"), shown.slice(0, 200));
+  const shown = JSON.stringify(client.messages.get(String(session.messageId ?? ""))?.payload ?? {});
+  assert("  └ 취소됐다고 알림", shown.includes("취소"), shown.slice(0, 200));
+  assert("  └ 5분이라고 말함", shown.includes("5분"), shown.slice(0, 300));
+}
+{
+  // 인원이 다 찼어도 마감이 오면 취소된다 — 시작하는 것은 사람이 하는 일이다.
+  played.length = 0;
+  const client = makeClient();
+  const { session } = await open(client, "duo"); // 최소 2
+
+  await runner.join(G, session.id, P2);
+  await runner.expireRecruiting(client, G, session.id, host);
+
+  assert("인원이 찼어도 마감이면 취소", played.length === 0, JSON.stringify(played));
+  assert("  └ 판이 사라짐", (await store.getSession(G, session.id)) === undefined);
 }
 
 // ── 6. 즉시 시작 ───────────────────────────────────────────
 console.log("\n=== 6. 즉시 시작 ===");
 {
-  played.length = 0;
+  heard.length = 0;
   const client = makeClient();
-  const { session } = await open(client, "now");
+  const { session } = await open(client, "chat", { durationSeconds: 60, body: "문제입니다" });
 
-  assert("모집 없이 바로 진행", played.length === 1, JSON.stringify(played));
-  assert("  └ 연 사람이 참가자에 들어 있음", played[0]?.players.includes(HOST));
-  assert("  └ 게임이 부른 사람도 들어옴", played[0]?.players.includes(P2), JSON.stringify(played[0]));
-  assert("  └ 마감 예약이 없음", !scheduler.reservations().some((r) => r.sessionId === session.id));
-  assert("  └ 끝나면 판이 사라짐", (await store.getSession(G, session.id)) === undefined);
+  assert("모집 없이 바로 진행", (await store.getSession(G, session.id))?.phase === "playing");
+  assert("  └ 기간만큼 시계가 걸림", scheduler.reservations().some((r) => r.sessionId === session.id));
 
-  const result = client.sent.at(-1);
-  assert("결과를 새 메시지로 남김", JSON.stringify(result.payload).includes("바로 끝"), JSON.stringify(result.payload).slice(0, 200));
+  const view = bodyOf(views.startedView(registry.getGame("chat"), session, host));
+  assert("  └ 게임이 준 내용을 보여 줌", view.includes("문제입니다"), view);
+  assert("  └ 참가자 칸은 없음 (즉시 시작)", !view.includes("참가한 사람"), view);
+
+  // 채널 메시지가 게임으로 넘어간다.
+  const say = async (content, authorId = P2) =>
+    runner.handleGameMessage({ content, channelId: CH, guildId: G, author: { id: authorId } });
+
+  await say("아무 말");
+  assert("도는 채널의 메시지가 게임으로 감", heard.includes("아무 말"), JSON.stringify(heard));
+
+  await runner.handleGameMessage({ content: "딴 채널", channelId: CH2, guildId: G, author: { id: P2 } });
+  assert("  └ 다른 채널은 안 감", !heard.includes("딴 채널"), JSON.stringify(heard));
+
+  await say("정답");
+  assert("맞히면 끝남", (await store.getSession(G, session.id)) === undefined);
+  assert("  └ 답한 사람이 참가자로", JSON.stringify(client.sent.at(-1).payload).includes("맞혔습니다"));
+  assert("  └ 시계도 풀림", !scheduler.reservations().some((r) => r.sessionId === session.id));
+
+  await say("끝난 뒤");
+  assert("  └ 끝난 판에는 안 넘김", !heard.includes("끝난 뒤"), JSON.stringify(heard));
 }
 
-console.log("\n=== 7. 게임이 터졌을 때 ===");
+console.log("\n=== 7. 기간이 다 됐을 때 ===");
 {
   const client = makeClient();
-  const { session } = await open(client, "boom");
+  const { session } = await open(client, "chat", { durationSeconds: 1 });
+
+  assert("진행 중인 판은 「접기」로 안 접힘", (await runner.cancel(client, G, session.id, host)) === false);
+  assert("  └ 그대로 남아 있음", (await store.getSession(G, session.id)) !== undefined);
+
+  // 시계가 진짜로 도는지 본다 — 1초짜리 판이 스스로 끝나야 한다.
+  await new Promise((done) => setTimeout(done, 1400));
+
+  assert("기간이 다 되면 스스로 끝남", (await store.getSession(G, session.id)) === undefined);
+  const shown = JSON.stringify(client.sent.at(-1).payload);
+  assert("  └ 게임이 마무리를 맡음 (onTimeout)", shown.includes("아무도 못 맞혔습니다"), shown.slice(0, 200));
+  assert("  └ 노랑 (온전히 끝나지 못함)", shown.includes("16705372"), shown.slice(0, 120));
+}
+
+console.log("\n=== 8. 게임이 터졌을 때 ===");
+{
+  const client = makeClient();
+  const { session } = await open(client, "boom", { channelId: "888888888888888880" });
 
   assert("판을 정리함", (await store.getSession(G, session.id)) === undefined);
   const shown = JSON.stringify(client.sent.at(-1).payload);
   assert("  └ 실패로 끝냄", shown.includes("끝까지 돌지 못했습니다"), shown.slice(0, 200));
 }
 
-// ── 8. 한 채널에 한 판 ─────────────────────────────────────
-console.log("\n=== 8. 한 채널에 한 판 ===");
+// ── 9. 한 채널에 한 판 ─────────────────────────────────────
+console.log("\n=== 9. 한 채널에 한 판 ===");
 {
   const client = makeClient();
-  const first = await open(client, "duo");
+  const first = await open(client, "duo", { channelId: "888888888888888881" });
 
-  const second = await runner.openGame(registry.getGame("many"), G, CH, host);
+  const second = await runner.openGame(registry.getGame("many"), G, "888888888888888881", host, {});
   assert("같은 채널에는 못 엶", !second.ok, JSON.stringify(second));
   assert("  └ 돌고 있는 판을 알려 줌", second.running?.id === first.session.id);
 
-  const other = await open(client, "many", CH2);
-  assert("다른 채널은 됨", other.ok !== false && other.session.channelId === CH2);
-
   await runner.cancel(client, G, first.session.id, host);
-  await runner.cancel(client, G, other.session.id, host);
 }
 
-// ── 9. 재시작 ──────────────────────────────────────────────
-console.log("\n=== 9. 재시작 ===");
+// ── 10. 재시작 ─────────────────────────────────────────────
+console.log("\n=== 10. 재시작 ===");
 {
   const client = makeClient();
 
-  // 모집 중인 판 하나, 진행 중인 판 하나를 손으로 남겨 둔다.
   const recruiting = {
-    id: "aaaa1111", gameId: "duo", guildId: G, channelId: CH, title: null, messageId: null,
+    id: "aaaa1111", gameId: "duo", guildId: G, channelId: "888888888888888882",
+    title: null, body: null, messageId: null,
     hostId: HOST, players: [HOST], phase: "recruiting",
     openedAt: Date.now(), closesAt: Date.now() + 60_000,
   };
   const playing = {
-    id: "bbbb2222", gameId: "many", guildId: G, channelId: CH2, title: null, messageId: null,
+    id: "bbbb2222", gameId: "many", guildId: G, channelId: "888888888888888883",
+    title: null, body: null, messageId: null,
     hostId: HOST, players: [HOST, P2, P3], phase: "playing",
     openedAt: Date.now(), closesAt: null,
   };
@@ -318,22 +373,20 @@ console.log("\n=== 9. 재시작 ===");
   await runner.cancel(client, G, recruiting.id, host);
 }
 {
-  // 꺼져 있는 동안 마감이 지난 판.
   const client = makeClient();
   await store.openSession({
-    id: "cccc3333", gameId: "duo", guildId: G, channelId: CH, title: null, messageId: null,
+    id: "cccc3333", gameId: "duo", guildId: G, channelId: "888888888888888884",
+    title: null, body: null, messageId: null,
     hostId: HOST, players: [HOST], phase: "recruiting",
     openedAt: Date.now() - 10_000, closesAt: Date.now() - 1000,
   });
 
   await runner.restoreGames(client);
-  assert("마감이 이미 지났으면 바로 판정", (await store.getSession(G, "cccc3333")) === undefined);
+  assert("마감이 이미 지났으면 바로 취소", (await store.getSession(G, "cccc3333")) === undefined);
 }
 
-// ── 10. 화면 ───────────────────────────────────────────────
-//
-// 규칙(response.ts 머리말)을 지키는지 한 화면씩 그려서 본다.
-console.log("\n=== 10. 화면 ===");
+// ── 11. 화면 ───────────────────────────────────────────────
+console.log("\n=== 11. 화면 ===");
 
 const ALLOWED = new Set([0x57f287, 0xfee75c, 0xed4245, 0x5865f2]);
 const TIMESTAMP = /<t:\d+:[tTdDfFR]>/gu;
@@ -364,7 +417,7 @@ function checkView(label, view, expected) {
 
 const duo = registry.getGame("duo");
 const sample = {
-  id: "dddd4444", gameId: "duo", guildId: G, channelId: CH, title: null, messageId: "1",
+  id: "dddd4444", gameId: "duo", guildId: G, channelId: CH, title: null, body: null, messageId: "1",
   hostId: HOST, players: [HOST, P2], phase: "recruiting",
   openedAt: Date.now(), closesAt: Date.now() + 60_000,
 };
@@ -372,69 +425,63 @@ const sample = {
 checkView("모집 중 → 노랑", views.recruitView(duo, sample, host), 0xfee75c);
 checkView("시작 → 노랑", views.startedView(duo, sample, host), 0xfee75c);
 checkView("끝 → 초록", views.endedView(duo, sample, host, { description: "끝" }), 0x57f287);
-checkView("접힘 → 노랑", views.cancelledView(duo, sample, host, "접었습니다."), 0xfee75c);
+checkView("취소 → 노랑", views.cancelledView(duo, sample, host, "접었습니다."), 0xfee75c);
 checkView("열지 못함 → 빨강", views.refusedView("실패", "안 됩니다.", host), 0xed4245);
-checkView("목록 → 파랑", views.listView(registry.allGames(), host), 0x5865f2);
-checkView("게임이 없을 때", views.listView([], host), 0x5865f2);
 
 const panelText = bodyOf(views.recruitView(duo, sample, host));
 assert("참가자를 멘션으로 적음", panelText.includes(`<@${HOST}>`) && panelText.includes(`<@${P2}>`), panelText);
 assert("  └ 마감을 타임스탬프로", TIMESTAMP.test(panelText), panelText);
 assert("  └ 인원을 적음", panelText.includes("**2명**"), panelText);
 
-// 사람이 많으면 잘라서 적어야 한다 — 멘션을 다 적으면 글자 수 한계에 걸린다.
 const crowd = { ...sample, players: Array.from({ length: 40 }, (_, i) => String(100000000000000000 + i)) };
 const crowdText = bodyOf(views.recruitView(registry.getGame("many"), crowd, host));
 assert("사람이 많으면 잘라서 적음", crowdText.includes("외 25명"), crowdText.slice(0, 200));
 checkView("  └ 그래도 규칙을 지킴", views.recruitView(registry.getGame("many"), crowd, host));
 
 const buttons = views.recruitView(duo, sample, host).rows[0].toJSON().components;
-assert("버튼 넷", buttons.length === 4, String(buttons.length));
+assert("버튼 넷 (참가·나가기·시작·접기)", buttons.length === 4, String(buttons.length));
 assert(
   "  └ customId 가 판을 가리킴",
   buttons.every((button) => button.custom_id.endsWith(`:${sample.id}`)),
   JSON.stringify(buttons.map((b) => b.custom_id)),
 );
 
-// ── 10-1. 제목 ─────────────────────────────────────────────
-//
-// 규칙: 제목을 적으면 컴포넌트 제목이 「<제목> (<게임 이름>)」 이 된다.
-console.log("\n=== 10-1. 제목 ===");
-
-const head = (view) => bodyOf(view).split("\n")[0];
+// ── 12. 제목 ───────────────────────────────────────────────
+console.log("\n=== 12. 제목 ===");
 {
   const titled = { ...sample, title: "보상은 소원권 1개" };
 
   assert(
     "제목을 적으면 「제목 (게임 이름)」",
-    head(views.recruitView(duo, titled, host)) === "### 보상은 소원권 1개 (둘이서) — 모집 중",
-    head(views.recruitView(duo, titled, host)),
+    headOf(views.recruitView(duo, titled, host)) === "### 보상은 소원권 1개 (둘이서) — 모집 중",
+    headOf(views.recruitView(duo, titled, host)),
   );
   assert(
     "  └ 안 적으면 게임 이름 그대로",
-    head(views.recruitView(duo, sample, host)) === "### 둘이서 — 모집 중",
-    head(views.recruitView(duo, sample, host)),
+    headOf(views.recruitView(duo, sample, host)) === "### 둘이서 — 모집 중",
+    headOf(views.recruitView(duo, sample, host)),
   );
   assert(
     "  └ 공백만 적어도 게임 이름 그대로",
-    head(views.recruitView(duo, { ...sample, title: "   " }, host)) === "### 둘이서 — 모집 중",
+    headOf(views.recruitView(duo, { ...sample, title: "   " }, host)) === "### 둘이서 — 모집 중",
   );
 
-  // 판 하나가 여러 화면을 지난다. 제목이 중간에 사라지면 안 된다.
   for (const [label, view] of [
     ["시작", views.startedView(duo, titled, host)],
     ["끝", views.endedView(duo, titled, host, { description: "끝" })],
-    ["접힘", views.cancelledView(duo, titled, host, "접었습니다.")],
+    ["취소", views.cancelledView(duo, titled, host, "접었습니다.")],
   ]) {
-    assert(`  └ ${label} 화면에도 붙음`, head(view).includes("보상은 소원권 1개 (둘이서)"), head(view));
+    assert(`  └ ${label} 화면에도 붙음`, headOf(view).includes("보상은 소원권 1개 (둘이서)"), headOf(view));
   }
 
   checkView("제목을 붙여도 규칙을 지킴", views.recruitView(duo, titled, host));
 }
 {
-  // 제목은 판에 저장돼야 재시작 뒤에도 남는다.
   const client = makeClient();
-  const { session } = await open(client, "duo", CH, "보상은 소원권 1개");
+  const { session } = await open(client, "duo", {
+    channelId: "888888888888888885",
+    title: "보상은 소원권 1개",
+  });
 
   assert("제목이 판에 저장됨", session.title === "보상은 소원권 1개", String(session.title));
   const saved = await store.getSession(G, session.id);
@@ -443,8 +490,13 @@ const head = (view) => bodyOf(view).split("\n")[0];
   await runner.cancel(client, G, session.id, host);
 }
 
-// ── 11. 소스 ───────────────────────────────────────────────
-console.log("\n=== 11. 소스 ===");
+// 모든 게임 커맨드가 같은 제목 칸을 쓴다.
+const commandSource = read("src/games/command.ts");
+assert("제목 칸을 한 곳에서 만듦", commandSource.includes("export function titleOption"));
+assert("  └ 이름은 「제목」", ids.TITLE_OPTION === "제목", ids.TITLE_OPTION);
+
+// ── 13. 소스 ───────────────────────────────────────────────
+console.log("\n=== 13. 소스 ===");
 const runnerSource = read("src/games/runner.ts");
 const storeSource = read("src/games/store.ts");
 
@@ -461,13 +513,17 @@ assert(
 assert("게임이 터져도 잡아서 끝냄", runnerSource.includes("게임 ${game.id} 진행 중 오류"));
 assert("판을 두 번 끝내지 않음", runnerSource.includes("finished.has(session.id)"));
 assert("진행 중이던 판은 되살리지 않음", runnerSource.includes("봇이 다시 켜지면서 중단되었습니다"));
+assert("메시지는 메모리에서 찾아 넘김", runnerSource.includes("const live = new Map"));
 
 assert("색을 직접 정하지 않음", !read("src/games/views.ts").includes("setAccentColor"));
 assert("게임은 화면을 직접 만들지 않음", !read("src/games/types.ts").includes("MessageOptions"));
 
-const readySource = read("src/events/client-ready.ts");
-assert("부팅 때 되살림", readySource.includes("restoreGames"));
+assert("시작·접기는 주최자와 관리자만", read("src/components/game.ts").includes("PermissionFlagsBits.Administrator"));
+assert("  └ 그렇게 말해 줌", read("src/components/game.ts").includes("판을 연 사람과 관리자만"));
+
+assert("부팅 때 되살림", read("src/events/client-ready.ts").includes("restoreGames"));
 assert("종료 때 타이머를 정리함", read("src/index.ts").includes("cancelAllCloses"));
+assert("채널 메시지를 게임으로 넘김", read("src/events/message-create.ts").includes("handleGameMessage"));
 
 process.chdir(PROJECT);
 finish();

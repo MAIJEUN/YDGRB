@@ -28,10 +28,14 @@ const JOIN_PROBLEM: Record<string, string> = {
   notJoined: "참가하지 않은 판입니다.",
 };
 
-/** 주최자이거나 서버 관리자여야 하는 동작 — 시작 · 접기. */
+/**
+ * 시작 · 접기는 **판을 연 사람과 관리자**만 할 수 있다.
+ *
+ * 버튼은 채널에 공개로 남아 있어 지나가던 사람도 누를 수 있다.
+ */
 function mayControl(interaction: ButtonInteraction, hostId: string): boolean {
   if (interaction.user.id === hostId) return true;
-  return interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild) === true;
+  return interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) === true;
 }
 
 export default defineComponentHandler({
@@ -111,7 +115,7 @@ export default defineComponentHandler({
         if (!mayControl(interaction, session.hostId)) {
           await interaction.reply(
             response(
-              refusedView("시작하지 못했어요", "판을 연 사람만 시작할 수 있습니다.", interaction.user),
+              refusedView("시작하지 못했어요", "판을 연 사람과 관리자만 시작할 수 있습니다.", interaction.user),
             ),
           );
           return;
@@ -140,7 +144,7 @@ export default defineComponentHandler({
         if (!mayControl(interaction, session.hostId)) {
           await interaction.reply(
             response(
-              refusedView("접지 못했어요", "판을 연 사람만 접을 수 있습니다.", interaction.user),
+              refusedView("접지 못했어요", "판을 연 사람과 관리자만 접을 수 있습니다.", interaction.user),
             ),
           );
           return;

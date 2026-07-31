@@ -1,6 +1,7 @@
 import { Events } from "discord.js";
 
 import { handleDebugMessage } from "../debug/handle.js";
+import { handleGameMessage } from "../games/runner.js";
 import { reactRandomly } from "../tasalbeo/reactions.js";
 import { activeTargets } from "../tasalbeo/store.js";
 import { defineEvent } from "../types.js";
@@ -21,6 +22,9 @@ export default defineEvent({
     if (!message.inGuild()) return;
 
     if (await handleDebugMessage(message)) return;
+
+    // 채팅으로 겨루는 게임(퀴즈 같은)이 도는 채널이면 그쪽으로 넘긴다.
+    await handleGameMessage(message);
 
     const targets = await activeTargets(message.guildId);
     if (!targets.has(message.author.id)) return;

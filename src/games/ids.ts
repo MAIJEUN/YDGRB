@@ -17,12 +17,13 @@ export const ACTION = {
   cancel: "cancel",
 } as const;
 
-/** 모집 마감까지. 게임이 따로 정하지 않으면 이만큼. */
-export const DEFAULT_RECRUIT_SECONDS = 180;
-
-/** 너무 짧으면 아무도 못 들어오고, 너무 길면 판이 채널에 방치된다. */
-export const MIN_RECRUIT_SECONDS = 15;
-export const MAX_RECRUIT_SECONDS = 30 * 60;
+/**
+ * 모집 형식의 마감 — **5분.**
+ *
+ * 그 안에 시작되지 않으면 판은 취소된다. 게임마다 다르게 두지 않는다.
+ * 형식이 정한 값이라 게임이 고를 여지가 없다.
+ */
+export const RECRUIT_TIMEOUT_SECONDS = 5 * 60;
 
 /**
  * 참가자를 화면에 늘어놓는 최대 인원.
@@ -40,3 +41,6 @@ export const HARD_PLAYER_LIMIT = 100;
  * 제목 뒤에 게임 이름과 단계(「— 모집 중」)가 더 붙는다. 제목만 길면 그게 다 밀린다.
  */
 export const MAX_TITLE_LENGTH = 60;
+
+/** 모든 게임 명령에 붙는 제목 칸의 이름. */
+export const TITLE_OPTION = "제목";
