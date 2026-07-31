@@ -423,7 +423,7 @@ const sample = {
 };
 
 checkView("모집 중 → 노랑", views.recruitView(duo, sample, host), 0xfee75c);
-checkView("시작 → 노랑", views.startedView(duo, sample, host), 0xfee75c);
+checkView("시작 → 파랑 (도는 중)", views.startedView(duo, sample, host), 0x5865f2);
 checkView("끝 → 초록", views.endedView(duo, sample, host, { description: "끝" }), 0x57f287);
 checkView("취소 → 노랑", views.cancelledView(duo, sample, host, "접었습니다."), 0xfee75c);
 checkView("열지 못함 → 빨강", views.refusedView("실패", "안 됩니다.", host), 0xed4245);
@@ -437,6 +437,22 @@ const crowd = { ...sample, players: Array.from({ length: 40 }, (_, i) => String(
 const crowdText = bodyOf(views.recruitView(registry.getGame("many"), crowd, host));
 assert("사람이 많으면 잘라서 적음", crowdText.includes("외 25명"), crowdText.slice(0, 200));
 checkView("  └ 그래도 규칙을 지킴", views.recruitView(registry.getGame("many"), crowd, host));
+
+// 판이 도는지 끝났는지가 **색으로** 갈라져야 한다.
+const colorOf = (view) => buildContainer(view).toJSON().accent_color;
+assert(
+  "시작과 끝이 다른 색",
+  colorOf(views.startedView(duo, sample, host)) !== colorOf(views.endedView(duo, sample, host, {})),
+);
+assert(
+  "  └ 시작과 무승부도 다른 색",
+  colorOf(views.startedView(duo, sample, host)) !==
+    colorOf(views.endedView(duo, sample, host, { status: "progress" })),
+);
+assert(
+  "  └ 모집 중과 시작도 다른 색",
+  colorOf(views.recruitView(duo, sample, host)) !== colorOf(views.startedView(duo, sample, host)),
+);
 
 const buttons = views.recruitView(duo, sample, host).rows[0].toJSON().components;
 assert("버튼 넷 (참가·나가기·시작·접기)", buttons.length === 4, String(buttons.length));
@@ -493,6 +509,7 @@ console.log("\n=== 12. 제목 ===");
 // 모든 게임 커맨드가 같은 제목 칸을 쓴다.
 const commandSource = read("src/games/command.ts");
 assert("제목 칸을 한 곳에서 만듦", commandSource.includes("export function titleOption"));
+assert("  └ 모달로 받는 게임도 같은 칸", commandSource.includes("export function titleInput"));
 assert("  └ 이름은 「제목」", ids.TITLE_OPTION === "제목", ids.TITLE_OPTION);
 
 // ── 13. 소스 ───────────────────────────────────────────────

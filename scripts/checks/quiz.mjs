@@ -15,7 +15,7 @@ const runner = await import(`${DIST}/games/runner.js`);
 const store = await import(`${DIST}/games/store.js`);
 const views = await import(`${DIST}/games/views.js`);
 const quiz = (await import(`${DIST}/games/list/quiz.js`)).default;
-const { keepAnswer, matches } = await import(`${DIST}/games/list/quiz.js`);
+const { keepAnswer, matches, quizModal } = await import(`${DIST}/games/list/quiz.js`);
 const { buildContainer, channelMessage } = await import(`${DIST}/ui/response.js`);
 
 const G = "111111111111111111";
@@ -34,12 +34,24 @@ const command = (await collectCommands()).find((c) => c.data.name === "퀴즈");
 assert("/퀴즈 등록됨", command !== undefined);
 
 const json = command.data.toJSON();
-const options = (json.options ?? []).map((option) => option.name);
 
-assert("옵션은 문제·정답·기간·제목", options.join(",") === "문제,정답,기간,제목", options.join(","));
-assert("  └ 문제·정답·기간은 필수", (json.options ?? []).slice(0, 3).every((o) => o.required === true));
-assert("  └ 제목은 선택 (형식이 정한 칸)", (json.options ?? [])[3]?.required !== true);
+// 디스코드는 슬래시 커맨드에 넣은 값을 채널에 그대로 보여 준다.
+// 정답을 옵션으로 받으면 명령을 친 순간 모두가 답을 본다.
+assert("옵션이 하나도 없음", (json.options ?? []).length === 0, JSON.stringify(json.options));
 assert("  └ 서버 전용", JSON.stringify(json.contexts) === "[0]", JSON.stringify(json.contexts));
+
+const modal = quizModal().toJSON();
+const fields = modal.components.map((row) => row.components[0]);
+
+assert("모달로 받음", modal.custom_id === "quiz:new", modal.custom_id);
+assert(
+  "  └ 칸은 문제·정답·기간·제목",
+  fields.map((f) => f.custom_id).join(",") === "question,answer,duration,title",
+  fields.map((f) => f.custom_id).join(","),
+);
+assert("  └ 문제·정답·기간은 필수", fields.slice(0, 3).every((f) => f.required === true));
+assert("  └ 제목은 선택 (형식이 정한 칸)", fields[3]?.required === false);
+assert("  └ 제목 칸 이름은 「제목」", fields[3]?.label === "제목", fields[3]?.label);
 
 // ── 2. 게임 정의 ───────────────────────────────────────────
 console.log("\n=== 2. 게임 ===");
@@ -102,7 +114,7 @@ async function openQuiz(client, { question, answer, seconds = 60, title = null, 
   });
   if (!opened.ok) return opened;
 
-  keepAnswer(opened.session.id, answer, HOST);
+  keepAnswer(opened.session.id, answer);
 
   const message = await client.makeChannel(channelId).send(channelMessage(opened.view));
   await runner.attach(client, quiz, opened.session, message, host);
@@ -131,9 +143,6 @@ console.log("\n=== 4. 맞히면 이긴다 ===");
 
   await say("부산", P2);
   assert("틀리면 안 끝남", (await store.getSession(G, session.id)) !== undefined);
-
-  await say("서울", HOST);
-  assert("문제 낸 사람은 못 맞힘", (await store.getSession(G, session.id)) !== undefined);
 
   await say(" 서울 ", P2);
   assert("맞히면 끝남", (await store.getSession(G, session.id)) === undefined);
@@ -214,7 +223,7 @@ const sample = {
 };
 
 for (const [label, view, expected] of [
-  ["시작 → 노랑", views.startedView(quiz, sample, host), 0xfee75c],
+  ["시작 → 파랑 (도는 중)", views.startedView(quiz, sample, host), 0x5865f2],
   ["맞힘 → 초록", views.endedView(quiz, sample, host, { description: `<@${P2}> 님이 맞혔습니다.` }), 0x57f287],
   [
     "아무도 못 맞힘 → 노랑",
@@ -242,13 +251,16 @@ for (const [label, view, expected] of [
 console.log("\n=== 9. 소스 ===");
 const quizSource = read("src/games/list/quiz.ts");
 const commandSource = read("src/commands/quiz.ts");
+const modalSource = read("src/components/quiz.ts");
 
 assert("정답은 저장소에 안 남김", !quizSource.includes("session.answer"));
 assert("  └ 메모리에만 든다", quizSource.includes("const rounds = new Map"));
 assert("  └ 판이 끝나면 지운다", quizSource.includes("rounds.delete"));
-assert("정답을 시작 전에 맡김", commandSource.includes("prepare:"), "여는 순간 답이 들어올 수 있다");
-assert("제목 칸은 형식이 준 것을 씀", commandSource.includes("titleOption"));
-assert("  └ 손으로 만들지 않음", !commandSource.includes('setName("제목")'));
+assert("정답을 시작 전에 맡김", modalSource.includes("prepare:"), "여는 순간 답이 들어올 수 있다");
+assert("제목 칸 이름도 형식이 준 것", quizSource.includes("TITLE_OPTION"));
+assert("  └ 길이도", quizSource.includes("MAX_TITLE_LENGTH"));
+assert("커맨드는 모달만 띄움", commandSource.includes("showModal"));
+assert("  └ 옵션을 붙이지 않음", !commandSource.includes("addStringOption"));
 
 process.chdir(PROJECT);
 finish();
