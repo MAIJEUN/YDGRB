@@ -19,6 +19,8 @@ export interface TimeoutState {
   channelId: string | null;
   /** 타임아웃을 건 메시지 — 종료 알림을 여기에 답장으로 단다. */
   messageId: string | null;
+  /** 걸 때 적어 둔 사유. 안 적었으면 null. 옛 파일에는 아예 없다. */
+  reason?: string | null;
 }
 
 interface TimeoutData {

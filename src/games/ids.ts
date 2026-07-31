@@ -33,3 +33,10 @@ export const MAX_SHOWN_PLAYERS = 15;
 
 /** 판 하나에 받을 수 있는 인원의 절대 상한. 무제한이라도 어딘가에서는 끊어야 한다. */
 export const HARD_PLAYER_LIMIT = 100;
+
+/**
+ * 판 제목의 길이 한계.
+ *
+ * 제목 뒤에 게임 이름과 단계(「— 모집 중」)가 더 붙는다. 제목만 길면 그게 다 밀린다.
+ */
+export const MAX_TITLE_LENGTH = 60;

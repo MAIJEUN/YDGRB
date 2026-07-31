@@ -21,6 +21,8 @@ export interface TasalbeoState {
   messageId: string | null;
   /** 걸기 전 별명. `null` 이면 별명이 없었다(사용자명 그대로). */
   previousNickname: string | null;
+  /** 걸 때 적어 둔 사유. 안 적었으면 null. 옛 파일에는 아예 없다. */
+  reason?: string | null;
 }
 
 interface GuildTasalbeo {

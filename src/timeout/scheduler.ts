@@ -119,6 +119,7 @@ async function announce(
       effect: "타임아웃",
       target: `<@${userId}>`,
       until: new Date(state.until),
+      note: state.reason ?? null,
       reason: releasedBy === null ? { kind: "expired" } : { kind: "released", byId: releasedBy },
       targetLeft: await hasLeft(client, guildId, userId),
       user: actor,

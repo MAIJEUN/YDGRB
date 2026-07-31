@@ -5,6 +5,7 @@ import { logger } from "../logger.js";
 import { atWithCountdown, describeDurationError, formatDuration, parseDuration } from "../time.js";
 import { announceRelease, scheduleEnd } from "../timeout/scheduler.js";
 import { setState } from "../timeout/store.js";
+import { auditReason, reasonField, reasonOption, readReason } from "../ui/reason.js";
 import { editResponse, response } from "../ui/response.js";
 import { defineCommand } from "../types.js";
 
@@ -78,7 +79,8 @@ export default defineCommand({
       option
         .setName(OPTION.duration)
         .setDescription("1일 4시간 45초 · 64(숫자만 쓰면 초). 비우면 해제. 최대 28일"),
-    ),
+    )
+    .addStringOption(reasonOption),
 
   async execute(interaction) {
     if (!interaction.inCachedGuild()) {
@@ -142,6 +144,8 @@ export default defineCommand({
       seconds = parsed.seconds;
     }
 
+    const reason = readReason(interaction);
+
     const blocked = whyNotModeratable(target, interaction.member);
     if (blocked !== undefined) {
       await interaction.reply(
@@ -177,7 +181,7 @@ export default defineCommand({
     try {
       await target.timeout(
         seconds === null ? null : seconds * 1000,
-        `타임아웃 — ${interaction.user.tag}`,
+        auditReason(after === null ? "타임아웃 해제" : "타임아웃", interaction.user.tag, reason),
       );
     } catch (error) {
       await interaction.editReply(
@@ -224,6 +228,7 @@ export default defineCommand({
           appliedAt: Date.now(),
           channelId: interaction.channelId,
           messageId,
+          reason,
         });
 
         scheduleEnd(interaction.client, interaction.guildId, target.id, after.getTime());
@@ -244,6 +249,7 @@ export default defineCommand({
             : `<@${target.id}> 님을 ${formatDuration(seconds ?? 0)} 동안 타임아웃했습니다.`,
         fields: [
           { name: "풀리는 시각", value: `${describeTimeout(before)} → **${describeTimeout(after)}**` },
+          ...reasonField(reason),
         ],
         user: interaction.user,
       }),

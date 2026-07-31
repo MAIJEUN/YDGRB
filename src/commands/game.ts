@@ -1,5 +1,6 @@
 import { InteractionContextType, SlashCommandBuilder } from "discord.js";
 
+import { MAX_TITLE_LENGTH } from "../games/ids.js";
 import { allGames, getGame } from "../games/registry.js";
 import { attach, openGame } from "../games/runner.js";
 import { listView, refusedView } from "../games/views.js";
@@ -13,7 +14,7 @@ import { defineCommand } from "../types.js";
  * `npm run deploy` 를 다시 돌리지 않아도 바로 고를 수 있다.
  */
 
-const OPTION = { kind: "종류" } as const;
+const OPTION = { kind: "종류", title: "제목" } as const;
 
 /** 자동완성은 한 번에 25개까지만 보낼 수 있다. */
 const MAX_CHOICES = 25;
@@ -28,6 +29,12 @@ export default defineCommand({
         .setName(OPTION.kind)
         .setDescription("비우면 무엇이 있는지 보여 줍니다")
         .setAutocomplete(true),
+    )
+    .addStringOption((option) =>
+      option
+        .setName(OPTION.title)
+        .setDescription("이 판이 무엇인지 한 줄로 — 「보상은 소원권 1개」 처럼")
+        .setMaxLength(MAX_TITLE_LENGTH),
     ),
 
   async autocomplete(interaction) {
@@ -68,7 +75,16 @@ export default defineCommand({
       return;
     }
 
-    const opened = await openGame(game, interaction.guildId, interaction.channel.id, interaction.user);
+    // 제목을 적으면 컴포넌트 제목이 「보상은 소원권 1개 (가위바위보)」 가 된다.
+    const title = interaction.options.getString(OPTION.title)?.replaceAll(/\s+/gu, " ").trim() ?? "";
+
+    const opened = await openGame(
+      game,
+      interaction.guildId,
+      interaction.channel.id,
+      interaction.user,
+      title === "" ? null : title,
+    );
 
     if (!opened.ok) {
       await interaction.reply(

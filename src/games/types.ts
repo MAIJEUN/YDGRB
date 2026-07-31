@@ -26,6 +26,12 @@ export interface GameSession {
   readonly gameId: string;
   readonly guildId: string;
   readonly channelId: string;
+  /**
+   * 판을 열면서 붙인 제목. 안 적었으면 null.
+   *
+   * 「보상은 소원권 1개」 처럼 이 판이 무엇인지 한 줄로 말하는 자리다.
+   */
+  readonly title: string | null;
   /** 모집 패널이나 시작 안내 메시지. 보내고 나서 채운다. */
   messageId: string | null;
   /** 판을 연 사람. footer 와 「주최자만」 판단에 쓴다. */
@@ -98,6 +104,17 @@ export interface GameDefinition {
 
 export function defineGame(game: GameDefinition): GameDefinition {
   return game;
+}
+
+/**
+ * 화면에 나갈 제목.
+ *
+ * 제목을 적었으면 **「<제목> (<게임 이름>)」**, 안 적었으면 게임 이름 그대로.
+ * 어느 게임인지는 언제나 보여야 하므로 게임 이름을 떼지 않는다.
+ */
+export function sessionTitle(game: GameDefinition, session: GameSession): string {
+  const title = session.title?.trim() ?? "";
+  return title === "" ? game.name : `${title} (${game.name})`;
 }
 
 /** 최소 인원 — 적지 않았으면 둘. 혼자 하는 게임은 즉시 시작 쪽이 맞다. */

@@ -53,6 +53,7 @@ export async function openGame(
   guildId: string,
   channelId: string,
   host: User,
+  title: string | null = null,
 ): Promise<OpenResult> {
   const recruiting = game.mode === "recruit";
 
@@ -61,6 +62,7 @@ export async function openGame(
     gameId: game.id,
     guildId,
     channelId,
+    title,
     messageId: null,
     hostId: host.id,
     // 모집 게임도 연 사람은 참가한 것으로 본다. 자기 판에 따로 참가 버튼을 누를 이유가 없다.

@@ -7,7 +7,7 @@ import type { MessageOptions, ResponseField } from "../ui/response.js";
 import { customId } from "../types.js";
 import { ACTION, GAME, MAX_SHOWN_PLAYERS } from "./ids.js";
 import type { GameDefinition, GameResult, GameSession } from "./types.js";
-import { maxPlayersOf, minPlayersOf } from "./types.js";
+import { maxPlayersOf, minPlayersOf, sessionTitle } from "./types.js";
 
 /**
  * 미니게임 화면.
@@ -73,7 +73,7 @@ export function recruitView(
 ): MessageOptions {
   return {
     status: "progress",
-    title: `${game.name} — 모집 중`,
+    title: `${sessionTitle(game, session)} — 모집 중`,
     description: game.description,
     fields: [
       { name: "인원", value: headcount(game, session) },
@@ -96,7 +96,7 @@ export function startedView(
 ): MessageOptions {
   return {
     status: "progress",
-    title: `${game.name} — 시작`,
+    title: `${sessionTitle(game, session)} — 시작`,
     description: game.description,
     fields: [
       { name: `참가한 사람 (${count(session.players.length)}명)`, value: playerList(session.players) },
@@ -125,7 +125,7 @@ export function endedView(
 
   return {
     status: result?.status ?? "success",
-    title: `${game.name} — 끝`,
+    title: `${sessionTitle(game, session)} — 끝`,
     description: result?.description,
     fields,
     user: host,
@@ -142,7 +142,7 @@ export function cancelledView(
 ): MessageOptions {
   return {
     status: "progress",
-    title: `${game.name} — 접힘`,
+    title: `${sessionTitle(game, session)} — 접힘`,
     description: reason,
     fields: [{ name: "인원", value: headcount(game, session) }],
     user: host,

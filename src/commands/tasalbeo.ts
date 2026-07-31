@@ -8,6 +8,7 @@ import { startLoop } from "../tasalbeo/runner.js";
 import { releaseTasalbeo, scheduleEnd } from "../tasalbeo/scheduler.js";
 import { getState, setState } from "../tasalbeo/store.js";
 import { atWithCountdown, describeDurationError, formatDuration, parseDuration } from "../time.js";
+import { auditReason, reasonField, reasonOption, readReason } from "../ui/reason.js";
 import { editResponse, response } from "../ui/response.js";
 import { defineCommand } from "../types.js";
 
@@ -71,7 +72,8 @@ export default defineCommand({
       option
         .setName(OPTION.duration)
         .setDescription("1일 4시간 45초 · 64(숫자만 쓰면 초). 비우면 해제. 최대 1일"),
-    ),
+    )
+    .addStringOption(reasonOption),
 
   async execute(interaction) {
     if (!interaction.inCachedGuild()) {
@@ -137,6 +139,7 @@ export default defineCommand({
       seconds = parsed.seconds;
     }
 
+    const reason = readReason(interaction);
     const current = await getState(interaction.guildId, target.id);
 
     // ── 해제 ────────────────────────────────────────────────
@@ -162,6 +165,7 @@ export default defineCommand({
           title: "타살버 — 해제",
           // 대상은 내용이 이미 말했다 — 칸을 따로 두지 않는다.
           description: `<@${target.id}> 님의 타살버를 풀었습니다.`,
+          fields: reasonField(reason),
           user: interaction.user,
         }),
       );
@@ -194,7 +198,7 @@ export default defineCommand({
     try {
       const role = await ensureMuteRole(interaction.guild);
 
-      await target.setNickname(NICKNAME, `타살버 — ${interaction.user.tag}`);
+      await target.setNickname(NICKNAME, auditReason("타살버", interaction.user.tag, reason));
 
       await setState(interaction.guildId, {
         userId: target.id,
@@ -207,6 +211,7 @@ export default defineCommand({
           .then((message) => message.id)
           .catch(() => null),
         previousNickname,
+        reason,
       });
 
       scheduleEnd(interaction.client, interaction.guildId, target.id, until.getTime());
@@ -233,7 +238,7 @@ export default defineCommand({
         title: "타살버 — 적용",
         // 대상은 내용이 이미 말했다 — 칸을 따로 두지 않는다.
         description: `<@${target.id}> 님에게 ${formatDuration(seconds)} 동안 타살버를 걸었습니다.`,
-        fields: [{ name: "풀리는 시각", value: atWithCountdown(until) }],
+        fields: [{ name: "풀리는 시각", value: atWithCountdown(until) }, ...reasonField(reason)],
         user: interaction.user,
       }),
     );

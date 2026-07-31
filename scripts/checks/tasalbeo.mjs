@@ -30,7 +30,12 @@ assert("서버 전용", JSON.stringify(json.contexts) === "[0]");
 assert("타임아웃 권한으로 제한", json.default_member_permissions === "1099511627776", json.default_member_permissions);
 
 const options = json.options ?? [];
-assert("옵션은 유저·기간", options.map((o) => o.name).join(",") === "유저,기간", options.map((o) => o.name).join(","));
+assert(
+  "옵션은 유저·기간·사유",
+  options.map((o) => o.name).join(",") === "유저,기간,사유",
+  options.map((o) => o.name).join(","),
+);
+assert("  └ 사유는 선택", !options[2].required && options[2].type === 3);
 assert("  └ 유저는 필수", options[0].required === true && options[0].type === 6);
 assert("  └ 기간은 선택 (비우면 해제)", !options[1].required && options[1].type === 3);
 assert("  └ 기간 설명에 형식·해제·상한", ["1일 4시간 45초", "해제", "1일"].every((part) => options[1].description.includes(part)), options[1].description);

@@ -123,9 +123,9 @@ function makeClient() {
 }
 
 /** 판을 열고 메시지를 붙이는 것까지 — 커맨드가 하는 일을 흉내 낸다. */
-async function open(client, gameId, channelId = CH) {
+async function open(client, gameId, channelId = CH, title = null) {
   const game = registry.getGame(gameId);
-  const opened = await runner.openGame(game, G, channelId, host);
+  const opened = await runner.openGame(game, G, channelId, host, title);
   if (!opened.ok) return opened;
 
   const message = await client.makeChannel(channelId).send({ view: opened.view });
@@ -291,12 +291,12 @@ console.log("\n=== 9. 재시작 ===");
 
   // 모집 중인 판 하나, 진행 중인 판 하나를 손으로 남겨 둔다.
   const recruiting = {
-    id: "aaaa1111", gameId: "duo", guildId: G, channelId: CH, messageId: null,
+    id: "aaaa1111", gameId: "duo", guildId: G, channelId: CH, title: null, messageId: null,
     hostId: HOST, players: [HOST], phase: "recruiting",
     openedAt: Date.now(), closesAt: Date.now() + 60_000,
   };
   const playing = {
-    id: "bbbb2222", gameId: "many", guildId: G, channelId: CH2, messageId: null,
+    id: "bbbb2222", gameId: "many", guildId: G, channelId: CH2, title: null, messageId: null,
     hostId: HOST, players: [HOST, P2, P3], phase: "playing",
     openedAt: Date.now(), closesAt: null,
   };
@@ -321,7 +321,7 @@ console.log("\n=== 9. 재시작 ===");
   // 꺼져 있는 동안 마감이 지난 판.
   const client = makeClient();
   await store.openSession({
-    id: "cccc3333", gameId: "duo", guildId: G, channelId: CH, messageId: null,
+    id: "cccc3333", gameId: "duo", guildId: G, channelId: CH, title: null, messageId: null,
     hostId: HOST, players: [HOST], phase: "recruiting",
     openedAt: Date.now() - 10_000, closesAt: Date.now() - 1000,
   });
@@ -364,7 +364,7 @@ function checkView(label, view, expected) {
 
 const duo = registry.getGame("duo");
 const sample = {
-  id: "dddd4444", gameId: "duo", guildId: G, channelId: CH, messageId: "1",
+  id: "dddd4444", gameId: "duo", guildId: G, channelId: CH, title: null, messageId: "1",
   hostId: HOST, players: [HOST, P2], phase: "recruiting",
   openedAt: Date.now(), closesAt: Date.now() + 60_000,
 };
@@ -395,6 +395,53 @@ assert(
   buttons.every((button) => button.custom_id.endsWith(`:${sample.id}`)),
   JSON.stringify(buttons.map((b) => b.custom_id)),
 );
+
+// ── 10-1. 제목 ─────────────────────────────────────────────
+//
+// 규칙: 제목을 적으면 컴포넌트 제목이 「<제목> (<게임 이름>)」 이 된다.
+console.log("\n=== 10-1. 제목 ===");
+
+const head = (view) => bodyOf(view).split("\n")[0];
+{
+  const titled = { ...sample, title: "보상은 소원권 1개" };
+
+  assert(
+    "제목을 적으면 「제목 (게임 이름)」",
+    head(views.recruitView(duo, titled, host)) === "### 보상은 소원권 1개 (둘이서) — 모집 중",
+    head(views.recruitView(duo, titled, host)),
+  );
+  assert(
+    "  └ 안 적으면 게임 이름 그대로",
+    head(views.recruitView(duo, sample, host)) === "### 둘이서 — 모집 중",
+    head(views.recruitView(duo, sample, host)),
+  );
+  assert(
+    "  └ 공백만 적어도 게임 이름 그대로",
+    head(views.recruitView(duo, { ...sample, title: "   " }, host)) === "### 둘이서 — 모집 중",
+  );
+
+  // 판 하나가 여러 화면을 지난다. 제목이 중간에 사라지면 안 된다.
+  for (const [label, view] of [
+    ["시작", views.startedView(duo, titled, host)],
+    ["끝", views.endedView(duo, titled, host, { description: "끝" })],
+    ["접힘", views.cancelledView(duo, titled, host, "접었습니다.")],
+  ]) {
+    assert(`  └ ${label} 화면에도 붙음`, head(view).includes("보상은 소원권 1개 (둘이서)"), head(view));
+  }
+
+  checkView("제목을 붙여도 규칙을 지킴", views.recruitView(duo, titled, host));
+}
+{
+  // 제목은 판에 저장돼야 재시작 뒤에도 남는다.
+  const client = makeClient();
+  const { session } = await open(client, "duo", CH, "보상은 소원권 1개");
+
+  assert("제목이 판에 저장됨", session.title === "보상은 소원권 1개", String(session.title));
+  const saved = await store.getSession(G, session.id);
+  assert("  └ 파일에서 다시 읽어도", saved?.title === "보상은 소원권 1개", String(saved?.title));
+
+  await runner.cancel(client, G, session.id, host);
+}
 
 // ── 11. 소스 ───────────────────────────────────────────────
 console.log("\n=== 11. 소스 ===");

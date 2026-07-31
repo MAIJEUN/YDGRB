@@ -2,6 +2,7 @@ import type { Client, User } from "discord.js";
 
 import { logger } from "../logger.js";
 import { atWithCountdown } from "../time.js";
+import { reasonField } from "./reason.js";
 import { channelMessage, type MessageOptions, type ResponseField, type Status } from "./response.js";
 
 /**
@@ -49,6 +50,12 @@ export interface EndNoticeOptions {
   };
   /** 대상이 서버를 떠났으면 true — 본문에 그 사실을 적는다. */
   readonly targetLeft?: boolean;
+  /**
+   * 걸 때 적어 둔 사유. `reason` 은 **왜 끝났는지**라 이름이 겹치지 않게 따로 둔다.
+   *
+   * 며칠 뒤에 풀리는 것도 있어서, 끝날 때 다시 보여 주지 않으면 왜 걸렸는지 아무도 모른다.
+   */
+  readonly note?: string | null;
   /** footer 에 적을 사람 — 효과를 건 사람. */
   readonly user: User;
 }
@@ -79,6 +86,7 @@ export function endNoticeView(options: EndNoticeOptions): MessageOptions {
         name: released ? "원래 풀릴 시각" : "풀린 시각",
         value: atWithCountdown(options.until),
       },
+      ...reasonField(options.note),
       ...(options.outcome?.fields ?? []),
     ],
     user: options.user,
