@@ -44,6 +44,7 @@ const SHAPES: readonly Shape[] = [
     describe: (guild) =>
       `${Array.isArray(guild["allowed"]) ? guild["allowed"].length : 0}명`,
   },
+  { name: "게임", file: "games.json", describe: (guild) => `열린 판 ${size(guild["sessions"])}개` },
 ];
 
 export interface DataFile {

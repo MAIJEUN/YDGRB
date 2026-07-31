@@ -24,7 +24,7 @@ const TYPE = {
 };
 const shape = (list) => list.map((c) => TYPE[c.type] ?? `type${c.type}`).join(" → ");
 
-const { buildContainer, response, updateResponse, editResponse, channelMessage } = await import(
+const { buildContainer, response, updateResponse, editResponse, channelMessage, messageEdit } = await import(
   `${DIST}/ui/response.js`
 );
 
@@ -231,6 +231,7 @@ for (const [name, payload] of [
   ["updateResponse", updateResponse(base)],
   ["editResponse", editResponse(base)],
   ["channelMessage", channelMessage(base)],
+  ["messageEdit", messageEdit(base)],
 ]) {
   const flags = payload.flags ?? [];
   assert(`${name} — IsComponentsV2`, flags.includes(V2), JSON.stringify(flags));
@@ -442,8 +443,8 @@ assert(
   /NO_PINGS[^=]*=\s*\{\s*parse:\s*\[\],\s*repliedUser:\s*false\s*\}/u.test(responseSource),
 );
 assert(
-  "  └ 네 페이로드 모두에 적용",
-  (responseSource.match(/allowedMentions: NO_PINGS/gu) ?? []).length === 4,
+  "  └ 다섯 페이로드 모두에 적용",
+  (responseSource.match(/allowedMentions: NO_PINGS/gu) ?? []).length === 5,
 );
 const ownMentions = sources.filter(
   (f) => f.rel !== "src/ui/response.ts" && /allowedMentions/u.test(f.text),

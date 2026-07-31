@@ -18,6 +18,7 @@ import type {
   InteractionUpdateOptions,
   MessageActionRowComponentBuilder,
   MessageCreateOptions,
+  MessageEditOptions,
   MessageMentionOptions,
   User,
 } from "discord.js";
@@ -303,6 +304,19 @@ export function updateResponse(options: MessageOptions): InteractionUpdateOption
 
 /** `interaction.editReply()` 용 — 이미 defer/reply 한 응답을 갈아 끼울 때. */
 export function editResponse(options: MessageOptions): InteractionEditReplyOptions {
+  return {
+    components: [buildContainer(options)],
+    flags: [MessageFlags.IsComponentsV2],
+    allowedMentions: NO_PINGS,
+  };
+}
+
+/**
+ * 채널에 이미 보낸 메시지를 갈아 끼울 때.
+ *
+ * 인터랙션 응답이 아니다 — 게임 모집 패널처럼 봇이 **스스로** 고치는 메시지에 쓴다.
+ */
+export function messageEdit(options: MessageOptions): MessageEditOptions {
   return {
     components: [buildContainer(options)],
     flags: [MessageFlags.IsComponentsV2],

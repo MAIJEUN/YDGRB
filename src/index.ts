@@ -2,6 +2,8 @@ import type { Client } from "discord.js";
 
 import { PRIVILEGED_INTENTS, createClient } from "./client.js";
 import { loadConfig } from "./config.js";
+import { loadGames } from "./games/registry.js";
+import { cancelAllCloses } from "./games/scheduler.js";
 // 부팅 시각을 정확히 잡으려면 로그인보다 먼저 불러야 한다.
 import "./debug/runtime.js";
 import { collectCommands } from "./loaders/commands.js";
@@ -35,6 +37,7 @@ async function main(): Promise<void> {
   logger.info(`컴포넌트 핸들러 ${client.components.size}개 로드`);
 
   logger.info(`이벤트 핸들러 ${await registerEvents(client)}개 등록`);
+  logger.info(`미니게임 ${await loadGames()}개 로드`);
 
   installProcessHandlers(client);
 
@@ -91,8 +94,9 @@ function installProcessHandlers(client: Client): void {
 
       logger.info(`${signal} 수신 — 봇을 종료합니다.`);
 
-      // 타살버의 역할 넣었다 빼기 타이머가 남아 있으면 프로세스가 안 끝난다.
+      // 타이머가 남아 있으면 프로세스가 안 끝난다 — 타살버 반복과 게임 모집 마감.
       stopAllLoops();
+      cancelAllCloses();
 
       void Promise.resolve(client.destroy()).finally(() => {
         process.exit(0);

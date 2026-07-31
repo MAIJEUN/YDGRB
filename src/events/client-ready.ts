@@ -1,5 +1,6 @@
 import { ActivityType, Events } from "discord.js";
 
+import { restoreGames } from "../games/runner.js";
 import { logger } from "../logger.js";
 import { restoreExpirySchedules } from "../nickname/scheduler.js";
 import { restoreTasalbeo } from "../tasalbeo/scheduler.js";
@@ -25,5 +26,10 @@ export default defineEvent({
     // 타살버는 예약뿐 아니라 역할 넣었다 빼는 반복까지 되살린다.
     const tasalbeo = await restoreTasalbeo(client);
     if (tasalbeo > 0) logger.info(`타살버 ${tasalbeo}건 복구`);
+
+    // 모집 중이던 판은 되살리고, 진행 중이던 판은 접는다.
+    const games = await restoreGames(client);
+    if (games.restored > 0) logger.info(`게임 모집 ${games.restored}건 복구`);
+    if (games.aborted > 0) logger.info(`진행 중이던 게임 ${games.aborted}건 정리`);
   },
 });

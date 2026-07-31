@@ -669,7 +669,7 @@ export const COMMANDS: readonly DebugCommand[] = [
             value: lines(
               reservations.map(
                 (item) =>
-                  `**${item.kind}** ${item.targetId === null ? "_서버 전원_" : `<@${item.targetId}>`} — ${countdown(new Date(item.at))}`,
+                  `**${item.kind}** ${item.targetId === null ? (item.label ?? "_서버 전원_") : `<@${item.targetId}>`} — ${countdown(new Date(item.at))}`,
               ),
               MAX_ROWS,
             ),
