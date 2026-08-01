@@ -1,7 +1,7 @@
-import { normalizeTitle, openGameHere } from "../games/command.js";
-import quiz, { ACTION, FIELD, QUIZ, keepAnswer } from "../games/list/quiz.js";
+import { keepAnswer } from "../games/answer.js";
+import { checkDuration, normalizeTitle, openGameHere } from "../games/command.js";
+import quiz, { ACTION, FIELD, QUIZ } from "../games/list/quiz.js";
 import { refusedView } from "../games/views.js";
-import { describeDurationError, formatDuration, parseDuration } from "../time.js";
 import { defineComponentHandler } from "../types.js";
 import { response } from "../ui/response.js";
 
@@ -13,11 +13,6 @@ import { response } from "../ui/response.js";
  * 모달에 적은 값은 **친 사람에게만** 보인다. 정답이 채널에 새지 않게 하는 것이
  * 모달을 쓰는 유일한 이유다.
  */
-
-/** 너무 짧으면 읽기도 전에 끝나고, 너무 길면 채널이 하루 종일 묶인다. */
-const MIN_SECONDS = 10;
-const MAX_SECONDS = 60 * 60;
-
 export default defineComponentHandler({
   namespace: QUIZ,
 
@@ -37,39 +32,16 @@ export default defineComponentHandler({
       return;
     }
 
-    const parsed = parseDuration(rawDuration);
-    if (!parsed.ok) {
-      await interaction.reply(
-        response({
-          status: "failure",
-          title: "기간을 읽을 수 없습니다",
-          description: describeDurationError(parsed.reason),
-          fields: [{ name: "입력한 값", value: `\`${rawDuration}\`` }],
-          user: interaction.user,
-        }),
-      );
-      return;
-    }
-
-    if (parsed.seconds < MIN_SECONDS || parsed.seconds > MAX_SECONDS) {
-      await interaction.reply(
-        response({
-          status: "failure",
-          title: "기간이 맞지 않습니다",
-          description: `**${formatDuration(MIN_SECONDS)}** 부터 **${formatDuration(MAX_SECONDS)}** 사이로 적어 주세요.`,
-          fields: [
-            { name: "입력한 값", value: `\`${rawDuration}\` (${formatDuration(parsed.seconds)})` },
-          ],
-          user: interaction.user,
-        }),
-      );
+    const duration = checkDuration(rawDuration, interaction.user);
+    if (!duration.ok) {
+      await interaction.reply(response(duration.view));
       return;
     }
 
     await openGameHere(interaction, quiz, {
       title,
       body: question,
-      durationSeconds: parsed.seconds,
+      durationSeconds: duration.seconds,
       // 시작하기 전에 맡긴다 — 시작한 뒤에 맡기면 그 사이에 들어온 답을 놓친다.
       prepare: (sessionId) => {
         keepAnswer(sessionId, answer);

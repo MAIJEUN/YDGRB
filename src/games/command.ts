@@ -3,9 +3,12 @@ import type {
   ChatInputCommandInteraction,
   ModalSubmitInteraction,
   SlashCommandStringOption,
+  User,
 } from "discord.js";
 
+import { describeDurationError, formatDuration, parseDuration } from "../time.js";
 import { response } from "../ui/response.js";
+import type { MessageOptions } from "../ui/response.js";
 import { MAX_TITLE_LENGTH, TITLE_OPTION } from "./ids.js";
 import { attach, openGame } from "./runner.js";
 import type { OpenOptions } from "./runner.js";
@@ -53,6 +56,52 @@ export function normalizeTitle(raw: string | null | undefined): string | null {
 /** 슬래시 옵션에서 제목을 읽는다. */
 export function readTitle(interaction: ChatInputCommandInteraction): string | null {
   return normalizeTitle(interaction.options.getString(TITLE_OPTION));
+}
+
+/**
+ * 기간이 있는 게임의 한계.
+ *
+ * 너무 짧으면 문제를 읽기도 전에 끝나고, 너무 길면 그 채널이 하루 종일 묶인다
+ * (한 채널에 한 판이므로).
+ */
+export const MIN_GAME_SECONDS = 10;
+export const MAX_GAME_SECONDS = 60 * 60;
+
+export type DurationCheck =
+  | { readonly ok: true; readonly seconds: number }
+  | { readonly ok: false; readonly view: MessageOptions };
+
+/** 사람이 적은 기간을 읽고 한계 안인지 본다. 어긋나면 그대로 띄울 화면을 준다. */
+export function checkDuration(raw: string, user: User): DurationCheck {
+  const parsed = parseDuration(raw);
+
+  if (!parsed.ok) {
+    return {
+      ok: false,
+      view: {
+        status: "failure",
+        title: "기간을 읽을 수 없습니다",
+        description: describeDurationError(parsed.reason),
+        fields: [{ name: "입력한 값", value: `\`${raw}\`` }],
+        user,
+      },
+    };
+  }
+
+  if (parsed.seconds < MIN_GAME_SECONDS || parsed.seconds > MAX_GAME_SECONDS) {
+    return {
+      ok: false,
+      view: {
+        status: "failure",
+        title: "기간이 맞지 않습니다",
+        description: `**${formatDuration(MIN_GAME_SECONDS)}** 부터 **${formatDuration(MAX_GAME_SECONDS)}** 사이로 적어 주세요.`,
+        fields: [{ name: "입력한 값", value: `\`${raw}\` (${formatDuration(parsed.seconds)})` }],
+        user,
+      },
+    };
+  }
+
+  return { ok: true, seconds: parsed.seconds };
 }
 
 /** 커맨드로 열든 모달로 열든 이만큼은 할 수 있어야 한다. */

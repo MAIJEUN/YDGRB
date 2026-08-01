@@ -1,9 +1,9 @@
 import { ActionRowBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } from "discord.js";
 
 import { customId } from "../../types.js";
-import { MAX_TITLE_LENGTH, TITLE_OPTION } from "../ids.js";
+import { answerGame } from "../answer.js";
+import { titleInput } from "../command.js";
 import { defineGame } from "../types.js";
-import type { GameContext } from "../types.js";
 
 /**
  * 퀴즈 — **즉시 시작** 형식.
@@ -15,6 +15,9 @@ import type { GameContext } from "../types.js";
  *
  * **문제와 정답은 모달로 받는다.** 슬래시 커맨드 옵션은 채널에 그대로 남아 아무나 볼 수
  * 있다 (「/퀴즈 문제: … 정답: …」 이 통째로 보인다). 그러면 정답이 새므로 쓸 수 없다.
+ *
+ * 맞히고 · 이기고 · 끝나는 규칙은 [answer.ts](../answer.ts) 가 맡는다 —
+ * 초성퀴즈와 같은 것을 쓴다.
  */
 
 export const QUIZ = "quiz";
@@ -67,45 +70,8 @@ export function quizModal(): ModalBuilder {
           .setMaxLength(30),
       ),
       // 제목은 형식이 정한 칸이다. 모달로 받는 게임도 똑같이 둔다.
-      row(
-        new TextInputBuilder()
-          .setCustomId(FIELD.title)
-          .setLabel(TITLE_OPTION)
-          .setPlaceholder("보상은 소원권 1개")
-          .setStyle(TextInputStyle.Short)
-          .setRequired(false)
-          .setMaxLength(MAX_TITLE_LENGTH),
-      ),
+      titleInput(FIELD.title),
     );
-}
-
-/** 판마다 다른 것 — 정답과 이긴 사람. 진행 중인 판은 재시작을 견디지 않으므로 메모리면 된다. */
-interface Round {
-  readonly answer: string;
-  winnerId: string | null;
-}
-
-const rounds = new Map<string, Round>();
-
-/** 판을 열 때 정답을 맡겨 둔다. 정답은 화면에도 저장소에도 남기지 않는다. */
-export function keepAnswer(sessionId: string, answer: string): void {
-  rounds.set(sessionId, { answer, winnerId: null });
-}
-
-/**
- * 맞혔는지 본다.
- *
- * 앞뒤 공백과 사이 공백, 대소문자는 따지지 않는다 — 「Hello  World」 와 「hello world」 는
- * 같은 답으로 본다. 그 밖에는 그대로 견준다.
- */
-export function matches(answer: string, written: string): boolean {
-  const tidy = (text: string): string => text.replaceAll(/\s+/gu, " ").trim().toLowerCase();
-  return tidy(answer) !== "" && tidy(answer) === tidy(written);
-}
-
-/** 정답을 공개할 때. 마크다운이 섞여 있어도 그대로 보이게 코드로 감싼다. */
-function reveal(answer: string): string {
-  return `\`${answer.replaceAll("`", "'")}\``;
 }
 
 export default defineGame({
@@ -113,53 +79,5 @@ export default defineGame({
   name: "퀴즈",
   description: "문제를 내고, 이 채널에 답을 적어 맞히는 게임.",
   mode: "instant",
-
-  start(context) {
-    // 문제는 판을 열 때 화면에 실려 있다. 여기서 따로 할 일이 없다.
-    if (!rounds.has(context.session.id)) {
-      void context.end({ status: "failure", description: "문제를 잃어버렸습니다." });
-    }
-  },
-
-  async onMessage(context, message) {
-    const round = rounds.get(context.session.id);
-    if (round === undefined || round.winnerId !== null) return;
-    if (!matches(round.answer, message.content)) return;
-
-    round.winnerId = message.author.id;
-    await context.join(message.author.id);
-
-    await finish(context, round, message.author.id);
-  },
-
-  async onTimeout(context) {
-    const round = rounds.get(context.session.id);
-    if (round === undefined) {
-      await context.end();
-      return;
-    }
-
-    await finish(context, round, null);
-  },
+  ...answerGame,
 });
-
-async function finish(
-  context: GameContext,
-  round: Round,
-  winnerId: string | null,
-): Promise<void> {
-  rounds.delete(context.session.id);
-
-  // 색은 골격이 정한다 — 맞혔든 아무도 못 맞혔든 「끝났다」는 알림이라 같은 파랑이다.
-  await context.end(
-    winnerId === null
-      ? {
-          description: "아무도 맞히지 못했습니다.",
-          fields: [{ name: "정답", value: reveal(round.answer) }],
-        }
-      : {
-          description: `<@${winnerId}> 님이 맞혔습니다.`,
-          fields: [{ name: "정답", value: reveal(round.answer) }],
-        },
-  );
-}

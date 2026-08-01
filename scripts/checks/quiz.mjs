@@ -15,7 +15,9 @@ const runner = await import(`${DIST}/games/runner.js`);
 const store = await import(`${DIST}/games/store.js`);
 const views = await import(`${DIST}/games/views.js`);
 const quiz = (await import(`${DIST}/games/list/quiz.js`)).default;
-const { keepAnswer, matches, quizModal } = await import(`${DIST}/games/list/quiz.js`);
+const { quizModal } = await import(`${DIST}/games/list/quiz.js`);
+// 맞히기 규칙은 초성퀴즈와 함께 쓰는 공용 부품에 있다.
+const { keepAnswer, matches } = await import(`${DIST}/games/answer.js`);
 const { buildContainer, channelMessage } = await import(`${DIST}/ui/response.js`);
 
 const G = "111111111111111111";
@@ -268,12 +270,13 @@ const quizSource = read("src/games/list/quiz.ts");
 const commandSource = read("src/commands/quiz.ts");
 const modalSource = read("src/components/quiz.ts");
 
+const answerSource = read("src/games/answer.ts");
 assert("정답은 저장소에 안 남김", !quizSource.includes("session.answer"));
-assert("  └ 메모리에만 든다", quizSource.includes("const rounds = new Map"));
-assert("  └ 판이 끝나면 지운다", quizSource.includes("rounds.delete"));
+assert("  └ 메모리에만 든다", answerSource.includes("const rounds = new Map"));
+assert("  └ 판이 끝나면 지운다", answerSource.includes("rounds.delete"));
+assert("맞히기 규칙을 따로 만들지 않음", quizSource.includes("...answerGame"));
 assert("정답을 시작 전에 맡김", modalSource.includes("prepare:"), "여는 순간 답이 들어올 수 있다");
-assert("제목 칸 이름도 형식이 준 것", quizSource.includes("TITLE_OPTION"));
-assert("  └ 길이도", quizSource.includes("MAX_TITLE_LENGTH"));
+assert("제목 칸은 형식이 준 것", quizSource.includes("titleInput"), "이름·길이가 한 곳에서 나온다");
 assert("커맨드는 모달만 띄움", commandSource.includes("showModal"));
 assert("  └ 옵션을 붙이지 않음", !commandSource.includes("addStringOption"));
 
