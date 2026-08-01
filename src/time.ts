@@ -135,6 +135,33 @@ export function formatDuration(seconds: number): string {
 }
 
 // ─────────────────────────────────────────────────────────────
+// 한국 날짜
+//
+// 「하루」를 세는 기준은 언제나 한국 날짜다. 서버가 어느 시간대에 있든 같은 값이 나온다.
+// ─────────────────────────────────────────────────────────────
+
+/** `2026-07-31` 형태의 한국 날짜. */
+export function dateKey(at: Date = new Date()): string {
+  // en-CA 는 YYYY-MM-DD 로 내준다.
+  return at.toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
+}
+
+/** 어제 날짜. 출헉이 연속인지 판단할 때 쓴다. */
+export function previousDateKey(today: string): string {
+  const [year, month, day] = today.split("-").map(Number);
+  // UTC 로 만들어 계산해야 서머타임 같은 것에 흔들리지 않는다.
+  const date = new Date(Date.UTC(year ?? 0, (month ?? 1) - 1, day ?? 1));
+  date.setUTCDate(date.getUTCDate() - 1);
+
+  return date.toISOString().slice(0, 10);
+}
+
+/** 두 시각이 같은 날인지. */
+function sameDay(a: Date, b: Date): boolean {
+  return dateKey(a) === dateKey(b);
+}
+
+// ─────────────────────────────────────────────────────────────
 // 출력 — 전부 타임스탬프 마크다운으로
 // ─────────────────────────────────────────────────────────────
 
@@ -157,7 +184,18 @@ export function clock(date: Date): string {
   return time(date, TimestampStyles.ShortTime);
 }
 
-/** 시각과 남은 시간을 함께 — `2026년 7월 25일 오후 6시 12분 (3시간 후)` */
+/**
+ * 언제인지 알려 주는 기본 표기.
+ *
+ * **날짜가 바뀌지 않으면 남은 시간만** 적는다 — `3시간 후`
+ * 날짜가 바뀌면 시각도 함께 — `2026년 7월 25일 오후 6시 12분 (3시간 후)`
+ *
+ * 오늘 안에 끝나는 일에까지 날짜를 붙이면 한 줄이 화면을 가로지르는데, 정작 읽는 사람이
+ * 알고 싶은 것은 「얼마나 남았나」 하나다. 날짜가 넘어갈 때만 날짜가 정보가 된다.
+ *
+ * 기준은 **한국 날짜**다. 보는 사람의 시간대마다 다르게 그릴 수는 없다 —
+ * 어느 쪽을 고르든 한쪽은 어긋나므로, 이 봇이 쓰는 하루와 같은 기준으로 맞춘다.
+ */
 export function atWithCountdown(date: Date): string {
-  return `${at(date)} (${countdown(date)})`;
+  return sameDay(date, new Date()) ? countdown(date) : `${at(date)} (${countdown(date)})`;
 }

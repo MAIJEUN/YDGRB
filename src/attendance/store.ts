@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import path from "node:path";
 
 import { JsonFile } from "../storage/json-file.js";
+import { dateKey, previousDateKey } from "../time.js";
 
 /**
  * 출헉 기록. **서버별로** 따로 센다 (소원권과 같다).
@@ -67,25 +68,8 @@ function guildOf(data: AttendanceData, guildId: string): GuildAttendance {
   return guild;
 }
 
-// ─────────────────────────────────────────────────────────────
-// 날짜 — 한국 기준
-// ─────────────────────────────────────────────────────────────
-
-/** `2026-07-27` 형태의 한국 날짜. 서버가 어느 시간대에 있든 같은 값이 나온다. */
-export function dateKey(at: Date = new Date()): string {
-  // en-CA 는 YYYY-MM-DD 로 내준다.
-  return at.toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
-}
-
-/** 어제 날짜. 연속인지 판단할 때 쓴다. */
-export function previousDateKey(today: string): string {
-  const [year, month, day] = today.split("-").map(Number);
-  // UTC 로 만들어 계산해야 서머타임 같은 것에 흔들리지 않는다.
-  const date = new Date(Date.UTC(year ?? 0, (month ?? 1) - 1, day ?? 1));
-  date.setUTCDate(date.getUTCDate() - 1);
-
-  return date.toISOString().slice(0, 10);
-}
+// 날짜 계산은 [time.ts](../time.ts) 가 한다 — 「같은 날인가」를 화면 쪽도 쓰기 때문이다.
+export { dateKey, previousDateKey };
 
 // ─────────────────────────────────────────────────────────────
 // 오늘의 출헉

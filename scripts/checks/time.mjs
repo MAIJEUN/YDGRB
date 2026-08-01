@@ -10,9 +10,11 @@ const {
   atWithCountdown,
   clock,
   countdown,
+  dateKey,
   describeDurationError,
   formatDuration,
   parseDuration,
+  previousDateKey,
 } = await import(`${DIST}/time.js`);
 
 const MINUTE = 60;
@@ -123,14 +125,50 @@ assert("countdown() 은 <t:초:R>", countdown(moment) === `<t:${seconds}:R>`, co
 // 짧은 시각(`t`)이다. 긴 시각(`T`)은 초까지 붙어 로그를 줄줄이 세울 때 너무 길다.
 assert("clock() 은 <t:초:t>", clock(moment) === `<t:${seconds}:t>`, clock(moment));
 assert(
-  "atWithCountdown() 은 둘을 함께",
-  atWithCountdown(moment) === `<t:${seconds}:F> (<t:${seconds}:R>)`,
-  atWithCountdown(moment),
-);
-assert(
   "초 단위로 내림 (밀리초가 새지 않음)",
   at(new Date(moment.getTime() + 999)) === at(moment),
   at(new Date(moment.getTime() + 999)),
 );
+
+console.log("\n=== 6. 날짜가 안 바뀌면 남은 시간만 ===");
+//
+// 오늘 안에 끝나는 일에까지 날짜를 붙이면 한 줄이 화면을 가로지른다. 정작 알고 싶은 것은
+// 「얼마나 남았나」 하나다. 날짜가 넘어갈 때만 날짜가 정보가 된다.
+assert(
+  "날짜가 바뀌면 시각과 남은 시간을 함께",
+  atWithCountdown(moment) === `<t:${seconds}:F> (<t:${seconds}:R>)`,
+  atWithCountdown(moment),
+);
+
+/** 한국 날짜 기준으로 오늘 안에 있는 시각을 하나 고른다 (자정 언저리도 견디게). */
+const kstDay = (date) => date.toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
+const now = new Date();
+const inToday = [60_000, -60_000, 5 * 60_000].map((offset) => new Date(now.getTime() + offset))
+  .find((candidate) => kstDay(candidate) === kstDay(now));
+
+if (inToday !== undefined) {
+  const stamp = Math.floor(inToday.getTime() / 1000);
+  assert(
+    "오늘 안이면 남은 시간만",
+    atWithCountdown(inToday) === `<t:${stamp}:R>`,
+    atWithCountdown(inToday),
+  );
+  assert("  └ 날짜가 안 붙음", !atWithCountdown(inToday).includes(":F>"));
+}
+
+// 내일·어제는 날짜가 바뀐다.
+for (const [label, days] of [["내일", 1], ["어제", -1], ["다음 주", 7]]) {
+  const other = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+  assert(`${label} — 시각도 함께`, atWithCountdown(other).includes(":F>"), atWithCountdown(other));
+  assert(`  └ 남은 시간도 함께`, atWithCountdown(other).includes(":R>"));
+}
+
+console.log("\n=== 7. 한국 날짜 ===");
+//
+// 「하루」와 「같은 날인가」는 언제나 한국 날짜로 잰다. 서버가 어느 시간대에 있든 같아야 한다.
+assert("YYYY-MM-DD 로 낸다", /^\d{4}-\d{2}-\d{2}$/u.test(dateKey(moment)), dateKey(moment));
+assert("  └ 서버 시간대와 무관하게 한국 기준", dateKey(new Date("2027-01-15T16:30:00Z")) === "2027-01-16");
+assert("  └ 하루 전", previousDateKey("2027-01-01") === "2026-12-31");
+assert("  └ 윤달도", previousDateKey("2028-03-01") === "2028-02-29");
 
 finish();

@@ -455,8 +455,8 @@ assert("호출부가 직접 정하지 않음", ownMentions.length === 0, ownMent
 console.log("\n=== 시간 표기 ===");
 const HAND_ROLLED_DATE =
   /toLocale(?:Date|Time)?String|toISOString|toUTCString|toDateString|Intl\.DateTimeFormat|get(?:FullYear|Month|Hours|Minutes|Seconds)\(/u;
-// logger 는 콘솔 출력, attendance/store 는 화면에 안 나가는 **내부 날짜 키**다.
-const DATE_ALLOWED = new Set(["src/logger.ts", "src/attendance/store.ts"]);
+// logger 는 콘솔 출력, time.ts 는 「같은 날인가」를 재는 곳이다 (화면에는 마크다운만 나간다).
+const DATE_ALLOWED = new Set(["src/logger.ts", "src/time.ts"]);
 const handDates = sources.filter((f) => !DATE_ALLOWED.has(f.rel) && HAND_ROLLED_DATE.test(f.text));
 assert("날짜를 손으로 찍는 파일 없음", handDates.length === 0, handDates.map((f) => f.rel).join(", "));
 
@@ -482,11 +482,28 @@ const seconds = Math.floor(moment.getTime() / 1000);
 
 assert("at() 은 <t:초:F>", at(moment) === `<t:${seconds}:F>`, at(moment));
 assert("countdown() 은 <t:초:R>", countdown(moment) === `<t:${seconds}:R>`, countdown(moment));
+// 날짜가 바뀌는 시각이면 시각도 함께, 오늘 안이면 남은 시간만.
 assert(
-  "atWithCountdown() 은 둘을 함께",
+  "atWithCountdown() — 날짜가 바뀌면 둘을 함께",
   atWithCountdown(moment) === `<t:${seconds}:F> (<t:${seconds}:R>)`,
   atWithCountdown(moment),
 );
+
+const soon = new Date(Date.now() + 60_000);
+const soonSeconds = Math.floor(soon.getTime() / 1000);
+const today = soon.toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
+const nowDay = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
+
+if (today === nowDay) {
+  assert(
+    "  └ 오늘 안이면 남은 시간만",
+    atWithCountdown(soon) === `<t:${soonSeconds}:R>`,
+    atWithCountdown(soon),
+  );
+} else {
+  // 자정 언저리에 돌린 것이다. 이때는 날짜가 바뀌는 게 맞다.
+  assert("  └ 자정을 넘으면 시각도 함께", atWithCountdown(soon).includes(":F>"), atWithCountdown(soon));
+}
 
 // 화면에 나가는 시각이 정말 마크다운인지 (TIMESTAMP 는 위 「실제 화면」에서 만들어 둔 것).
 const expiring = buildContainer(
