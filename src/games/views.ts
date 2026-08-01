@@ -14,14 +14,17 @@ import { maxPlayersOf, minPlayersOf, sessionTitle } from "./types.js";
  *
  * 색은 판이 어디까지 왔는지를 **한눈에** 갈라 준다 —
  *
- *   모집 중   → **노랑**  아직 안 굴러갔다. 5분 안에 시작 못 하면 사라진다.
- *   진행 중   → **파랑**  판이 돌고 있다. 문제를 알리는 화면이라 알림성이다.
- *   끝        → **초록**
- *   취소 · 무승부 → **노랑**  온전히 끝나지 못했다.
- *   열지 못함  → **빨강**
+ *   모집 중 · 진행 중 → **노랑**  아직 도는 중이다.
+ *   끝               → **파랑**  아무도 요청하지 않은 순간에 나가는 **알림**이다.
+ *                                효과의 종료 안내가 파랑인 것과 같은 이유다.
+ *   취소             → **노랑**  판이 굴러가지도 못하고 접혔다.
+ *   열지 못함         → **빨강**
  *
- * 진행 중을 노랑으로 두면 「시작」과 「아무도 못 맞힘」이 같은 색이 된다. 판이 도는지
- * 끝났는지가 색으로 안 갈라져서, 스크롤을 올려 글자를 읽어야 알 수 있다.
+ * 「끝」을 초록으로 두면 안 된다. 초록은 **요청한 일이 끝났을 때**의 색이다.
+ * 게임 결과는 타이머나 남의 채팅이 끌어낸 것이라 요청한 사람이 없다.
+ *
+ * 그러면 진행 중(노랑)과 끝(파랑)이 색으로 갈라진다 — 판이 도는지 끝났는지를
+ * 글자를 읽지 않고도 알 수 있다.
  *
  * 게임이 직접 화면을 만들지 않고 내용과 결과만 넘기게 해서, 게임을 몇 개를 붙이든
  * 형식이 갈라지지 않게 한다.
@@ -113,8 +116,7 @@ export function startedView(
   host: User,
 ): MessageOptions {
   return {
-    // 파랑 — 판이 도는 중이라는 알림. 끝났을 때(초록·노랑)와 색으로 갈라진다.
-    status: "info",
+    status: "progress",
     title: `${sessionTitle(game, session)} — 시작`,
     description: body(game, session),
     fields: [
@@ -133,7 +135,12 @@ export function startedView(
   };
 }
 
-/** 게임이 끝났다. 결과 내용은 게임이 준 것을 그대로 쓴다. */
+/**
+ * 게임이 끝났다. 결과 내용은 게임이 준 것을 그대로 쓴다.
+ *
+ * 이 화면은 **판을 연 메시지에 답장**으로 달린다 — 효과의 종료 안내와 같은 자리다.
+ * 새 메시지로만 던지면 무엇에 대한 결과인지 스크롤을 올려 찾아야 한다.
+ */
 export function endedView(
   game: GameDefinition,
   session: GameSession,
@@ -151,7 +158,8 @@ export function endedView(
   }
 
   return {
-    status: result?.status ?? "success",
+    // 파랑(알림)이 기본. 게임이 실패로 끝났을 때만 그 색을 준다.
+    status: result?.status ?? "info",
     title: `${sessionTitle(game, session)} — 끝`,
     description: result?.description,
     fields,

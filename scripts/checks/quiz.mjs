@@ -86,9 +86,22 @@ function makeClient() {
     id,
     isTextBased: () => true,
     isDMBased: () => false,
+    isSendable: () => true,
     send: async (payload) => {
       const messageId = String((nextId += 1));
-      const message = { id: messageId, payload, edit: async (next) => { message.payload = next; } };
+      const message = {
+        id: messageId,
+        payload,
+        edit: async (next) => { message.payload = next; },
+        // 결과는 판을 연 메시지에 **답장**으로 달린다.
+        reply: async (next) => {
+          const replyId = String((nextId += 1));
+          const reply = { id: replyId, payload: next, edit: async () => {}, reply: async () => {} };
+          messages.set(replyId, reply);
+          sent.push({ channelId: id, payload: next, replyTo: messageId });
+          return reply;
+        },
+      };
       messages.set(messageId, message);
       sent.push({ channelId: id, payload });
       return message;
@@ -147,10 +160,12 @@ console.log("\n=== 4. 맞히면 이긴다 ===");
   await say(" 서울 ", P2);
   assert("맞히면 끝남", (await store.getSession(G, session.id)) === undefined);
 
-  const result = bodyOf(client.sent.at(-1).payload);
+  const last = client.sent.at(-1);
+  const result = bodyOf(last.payload);
+  assert("  └ 판을 연 메시지에 답장으로", last.replyTo === session.messageId, JSON.stringify(last.replyTo));
   assert("  └ 이긴 사람을 멘션으로", result.includes(`<@${P2}>`), result);
   assert("  └ 정답을 공개", result.includes("서울"), result);
-  assert("  └ 초록", client.sent.at(-1).payload.components[0].toJSON().accent_color === 0x57f287);
+  assert("  └ 파랑 (알림)", client.sent.at(-1).payload.components[0].toJSON().accent_color === 0x5865f2);
 }
 
 console.log("\n=== 5. 먼저 맞힌 사람만 ===");
@@ -189,8 +204,8 @@ console.log("\n=== 6. 아무도 못 맞히면 ===");
   assert("  └ 아무도 못 맞혔다고", result.includes("아무도 맞히지 못했습니다"), result);
   assert("  └ 정답을 공개", result.includes("정답"), result);
   assert(
-    "  └ 노랑 (온전히 끝나지 못함)",
-    client.sent.at(-1).payload.components[0].toJSON().accent_color === 0xfee75c,
+    "  └ 파랑 (맞혔든 아니든 알림)",
+    client.sent.at(-1).payload.components[0].toJSON().accent_color === 0x5865f2,
   );
 }
 
@@ -223,12 +238,12 @@ const sample = {
 };
 
 for (const [label, view, expected] of [
-  ["시작 → 파랑 (도는 중)", views.startedView(quiz, sample, host), 0x5865f2],
-  ["맞힘 → 초록", views.endedView(quiz, sample, host, { description: `<@${P2}> 님이 맞혔습니다.` }), 0x57f287],
+  ["시작 → 노랑 (도는 중)", views.startedView(quiz, sample, host), 0xfee75c],
+  ["맞힘 → 파랑 (알림)", views.endedView(quiz, sample, host, { description: `<@${P2}> 님이 맞혔습니다.` }), 0x5865f2],
   [
-    "아무도 못 맞힘 → 노랑",
-    views.endedView(quiz, sample, host, { status: "progress", description: "아무도 맞히지 못했습니다." }),
-    0xfee75c,
+    "아무도 못 맞힘 → 파랑 (그것도 알림)",
+    views.endedView(quiz, sample, host, { description: "아무도 맞히지 못했습니다." }),
+    0x5865f2,
   ],
 ]) {
   const container = buildContainer(view).toJSON();

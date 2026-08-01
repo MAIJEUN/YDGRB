@@ -150,11 +150,10 @@ async function finish(
 ): Promise<void> {
   rounds.delete(context.session.id);
 
-  // 아무도 못 맞혔으면 온전히 끝난 게 아니다 — 노랑.
+  // 색은 골격이 정한다 — 맞혔든 아무도 못 맞혔든 「끝났다」는 알림이라 같은 파랑이다.
   await context.end(
     winnerId === null
       ? {
-          status: "progress",
           description: "아무도 맞히지 못했습니다.",
           fields: [{ name: "정답", value: reveal(round.answer) }],
         }

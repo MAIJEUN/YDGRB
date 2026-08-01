@@ -102,9 +102,22 @@ function makeClient() {
     id,
     isTextBased: () => true,
     isDMBased: () => false,
+    isSendable: () => true,
     send: async (payload) => {
       const messageId = String((nextId += 1));
-      const message = { id: messageId, payload, edit: async (next) => { message.payload = next; } };
+      const message = {
+        id: messageId,
+        payload,
+        edit: async (next) => { message.payload = next; },
+        // 결과는 판을 연 메시지에 **답장**으로 달린다.
+        reply: async (next) => {
+          const replyId = String((nextId += 1));
+          const reply = { id: replyId, payload: next, edit: async () => {}, reply: async () => {} };
+          messages.set(replyId, reply);
+          sent.push({ channelId: id, payload: next, replyTo: messageId });
+          return reply;
+        },
+      };
       messages.set(messageId, message);
       sent.push({ channelId: id, payload });
       return message;
@@ -423,8 +436,8 @@ const sample = {
 };
 
 checkView("모집 중 → 노랑", views.recruitView(duo, sample, host), 0xfee75c);
-checkView("시작 → 파랑 (도는 중)", views.startedView(duo, sample, host), 0x5865f2);
-checkView("끝 → 초록", views.endedView(duo, sample, host, { description: "끝" }), 0x57f287);
+checkView("시작 → 노랑 (도는 중)", views.startedView(duo, sample, host), 0xfee75c);
+checkView("끝 → 파랑 (알림)", views.endedView(duo, sample, host, { description: "끝" }), 0x5865f2);
 checkView("취소 → 노랑", views.cancelledView(duo, sample, host, "접었습니다."), 0xfee75c);
 checkView("열지 못함 → 빨강", views.refusedView("실패", "안 됩니다.", host), 0xed4245);
 
@@ -445,13 +458,12 @@ assert(
   colorOf(views.startedView(duo, sample, host)) !== colorOf(views.endedView(duo, sample, host, {})),
 );
 assert(
-  "  └ 시작과 무승부도 다른 색",
-  colorOf(views.startedView(duo, sample, host)) !==
-    colorOf(views.endedView(duo, sample, host, { status: "progress" })),
+  "  └ 끝은 초록이 아님 (요청한 일이 아니다)",
+  colorOf(views.endedView(duo, sample, host, {})) !== 0x57f287,
 );
 assert(
-  "  └ 모집 중과 시작도 다른 색",
-  colorOf(views.recruitView(duo, sample, host)) !== colorOf(views.startedView(duo, sample, host)),
+  "  └ 게임이 실패로 끝나면 그 색",
+  colorOf(views.endedView(duo, sample, host, { status: "failure" })) === 0xed4245,
 );
 
 const buttons = views.recruitView(duo, sample, host).rows[0].toJSON().components;
@@ -531,6 +543,15 @@ assert("게임이 터져도 잡아서 끝냄", runnerSource.includes("게임 ${g
 assert("판을 두 번 끝내지 않음", runnerSource.includes("finished.has(session.id)"));
 assert("진행 중이던 판은 되살리지 않음", runnerSource.includes("봇이 다시 켜지면서 중단되었습니다"));
 assert("메시지는 메모리에서 찾아 넘김", runnerSource.includes("const live = new Map"));
+assert(
+  "결과는 판을 연 메시지에 답장",
+  runnerSource.includes("announceAt("),
+  "효과의 종료 안내와 같은 자리를 쓴다",
+);
+assert(
+  "  └ 종료 안내와 같은 구현",
+  read("src/ui/end-notice.ts").includes("export async function announceAt"),
+);
 
 assert("색을 직접 정하지 않음", !read("src/games/views.ts").includes("setAccentColor"));
 assert("게임은 화면을 직접 만들지 않음", !read("src/games/types.ts").includes("MessageOptions"));

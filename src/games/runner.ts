@@ -1,6 +1,7 @@
 import type { Client, GuildTextBasedChannel, Message, User } from "discord.js";
 
 import { logger } from "../logger.js";
+import { announceAt } from "../ui/end-notice.js";
 import { channelMessage, messageEdit } from "../ui/response.js";
 import type { MessageOptions } from "../ui/response.js";
 import { RECRUIT_TIMEOUT_SECONDS } from "./ids.js";
@@ -358,12 +359,14 @@ async function end(
   try {
     const ended = (await advance(session.guildId, session.id, "playing", "ended")) ?? session;
 
-    // 결과는 **새 메시지**로 남긴다. 게임이 그 사이에 여러 줄을 뱉었을 수 있어서,
-    // 위쪽 시작 안내를 고쳐 봐야 아무도 못 본다.
-    const channel = await fetchChannel(client, session.channelId);
-    if (channel !== null) {
-      await channel.send(channelMessage(endedView(game, ended, host, result)));
-    }
+    // 결과는 **판을 연 메시지에 답장**으로 단다 — 효과의 종료 안내와 같은 자리다.
+    // 위쪽 시작 안내를 고치기만 하면 한참 위라 아무도 못 보고, 그냥 새 메시지로 던지면
+    // 무엇에 대한 결과인지 스크롤을 올려 찾아야 한다. 답장은 둘 다 해결한다.
+    await announceAt(
+      client,
+      { channelId: session.channelId, messageId: session.messageId },
+      endedView(game, ended, host, result),
+    );
 
     await dropSession(session.guildId, session.id);
   } catch (error) {

@@ -94,24 +94,13 @@ export function endNoticeView(options: EndNoticeOptions): MessageOptions {
   };
 }
 
-/** 알림을 달 자리 — 효과를 건 메시지. */
+/** 알림을 달 자리 — 그 일을 시작한 메시지. */
 export interface NoticeAnchor {
   readonly channelId: string | null;
-  /** 효과를 건 메시지. 못 찾으면 채널에 그냥 남긴다. */
+  /** 효과를 건 메시지, 판을 연 메시지. 못 찾으면 채널에 그냥 남긴다. */
   readonly messageId: string | null;
 }
 
-/**
- * 종료 알림을 보낸다. **효과를 건 메시지에 답장**으로 단다.
- *
- * 알림이 실패해도 효과 자체는 이미 끝났으므로 던지지 않는다 — 로그만 남긴다.
- * 아래 경우들은 정상이고, 그때그때 할 수 있는 만큼만 한다.
- *
- *   - 원본 메시지가 지워짐 → 답장을 포기하고 채널에 그냥 남긴다
- *   - 채널이 지워지거나 봇이 못 봄 → 아무것도 못 한다 (로그만)
- *   - 봇이 그 채널에 글을 못 씀 → 마찬가지
- *   - 스레드가 보관됨 → 보내기가 실패하면 로그만
- */
 /**
  * 푼 사람이 봇이면 이름을 지운다.
  *
@@ -130,6 +119,34 @@ export async function sendEndNotice(
   anchor: NoticeAnchor,
   options: EndNoticeOptions,
 ): Promise<void> {
+  await announceAt(
+    client,
+    anchor,
+    endNoticeView({ ...options, reason: hideBot(client, options.reason) }),
+  );
+}
+
+/**
+ * 「끝났다」는 안내를 **그 일을 시작한 메시지에 답장**으로 단다.
+ *
+ * 효과의 종료 안내뿐 아니라 [게임 결과](../games/runner.ts)도 여기를 지난다 —
+ * 둘 다 아무도 요청하지 않은 순간에 나가는 알림이라, 어디에 붙는지가 같아야 한다.
+ *
+ * 답장인 것이 중요하다. 새 메시지로만 던지면 무엇에 대한 결과인지 스크롤을 올려 찾아야
+ * 하고, 원본을 고치기만 하면 한참 위라 아무도 못 본다. 답장은 둘 다 해결한다.
+ *
+ * 실패해도 던지지 않는다 — 그 일은 이미 끝났다. 아래는 전부 정상이고, 할 수 있는
+ * 만큼만 한다.
+ *
+ *   - 원본 메시지가 지워짐 → 답장을 포기하고 채널에 그냥 남긴다
+ *   - 채널이 지워지거나 봇이 못 봄 → 아무것도 못 한다 (로그만)
+ *   - 봇이 그 채널에 글을 못 씀 → 마찬가지
+ */
+export async function announceAt(
+  client: Client,
+  anchor: NoticeAnchor,
+  view: MessageOptions,
+): Promise<void> {
   if (anchor.channelId === null) return;
 
   try {
@@ -139,7 +156,7 @@ export async function sendEndNotice(
       return;
     }
 
-    const payload = channelMessage(endNoticeView({ ...options, reason: hideBot(client, options.reason) }));
+    const payload = channelMessage(view);
 
     if (anchor.messageId !== null) {
       // 원본이 살아 있는지 먼저 확인한다. 없는 메시지에 답장하면 디스코드가 통째로 거부한다.
