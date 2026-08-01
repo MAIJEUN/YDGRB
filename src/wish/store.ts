@@ -72,10 +72,25 @@ export type ChangeResult =
  * 결과가 음수가 되는 유저는 **아무것도 바꾸지 않고** `ok: false` 로 돌려준다
  * (여러 명을 한 번에 처리할 때 일부만 실패할 수 있다).
  */
+export interface ChangeOptions {
+  /**
+   * 모자라면 **있는 만큼만** 뺀다 (5장 가진 사람에게서 100장을 회수하면 0장이 된다).
+   *
+   * 「그 사람이 가진 것을 걷는다」 가 뜻이 통하는 곳에서만 켠다 — 회수가 그렇다.
+   * 제작처럼 값을 정확히 치러야 하는 것에는 켜면 안 된다. 조각이 모자란데 반쪽짜리
+   * 소원권을 내줄 수는 없다.
+   */
+  readonly clamp?: boolean;
+}
+
+/** 정수로 정확히 다룰 수 있는 한계. 넘겨 두면 더한 값이 슬금슬금 어긋난다. */
+const MAX_BALANCE = Number.MAX_SAFE_INTEGER;
+
 export async function applyBalanceChanges(
   guildId: string,
   userIds: readonly string[],
   delta: BalanceDelta,
+  options: ChangeOptions = {},
 ): Promise<Map<string, ChangeResult>> {
   return file.update((data) => {
     const guild = guildOf(data, guildId);
@@ -83,15 +98,21 @@ export async function applyBalanceChanges(
 
     for (const userId of userIds) {
       const before = balanceOf(guild, userId);
-      const after: Balance = {
+      const wanted: Balance = {
         tickets: before.tickets + (delta.tickets ?? 0),
         fragments: before.fragments + (delta.fragments ?? 0),
       };
 
-      if (after.tickets < 0 || after.fragments < 0) {
+      if (options.clamp !== true && (wanted.tickets < 0 || wanted.fragments < 0)) {
         results.set(userId, { ok: false, reason: "insufficient", before });
         continue;
       }
+
+      // 0 밑으로도, 정확히 셀 수 있는 한계 위로도 가지 않는다.
+      const after: Balance = {
+        tickets: Math.min(Math.max(wanted.tickets, 0), MAX_BALANCE),
+        fragments: Math.min(Math.max(wanted.fragments, 0), MAX_BALANCE),
+      };
 
       guild.balances[userId] = after;
       results.set(userId, { ok: true, before, after });
@@ -106,8 +127,9 @@ export async function applyBalanceChange(
   guildId: string,
   userId: string,
   delta: BalanceDelta,
+  options: ChangeOptions = {},
 ): Promise<ChangeResult> {
-  const result = (await applyBalanceChanges(guildId, [userId], delta)).get(userId);
+  const result = (await applyBalanceChanges(guildId, [userId], delta, options)).get(userId);
   if (result === undefined) throw new Error(`수량 변경 결과가 비어 있습니다: ${userId}`);
   return result;
 }

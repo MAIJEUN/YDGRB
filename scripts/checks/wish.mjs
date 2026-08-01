@@ -30,6 +30,8 @@ const { formatBalanceChange, formatBalance, formatBalanceBy } = await import(`${
 const G = "111111111111111111";
 const A = "222222222222222222";
 const B = "333333333333333333";
+const C = "888888888888888881";
+const D = "888888888888888882";
 
 console.log("\n=== 1. 수량 변경 (지급 · 회수 · 제작 · 낭비) ===");
 
@@ -62,6 +64,46 @@ assert(
   "여러 명 중 일부만 실패해도 나머지는 처리됨",
   partial.get(A)?.ok === true && partial.get(B)?.ok === false,
 );
+
+console.log("\n=== 1-1. 회수는 있는 만큼만 걷는다 ===");
+//
+// 「가진 걸 다 걷는다」 가 회수의 뜻이라, 모자라다고 아무것도 안 하는 게 더 이상하다.
+// 다만 제작처럼 값을 정확히 치러야 하는 곳에는 켜면 안 된다.
+await store.applyBalanceChange(G, C, { tickets: 5 });
+
+const clamped = await store.applyBalanceChange(G, C, { tickets: -100 }, { clamp: true });
+assert("보유보다 많이 회수해도 처리됨", clamped.ok === true, JSON.stringify(clamped));
+assert("  └ 있는 만큼만 (5장 → 0장)", clamped.ok && clamped.after.tickets === 0, JSON.stringify(clamped));
+assert("  └ 걷기 전 보유량을 그대로 알려 줌", clamped.ok && clamped.before.tickets === 5);
+assert("  └ 음수로 내려가지 않음", (await store.getBalance(G, C)).tickets === 0);
+
+const already = await store.applyBalanceChange(G, C, { tickets: -100 }, { clamp: true });
+assert("이미 0이어도 실패하지 않음", already.ok === true && already.after.tickets === 0);
+
+// 켜지 않으면 예전 그대로다.
+const strict = await store.applyBalanceChange(G, C, { tickets: -1 });
+assert("켜지 않으면 모자랄 때 그대로 거절", strict.ok === false && strict.reason === "insufficient");
+
+console.log("\n=== 1-1-2. 갯수 한계 ===");
+const { MAX_AMOUNT, MAX_AMOUNT_DIGITS } = await import(`${DIST}/wish/ids.js`);
+
+assert("정수로 정확한 최대값까지", MAX_AMOUNT === Number.MAX_SAFE_INTEGER, String(MAX_AMOUNT));
+assert("  └ 자릿수는 그 수의 길이", MAX_AMOUNT_DIGITS === String(MAX_AMOUNT).length);
+assert("  └ 예전 4자리 한계가 아님", MAX_AMOUNT_DIGITS > 4, String(MAX_AMOUNT_DIGITS));
+
+// 그 위로는 저장하지 않는다 — 넘기면 더한 값이 어긋난다.
+await store.applyBalanceChange(G, D, { tickets: MAX_AMOUNT });
+const piled = await store.applyBalanceChange(G, D, { tickets: MAX_AMOUNT });
+assert(
+  "한계 위로는 올라가지 않음",
+  piled.ok && piled.after.tickets === Number.MAX_SAFE_INTEGER,
+  JSON.stringify(piled),
+);
+assert("  └ 정수로 정확한 범위 안", Number.isSafeInteger((await store.getBalance(G, D)).tickets));
+
+// 아래 랭킹 검사에 끼어들지 않게 걷어 낸다 (회수가 있는 만큼만 걷는다는 것도 한 번 더 쓴다).
+await store.applyBalanceChange(G, D, { tickets: -MAX_AMOUNT }, { clamp: true });
+assert("  └ 걷어 내면 0", (await store.getBalance(G, D)).tickets === 0);
 
 console.log("\n=== 1-2. 흡혈 (빼고 → 더하기) ===");
 const V = "666666666666666666"; // 흡혈될 유저

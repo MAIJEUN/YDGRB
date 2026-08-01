@@ -1,6 +1,7 @@
 import { MessageFlags, PermissionFlagsBits } from "discord.js";
 import type { ModalBuilder, ModalSubmitInteraction, User } from "discord.js";
 
+import { count } from "../info/format.js";
 import { logger } from "../logger.js";
 import { channelMessage, response, updateResponse, type MessageOptions } from "../ui/response.js";
 import { defineComponentHandler, type ComponentInteraction } from "../types.js";
@@ -20,6 +21,7 @@ import {
   ITEM,
   ITEM_LABEL,
   ITEM_UNIT,
+  MAX_AMOUNT,
   MODAL_ID,
   PANEL,
   WISH,
@@ -735,8 +737,14 @@ async function submitGrant(interaction: ComponentInteraction, guildId: string): 
     return;
   }
 
-  const sign = direction === DIRECTION.give ? 1 : -1;
-  const results = await applyBalanceChanges(guildId, userIds, deltaFor(item, sign * amount));
+  const taking = direction === DIRECTION.take;
+  const sign = taking ? -1 : 1;
+
+  // 회수는 **있는 만큼만** 걷는다. 5장 가진 사람에게 100장을 회수하면 0장이 된다 —
+  // 「가진 걸 다 걷는다」 가 회수의 뜻이라, 모자라다고 아무것도 안 하는 게 더 이상하다.
+  const results = await applyBalanceChanges(guildId, userIds, deltaFor(item, sign * amount), {
+    clamp: taking,
+  });
 
   const changed: string[] = [];
   const rejected: string[] = [];
@@ -746,15 +754,16 @@ async function submitGrant(interaction: ComponentInteraction, guildId: string): 
     else rejected.push(`<@${userId}> — 보유량이 부족합니다 (현재 ${formatBalance(result.before)})`);
   }
 
-  const label = direction === DIRECTION.give ? "지급" : "회수";
+  const label = taking ? "회수" : "지급";
   const status = rejected.length === 0 ? "success" : changed.length === 0 ? "failure" : "progress";
 
   await replaceViewAndAnnounce(
     interaction,
     noticeView({
       status,
+      // 회수는 적은 만큼 다 걷히지 않을 수 있으므로 「최대」 라고 적는다.
       title: `수수 — ${label}`,
-      description: `${ITEM_LABEL[item]} **${amount}${ITEM_UNIT[item]}** · 대상 ${userIds.length}명 중 ${changed.length}명 처리`,
+      description: `${ITEM_LABEL[item]} **${taking ? "최대 " : ""}${count(amount)}${ITEM_UNIT[item]}** · 대상 ${userIds.length}명 중 ${changed.length}명 처리`,
       fields: rejected.length > 0 ? [{ name: "처리하지 못함", value: rejected.join("\n") }] : undefined,
       balance: changed.length > 0 ? changed.join("\n\n") : undefined,
       user: interaction.user,
@@ -779,9 +788,12 @@ function adminFailure(
   });
 }
 
-const MAX_AMOUNT = 10_000;
-
-/** 갯수 입력 검증 — 1 이상 10000 이하의 정수만 받는다. */
+/**
+ * 갯수 입력 검증 — 1 이상의 정수.
+ *
+ * 위 한계는 자바스크립트가 정수로 **정확히** 다룰 수 있는 최대값이다. 그보다 크게 적으면
+ * 저장된 수가 슬금슬금 어긋나므로 거기서 끊는다.
+ */
 function parseAmount(raw: string): number | undefined {
   const trimmed = raw.trim();
   if (!/^\d+$/.test(trimmed)) return undefined;
@@ -791,7 +803,7 @@ function parseAmount(raw: string): number | undefined {
 }
 
 function amountError(raw: string): string {
-  return `갯수는 1 이상 ${MAX_AMOUNT} 이하의 정수여야 해요. (입력: \`${raw.trim()}\`)`;
+  return `갯수는 1 이상 ${count(MAX_AMOUNT)} 이하의 정수여야 해요. (입력: \`${raw.trim()}\`)`;
 }
 
 // ─────────────────────────────────────────────────────────────

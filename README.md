@@ -1151,8 +1151,8 @@ _personcartwheeling  _shuoooong  _wheelcart  _yup_dol_gi
 
 ```ts
 // src/wish/store.ts
-applyBalanceChanges(guildId, userIds, delta)   // 여러 명
-applyBalanceChange(guildId, userId, delta)     // 한 명 (위 함수를 감싼 것)
+applyBalanceChanges(guildId, userIds, delta, options)   // 여러 명
+applyBalanceChange(guildId, userId, delta, options)     // 한 명 (위 함수를 감싼 것)
 ```
 
 | 상황 | delta |
@@ -1165,6 +1165,26 @@ applyBalanceChange(guildId, userId, delta)     // 한 명 (위 함수를 감싼 
 
 반환값은 `{ ok: true, before, after }` 또는 `{ ok: false, reason: "insufficient", before }` 입니다.
 여러 명을 한 번에 처리할 때 일부만 실패할 수 있고, 실패한 사람은 **아무것도 바뀌지 않습니다.**
+
+#### 회수는 있는 만큼만 걷습니다
+
+`{ clamp: true }` 를 주면 모자라도 실패하지 않고 **있는 만큼만** 뺍니다.
+
+```
+보유 5장 · 회수 100장  →  0장
+```
+
+「가진 걸 다 걷는다」가 회수의 뜻이라, 모자라다고 아무것도 안 하는 편이 더 이상합니다.
+그래서 **회수에만** 켭니다. 제작처럼 값을 정확히 치러야 하는 것에는 켜지 않습니다 —
+조각이 모자란데 반쪽짜리 소원권을 내줄 수는 없으니까요.
+
+회수 결과 화면은 「**최대** 100장」 이라고 적습니다. 적은 만큼 다 걷히지 않을 수 있어서요.
+
+#### 갯수는 얼마든지
+
+입력 칸은 **정수로 정확히 다룰 수 있는 최대값**(`Number.MAX_SAFE_INTEGER`, 16자리)까지
+열려 있습니다. 잔고도 그 위로는 올라가지 않게 막습니다 — 넘기면 더한 값이 슬금슬금
+어긋나기 시작합니다.
 
 ### 데이터 저장
 

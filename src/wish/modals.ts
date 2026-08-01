@@ -12,7 +12,15 @@ import {
 } from "discord.js";
 
 import { customId } from "../types.js";
-import { DIRECTION, FIELD, ITEM, ITEM_LABEL, MODAL_ID, WISH } from "./ids.js";
+import {
+  DIRECTION,
+  FIELD,
+  ITEM,
+  ITEM_LABEL,
+  MAX_AMOUNT_DIGITS,
+  MODAL_ID,
+  WISH,
+} from "./ids.js";
 import { MAX_FRAGMENTS_PER_TICKET, MIN_FRAGMENTS_PER_TICKET } from "./store.js";
 import type { GuildSettings } from "./types.js";
 
@@ -131,7 +139,7 @@ export function grantModal(): ModalBuilder {
             .setStyle(TextInputStyle.Short)
             .setPlaceholder("예: 3")
             .setValue("1")
-            .setMaxLength(4)
+            .setMaxLength(MAX_AMOUNT_DIGITS)
             .setRequired(true),
         ),
     );
@@ -177,7 +185,7 @@ export function bloodModal(): ModalBuilder {
             .setStyle(TextInputStyle.Short)
             .setPlaceholder("예: 3")
             .setValue("1")
-            .setMaxLength(4)
+            .setMaxLength(MAX_AMOUNT_DIGITS)
             .setRequired(true),
         ),
     );

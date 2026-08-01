@@ -91,3 +91,14 @@ export function isDirection(value: string | undefined): value is Direction {
 export function isPanelKind(value: string | undefined): value is PanelKind {
   return value === PANEL.user || value === PANEL.admin;
 }
+
+/**
+ * 갯수 입력의 한계.
+ *
+ * 자바스크립트가 **정수로 정확히** 다룰 수 있는 최대값이다. 여기를 넘으면 더한 값이
+ * 슬금슬금 어긋나기 시작하므로, 넉넉히 열되 이 선은 넘기지 않는다.
+ */
+export const MAX_AMOUNT = Number.MAX_SAFE_INTEGER;
+
+/** 그 수를 적는 데 필요한 자릿수. 입력 칸을 이만큼 열어 둔다. */
+export const MAX_AMOUNT_DIGITS = String(MAX_AMOUNT).length;
