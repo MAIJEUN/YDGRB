@@ -18,8 +18,11 @@ const PER_CHOSEONG = 21 * 28;
 /**
  * 글자를 초성으로 바꾼다 — `안녕하세요` → `ㅇㄴㅎㅅㅇ`
  *
- * 한글 음절이 아닌 것(공백 · 숫자 · 영문 · 기호 · 이미 자모인 것)은 **그대로 둔다.**
+ * 한글 음절이 아닌 것(공백 · 숫자 · 영문 · 기호 · **이미 초성인 것**)은 **그대로 둔다.**
  * 띄어쓰기가 남아야 몇 단어인지 보이고, 숫자는 초성으로 바꿀 것이 없다.
+ *
+ * 그래서 초성을 그대로 적으면 바뀌는 것 없이 그대로 나온다 — 문제와 정답이 같아지지만
+ * 막지 않는다. 적은 사람이 알고 하는 일이다.
  */
 export function toChoseong(text: string): string {
   return [...text]
@@ -30,16 +33,4 @@ export function toChoseong(text: string): string {
       return CHOSEONG[Math.floor((code - FIRST_SYLLABLE) / PER_CHOSEONG)] ?? char;
     })
     .join("");
-}
-
-/**
- * 초성으로 바꿀 것이 하나라도 있는지.
- *
- * 없으면 초성 문제가 답과 똑같아진다 — 내는 순간 답이 보인다.
- */
-export function hasSyllable(text: string): boolean {
-  return [...text].some((char) => {
-    const code = char.codePointAt(0) ?? 0;
-    return code >= FIRST_SYLLABLE && code <= LAST_SYLLABLE;
-  });
 }

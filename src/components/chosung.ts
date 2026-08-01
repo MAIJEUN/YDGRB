@@ -2,7 +2,7 @@ import { checkDuration, normalizeTitle, openGameHere } from "../games/command.js
 import { keepAnswer } from "../games/answer.js";
 import chosung, { ACTION, CHOSUNG, FIELD } from "../games/list/chosung.js";
 import { refusedView } from "../games/views.js";
-import { hasSyllable, toChoseong } from "../hangul.js";
+import { toChoseong } from "../hangul.js";
 import { defineComponentHandler } from "../types.js";
 import { response } from "../ui/response.js";
 
@@ -32,19 +32,8 @@ export default defineComponentHandler({
       return;
     }
 
-    // 한글 음절이 하나도 없으면 초성 문제가 답과 똑같아진다 — 내는 순간 답이 보인다.
-    if (!hasSyllable(text)) {
-      await interaction.reply(
-        response(
-          refusedView(
-            "초성퀴즈 실패",
-            "한글이 없어 초성으로 바꿀 것이 없습니다. 숫자나 영문만으로는 문제가 되지 않아요.",
-            interaction.user,
-          ),
-        ),
-      );
-      return;
-    }
+    // 초성만 적어도 그대로 통과시킨다. 그때는 문제와 정답이 같아져 화면에 답이 보이지만,
+    // 그건 적은 사람이 알고 하는 일이다 — 봇이 대신 판단하지 않는다.
 
     const duration = checkDuration(rawDuration, interaction.user);
     if (!duration.ok) {

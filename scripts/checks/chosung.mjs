@@ -11,7 +11,7 @@ const sandbox = mkdtempSync(path.join(tmpdir(), "chosung-"));
 mkdirSync(path.join(sandbox, "data"));
 process.chdir(sandbox);
 
-const { hasSyllable, toChoseong } = await import(`${DIST}/hangul.js`);
+const { toChoseong } = await import(`${DIST}/hangul.js`);
 const runner = await import(`${DIST}/games/runner.js`);
 const store = await import(`${DIST}/games/store.js`);
 const { keepAnswer } = await import(`${DIST}/games/answer.js`);
@@ -54,26 +54,14 @@ for (const [text, expected] of [
   assert(`\`${text}\` → \`${expected}\``, toChoseong(text) === expected, toChoseong(text));
 }
 
-console.log("\n=== 2. 초성으로 바꿀 것이 있는가 ===");
-for (const [text, expected] of [
-  ["안녕", true],
-  ["A 안녕", true],
-  ["가", true],
-  ["힣", true],
-  ["ㅇㄴ", false],
-  ["12345", false],
-  ["hello", false],
-  ["", false],
-  ["!!!", false],
-]) {
-  assert(`\`${text}\` → ${expected}`, hasSyllable(text) === expected);
+console.log("\n=== 2. 초성을 그대로 적어도 받는다 ===");
+//
+// 초성만 적으면 바뀌는 것이 없어 문제와 정답이 같아진다. 그래도 막지 않는다 —
+// 적은 사람이 알고 하는 일이다.
+for (const text of ["ㅇㄴ", "ㅇㄴㅎㅅㅇ", "ㄱㄴㄷ ㄹㅁㅂ"]) {
+  assert(`\`${text}\` 는 그대로`, toChoseong(text) === text, toChoseong(text));
 }
-
-assert(
-  "한글이 없으면 문제가 답과 같아짐",
-  toChoseong("hello") === "hello" && !hasSyllable("hello"),
-  "그래서 모달에서 막는다",
-);
+assert("한글이 없어도 그대로", toChoseong("hello 123") === "hello 123");
 
 // ── 3. 커맨드 ──────────────────────────────────────────────
 console.log("\n=== 3. 커맨드 ===");
@@ -227,6 +215,18 @@ console.log("\n=== 6. 아무도 못 맞히면 ===");
 }
 
 // ── 7. 제목 ────────────────────────────────────────────────
+console.log("\n=== 6-1. 초성을 그대로 적은 판 ===");
+{
+  const client = makeClient();
+  const { session } = await open(client, { text: "ㅇㄴㅎㅅㅇ", channelId: "888888888888888883" });
+
+  const panel = bodyOf(client.messages.get(String(session.messageId ?? "")).payload);
+  assert("적은 그대로 문제가 됨", panel.includes("ㅇㄴㅎㅅㅇ"), panel);
+
+  await say("ㅇㄴㅎㅅㅇ", P2, "888888888888888883");
+  assert("  └ 그것을 적으면 맞은 것", (await store.getSession(G, session.id)) === undefined);
+}
+
 console.log("\n=== 7. 제목 ===");
 {
   const client = makeClient();
@@ -250,7 +250,9 @@ const modalSource = read("src/components/chosung.ts");
 const commandSource = read("src/commands/chosung.ts");
 const gameSource = read("src/games/list/chosung.ts");
 
-assert("한글이 없으면 막음", modalSource.includes("hasSyllable(text)"), "문제가 답과 같아진다");
+assert("초성만 적어도 막지 않음", !modalSource.includes("hasSyllable"), "적은 사람의 판단에 맡긴다");
+assert("  └ 빈 칸만 막음", modalSource.includes('text === ""'));
+assert("  └ 빈 칸만 막음", modalSource.includes('text === ""'));
 assert("정답을 시작 전에 맡김", modalSource.includes("prepare:"), "여는 순간 답이 들어올 수 있다");
 assert("커맨드는 모달만 띄움", commandSource.includes("showModal"));
 assert("  └ 옵션을 붙이지 않음", !commandSource.includes("addStringOption"));
