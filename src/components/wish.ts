@@ -49,6 +49,7 @@ import {
 } from "../wish/store.js";
 import type { WishAttachment, WishRecord } from "../wish/types.js";
 import { checkView, noticeView, panelView, rankView } from "../wish/views.js";
+import { speak } from "../ui/tone.js";
 
 /**
  * 소원권 시스템의 모든 버튼 · 셀렉트 메뉴 · 모달을 처리한다.
@@ -61,7 +62,7 @@ export default defineComponentHandler({
 
     const guildId = interaction.guildId;
     if (guildId === null) {
-      await fail(interaction, "서버 전용", "이 기능은 서버 안에서만 쓸 수 있어요.");
+      await fail(interaction, "서버 전용", speak("이 기능은 서버 안에서만 쓸 수 있어요."));
       return;
     }
 
@@ -171,7 +172,7 @@ export default defineComponentHandler({
 
       default:
         logger.warn(`소원권: 모르는 customId ${interaction.customId}`);
-        await fail(interaction, "처리할 수 없음", "알 수 없는 동작입니다.");
+        await fail(interaction, "처리할 수 없음", speak("알 수 없는 동작입니다."));
     }
   },
 });
@@ -262,8 +263,8 @@ async function switchPanel(
   if (kind === PANEL.admin && !admin) {
     await fail(
       interaction,
-      "권한이 없습니다",
-      "관리자 패널은 **관리자** 권한을 가진 사람만 열 수 있어요.",
+      speak("권한이 없습니다"),
+      speak("관리자 패널은 **관리자** 권한을 가진 사람만 열 수 있어요."),
     );
     return;
   }
@@ -292,7 +293,7 @@ function isAdmin(interaction: ComponentInteraction): boolean {
 async function denyNonAdmin(interaction: ComponentInteraction): Promise<boolean> {
   if (isAdmin(interaction)) return false;
 
-  await fail(interaction, "권한이 없습니다", "이 기능은 **관리자** 권한을 가진 사람만 쓸 수 있어요.");
+  await fail(interaction, speak("권한이 없습니다"), speak("이 기능은 **관리자** 권한을 가진 사람만 쓸 수 있어요."));
   return true;
 }
 
@@ -328,7 +329,7 @@ async function craft(interaction: ComponentInteraction, guildId: string): Promis
       noticeView({
         status: "failure",
         title: "제작 실패",
-        description: `조각이 부족합니다. 소원권 1장을 만들려면 조각 **${fragmentsPerTicket}개**가 필요해요.`,
+        description: speak(`조각이 부족합니다. 소원권 1장을 만들려면 조각 **${fragmentsPerTicket}개**가 필요해요.`),
         fields: [{ name: "현재 보유", value: formatBalance(result.before) }],
         user: interaction.user,
         panel: PANEL.user,
@@ -343,7 +344,7 @@ async function craft(interaction: ComponentInteraction, guildId: string): Promis
     noticeView({
       status: "success",
       title: "제작 완료",
-      description: `조각 ${fragmentsPerTicket}개를 소원권 **1장**으로 바꿨습니다.`,
+      description: speak(`조각 ${fragmentsPerTicket}개를 소원권 **1장**으로 바꿨습니다.`),
       balance: formatBalanceChange(result),
       user: interaction.user,
       panel: PANEL.user,
@@ -366,7 +367,7 @@ async function submitWaste(interaction: ComponentInteraction, guildId: string): 
       noticeView({
         status: "failure",
         title: "낭비 실패",
-        description: "항목을 고르지 않았습니다.",
+        description: speak("항목을 고르지 않았습니다."),
         user: interaction.user,
         panel: PANEL.user,
         isAdmin: isAdmin(interaction),
@@ -383,7 +384,7 @@ async function submitWaste(interaction: ComponentInteraction, guildId: string): 
       noticeView({
         status: "failure",
         title: "낭비 실패",
-        description: `버릴 ${ITEM_LABEL[picked]}이(가) 없습니다.`,
+        description: speak(`버릴 ${ITEM_LABEL[picked]}이(가) 없습니다.`),
         fields: [{ name: "현재 보유", value: formatBalance(result.before) }],
         user: interaction.user,
         panel: PANEL.user,
@@ -423,8 +424,8 @@ async function openWishModal(interaction: ComponentInteraction, guildId: string)
       interaction,
       noticeView({
         status: "failure",
-        title: "소원을 빌 수 없습니다",
-        description: "관리자가 아직 **소원 전달 채널**을 설정하지 않았어요.",
+        title: speak("소원을 빌 수 없습니다"),
+        description: speak("관리자가 아직 **소원 전달 채널**을 설정하지 않았어요."),
         user: interaction.user,
         panel: PANEL.user,
         isAdmin: isAdmin(interaction),
@@ -439,8 +440,8 @@ async function openWishModal(interaction: ComponentInteraction, guildId: string)
       interaction,
       noticeView({
         status: "failure",
-        title: "소원권이 없습니다",
-        description: `조각 ${settings.fragmentsPerTicket}개를 모아 제작하면 소원을 빌 수 있어요.`,
+        title: speak("소원권이 없습니다"),
+        description: speak(`조각 ${settings.fragmentsPerTicket}개를 모아 제작하면 소원을 빌 수 있어요.`),
         fields: [{ name: "현재 보유", value: formatBalance(balance) }],
         user: interaction.user,
         panel: PANEL.user,
@@ -465,8 +466,8 @@ async function submitWish(interaction: ComponentInteraction, guildId: string): P
       interaction,
       noticeView({
         status: "failure",
-        title: "소원을 빌 수 없습니다",
-        description: "관리자가 아직 **소원 전달 채널**을 설정하지 않았어요.",
+        title: speak("소원을 빌 수 없습니다"),
+        description: speak("관리자가 아직 **소원 전달 채널**을 설정하지 않았어요."),
         user: interaction.user,
         panel: PANEL.user,
         isAdmin: isAdmin(interaction),
@@ -482,8 +483,8 @@ async function submitWish(interaction: ComponentInteraction, guildId: string): P
       interaction,
       noticeView({
         status: "failure",
-        title: "소원권이 없습니다",
-        description: "소원을 빌려면 소원권이 1장 필요해요.",
+        title: speak("소원권이 없습니다"),
+        description: speak("소원을 빌려면 소원권이 1장 필요해요."),
         fields: [{ name: "현재 보유", value: formatBalance(spent.before) }],
         user: interaction.user,
         panel: PANEL.user,
@@ -520,8 +521,8 @@ async function submitWish(interaction: ComponentInteraction, guildId: string): P
       interaction,
       noticeView({
         status: "success",
-        title: "소원을 보냈습니다",
-        description: `<#${channelId}> 로 전달했습니다.`,
+        title: speak("소원을 보냈습니다"),
+        description: speak(`<#${channelId}> 로 전달했습니다.`),
         fields: [{ name: "소원 내용", value: content.slice(0, 1000) }],
         balance: formatBalanceChange(spent),
         user: interaction.user,
@@ -541,7 +542,7 @@ async function submitWish(interaction: ComponentInteraction, guildId: string): P
       noticeView({
         status: "failure",
         title: "소원 전달 실패",
-        description: "설정된 채널에 메시지를 보내지 못했습니다. 관리자에게 알려 주세요.",
+        description: speak("설정된 채널에 메시지를 보내지 못했습니다. 관리자에게 알려 주세요."),
         error,
         balance: refund.ok ? formatBalanceChange(refund) : undefined,
         user: interaction.user,
@@ -586,7 +587,7 @@ async function decideWish(
   if (await denyNonAdmin(interaction)) return;
 
   if (wishId === undefined) {
-    await fail(interaction, "처리할 수 없음", "소원 정보를 찾지 못했습니다.");
+    await fail(interaction, "처리할 수 없음", speak("소원 정보를 찾지 못했습니다."));
     return;
   }
 
@@ -602,8 +603,8 @@ async function decideWish(
       interaction,
       "이미 처리된 소원",
       resolved.reason === "missing"
-        ? "소원 정보를 찾지 못했습니다."
-        : "다른 관리자가 먼저 처리했습니다.",
+        ? speak("소원 정보를 찾지 못했습니다.")
+        : speak("다른 관리자가 먼저 처리했습니다."),
     );
     return;
   }
@@ -683,7 +684,7 @@ async function notifyWisher(
     await target.send(
       channelMessage({
         status: accepted ? "success" : "failure",
-        title: accepted ? "소원이 수락되었습니다" : "소원이 거절되었습니다",
+        title: accepted ? speak("소원이 수락되었습니다") : speak("소원이 거절되었습니다"),
         description: wish.content,
         fields: [
           // 첨부파일은 원본 메시지에 붙어 있다. 링크로 안내한다
@@ -717,7 +718,7 @@ async function submitGrant(interaction: ComponentInteraction, guildId: string): 
   if (!isDirection(direction) || !isItem(item)) {
     await replaceView(
       interaction,
-      adminFailure(interaction, "수수 실패", "지급/회수와 항목을 모두 골라 주세요."),
+      adminFailure(interaction, "수수 실패", speak("지급/회수와 항목을 모두 골라 주세요.")),
     );
     return;
   }
@@ -732,7 +733,7 @@ async function submitGrant(interaction: ComponentInteraction, guildId: string): 
   if (userIds.length === 0) {
     await replaceView(
       interaction,
-      adminFailure(interaction, "수수 실패", "대상 유저를 한 명 이상 골라 주세요."),
+      adminFailure(interaction, "수수 실패", speak("대상 유저를 한 명 이상 골라 주세요.")),
     );
     return;
   }
@@ -751,7 +752,7 @@ async function submitGrant(interaction: ComponentInteraction, guildId: string): 
 
   for (const [userId, result] of results) {
     if (result.ok) changed.push(formatBalanceChangeFor(userId, result));
-    else rejected.push(`<@${userId}> — 보유량이 부족합니다 (현재 ${formatBalance(result.before)})`);
+    else rejected.push(speak(`<@${userId}> — 보유량이 부족합니다 (현재 ${formatBalance(result.before)})`));
   }
 
   const label = taking ? "회수" : "지급";
@@ -803,7 +804,7 @@ function parseAmount(raw: string): number | undefined {
 }
 
 function amountError(raw: string): string {
-  return `갯수는 1 이상 ${count(MAX_AMOUNT)} 이하의 정수여야 해요. (입력: \`${raw.trim()}\`)`;
+  return speak(`갯수는 1 이상 ${count(MAX_AMOUNT)} 이하의 정수여야 해요. (입력: \`${raw.trim()}\`)`);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -830,7 +831,7 @@ async function submitBlood(interaction: ComponentInteraction, guildId: string): 
   if (!isItem(item) || from === undefined || to === undefined) {
     await replaceView(
       interaction,
-      adminFailure(interaction, "흡혈 실패", "항목과 두 유저를 모두 골라 주세요."),
+      adminFailure(interaction, "흡혈 실패", speak("항목과 두 유저를 모두 골라 주세요.")),
     );
     return;
   }
@@ -838,7 +839,7 @@ async function submitBlood(interaction: ComponentInteraction, guildId: string): 
   if (from === to) {
     await replaceView(
       interaction,
-      adminFailure(interaction, "흡혈 실패", "같은 사람에게서 흡혈할 수는 없어요."),
+      adminFailure(interaction, "흡혈 실패", speak("같은 사람에게서 흡혈할 수는 없어요.")),
     );
     return;
   }
@@ -857,7 +858,7 @@ async function submitBlood(interaction: ComponentInteraction, guildId: string): 
       noticeView({
         status: "failure",
         title: "흡혈 실패",
-        description: `<@${from}> 님의 ${ITEM_LABEL[item]}이(가) 부족합니다.`,
+        description: speak(`<@${from}> 님의 ${ITEM_LABEL[item]}이(가) 부족합니다.`),
         fields: [{ name: "현재 보유", value: formatBalance(drained.before) }],
         user: interaction.user,
         panel: PANEL.admin,
@@ -873,7 +874,7 @@ async function submitBlood(interaction: ComponentInteraction, guildId: string): 
     await applyBalanceChange(guildId, from, deltaFor(item, amount));
     await replaceView(
       interaction,
-      adminFailure(interaction, "흡혈 실패", "옮기는 중 문제가 생겨 되돌렸습니다."),
+      adminFailure(interaction, "흡혈 실패", speak("옮기는 중 문제가 생겨 되돌렸습니다.")),
     );
     return;
   }
@@ -913,7 +914,7 @@ async function submitConfig(interaction: ComponentInteraction, guildId: string):
       adminFailure(
         interaction,
         "설정 실패",
-        `제작 비용은 ${MIN_FRAGMENTS_PER_TICKET} 이상 ${MAX_FRAGMENTS_PER_TICKET} 이하의 정수여야 해요. (입력: \`${rawCost}\`)`,
+        speak(`제작 비용은 ${MIN_FRAGMENTS_PER_TICKET} 이상 ${MAX_FRAGMENTS_PER_TICKET} 이하의 정수여야 해요. (입력: \`${rawCost}\`)`),
       ),
     );
     return;
@@ -935,8 +936,8 @@ async function submitConfig(interaction: ComponentInteraction, guildId: string):
       title: "설정 완료",
       description:
         settings.wishChannelId === null
-          ? "소원 전달 채널이 아직 없어서 소원 빌기는 쓸 수 없습니다."
-          : `소원은 <#${settings.wishChannelId}> 로 전달됩니다.`,
+          ? speak("소원 전달 채널이 아직 없어서 소원 빌기는 쓸 수 없습니다.")
+          : speak(`소원은 <#${settings.wishChannelId}> 로 전달됩니다.`),
       fields: [
         {
           name: "제작 비용",

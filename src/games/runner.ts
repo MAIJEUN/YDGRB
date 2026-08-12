@@ -21,6 +21,7 @@ import {
 import type { GameContext, GameDefinition, GameResult, GameSession } from "./types.js";
 import { maxPlayersOf, minPlayersOf } from "./types.js";
 import { cancelledView, endedView, recruitView, startedView } from "./views.js";
+import { speak } from "../ui/tone.js";
 
 /**
  * 판 하나의 일생.
@@ -185,7 +186,7 @@ export async function expireRecruiting(
   guildId: string,
   sessionId: string,
   host: User,
-  reason = "5분 안에 시작되지 않아 판을 접었습니다.",
+  reason = speak("5분 안에 시작되지 않아 판을 접었습니다."),
 ): Promise<void> {
   const session = await getSession(guildId, sessionId);
   if (session === undefined || session.phase !== "recruiting") return;
@@ -239,7 +240,7 @@ export async function cancel(
   const session = await getSession(guildId, sessionId);
   if (session === undefined || session.phase !== "recruiting") return false;
 
-  await expireRecruiting(client, guildId, sessionId, host, "주최자가 판을 접었습니다.");
+  await expireRecruiting(client, guildId, sessionId, host, speak("주최자가 판을 접었습니다."));
   return true;
 }
 
@@ -307,7 +308,7 @@ async function beginPlay(
     logger.error(`게임 ${game.id} 진행 중 오류 (${session.id})`, error);
     await end(client, game, session, host, {
       status: "failure",
-      description: "게임이 끝까지 돌지 못했습니다.",
+      description: speak("게임이 끝까지 돌지 못했습니다."),
     });
   }
 }
@@ -327,7 +328,7 @@ async function timeOut(
     else await running.game.onTimeout(running.context);
   } catch (error) {
     logger.error(`게임 ${running.game.id} 마무리 중 오류 (${sessionId})`, error);
-    await running.context.end({ status: "failure", description: "게임이 끝까지 돌지 못했습니다." });
+    await running.context.end({ status: "failure", description: speak("게임이 끝까지 돌지 못했습니다.") });
   }
 
   // 게임이 end() 를 잊었을 수도 있다. 판을 남겨 두면 그 채널이 영영 막힌다.
@@ -423,7 +424,7 @@ export async function restoreGames(
     if (host === null) continue;
 
     if (session.phase !== "recruiting") {
-      await abort(client, session, "봇이 다시 켜지면서 중단되었습니다.", host);
+      await abort(client, session, speak("봇이 다시 켜지면서 중단되었습니다."), host);
       aborted += 1;
       continue;
     }
@@ -435,7 +436,7 @@ export async function restoreGames(
         session.guildId,
         session.id,
         host,
-        "봇이 꺼져 있는 동안 모집 시간이 지났습니다.",
+        speak("봇이 꺼져 있는 동안 모집 시간이 지났습니다."),
       );
     } else {
       armClock(client, session, host);

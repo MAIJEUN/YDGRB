@@ -4,6 +4,7 @@ import quiz, { ACTION, FIELD, QUIZ } from "../games/list/quiz.js";
 import { refusedView } from "../games/views.js";
 import { defineComponentHandler } from "../types.js";
 import { response } from "../ui/response.js";
+import { speak } from "../ui/tone.js";
 
 /**
  * 퀴즈 모달 — 여기서 판이 열린다.
@@ -27,7 +28,7 @@ export default defineComponentHandler({
 
     if (question === "" || answer === "") {
       await interaction.reply(
-        response(refusedView("퀴즈 실패", "문제와 정답을 채워 주세요.", interaction.user)),
+        response(refusedView("퀴즈 실패", speak("문제와 정답을 채워 주세요."), interaction.user)),
       );
       return;
     }

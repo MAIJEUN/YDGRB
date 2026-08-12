@@ -39,6 +39,7 @@ import {
 import type { DataFile } from "./storage.js";
 import { dataFiles } from "./storage.js";
 import { allReservations, runningJobs, runningLoops } from "./timers.js";
+import { speak } from "../ui/tone.js";
 import {
   card,
   chips,
@@ -137,7 +138,7 @@ function targetId(context: DebugContext): string {
 }
 
 function describeDataFile(file: DataFile): string {
-  if (file.problem !== null) return `**JSON 이 깨졌습니다** — \`${file.problem}\``;
+  if (file.problem !== null) return speak(`**JSON 이 깨졌습니다** — \`${file.problem}\``);
   if (!file.exists) return "아직 없음 _(아무도 안 썼다는 뜻)_";
 
   const head = `${formatBytes(file.bytes)} · 서버 **${file.guilds ?? 0}개** · 고침 ${
@@ -193,7 +194,7 @@ export const COMMANDS: readonly DebugCommand[] = [
     summary: "이 목록",
     async run({ user, level }) {
       return card("도움", user, {
-        description: "이름 대신 영문 별칭도 통합니다.",
+        description: speak("이름 대신 영문 별칭도 통합니다."),
         fields: [
           { name: "내 등급", value: `**${LEVEL_LABEL[level]}**` },
           { name: "할 수 있는 것", value: helpLines(level) },
@@ -328,7 +329,7 @@ export const COMMANDS: readonly DebugCommand[] = [
           {
             name: "🔒 특권 인텐트",
             value:
-              "Developer Portal > Bot > Privileged Gateway Intents 에서 켜야 합니다.\n켜지 않으면 로그인이 `Used disallowed intents` 로 실패합니다.",
+              speak("Developer Portal > Bot > Privileged Gateway Intents 에서 켜야 합니다.\n켜지 않으면 로그인이 `Used disallowed intents` 로 실패합니다."),
           },
         ],
       });
@@ -395,7 +396,7 @@ export const COMMANDS: readonly DebugCommand[] = [
       }
 
       return card("캐시", user, {
-        description: "캐시는 받은 것만 들고 있는 것이라, 적다고 문제가 있는 것은 아니다.",
+        description: speak("캐시는 받은 것만 들고 있는 것이라, 적다고 문제가 있는 것은 아닙니다."),
         fields: [
           {
             name: "개수",
@@ -428,7 +429,7 @@ export const COMMANDS: readonly DebugCommand[] = [
       if (id !== message.guild.id && !atLeast(level, "owner")) {
         return card("서버", user, {
           status: "failure",
-          description: "다른 서버는 봇 주인만 볼 수 있어요.",
+          description: speak("다른 서버는 봇 주인만 볼 수 있어요."),
         });
       }
 
@@ -437,7 +438,7 @@ export const COMMANDS: readonly DebugCommand[] = [
       if (guild === undefined) {
         return card("서버", user, {
           status: "failure",
-          description: `\`${id}\` — 이 봇이 들어가 있지 않은 서버입니다.`,
+          description: speak(`\`${id}\` — 이 봇이 들어가 있지 않은 서버입니다.`),
         });
       }
 
@@ -477,7 +478,7 @@ export const COMMANDS: readonly DebugCommand[] = [
       if (channel === undefined) {
         return card("채널", user, {
           status: "failure",
-          description: `\`${id}\` — 이 서버에서 찾지 못했습니다.`,
+          description: speak(`\`${id}\` — 이 서버에서 찾지 못했습니다.`),
         });
       }
 
@@ -533,8 +534,8 @@ export const COMMANDS: readonly DebugCommand[] = [
           status: found === null ? "failure" : "info",
           description:
             found === null
-              ? `\`${id}\` — 어디에서도 찾지 못했습니다.`
-              : `<@${id}> · \`${id}\` — **이 서버에 없습니다.**`,
+              ? speak(`\`${id}\` — 어디에서도 찾지 못했습니다.`)
+              : speak(`<@${id}> · \`${id}\` — **이 서버에 없습니다.**`),
           fields:
             found === null
               ? []
@@ -584,8 +585,8 @@ export const COMMANDS: readonly DebugCommand[] = [
           status: "failure",
           description:
             id === null
-              ? "역할을 멘션하거나 id 를 붙여 주세요."
-              : `\`${id}\` — 이 서버에서 찾지 못했습니다.`,
+              ? speak("역할을 멘션하거나 id 를 붙여 주세요.")
+              : speak(`\`${id}\` — 이 서버에서 찾지 못했습니다.`),
         });
       }
 
@@ -624,7 +625,7 @@ export const COMMANDS: readonly DebugCommand[] = [
 
       return card("권한", user, {
         status: channelWide.missing.length === 0 ? "success" : "progress",
-        description: `<#${message.channel.id}> 기준입니다.`,
+        description: speak(`<#${message.channel.id}> 기준입니다.`),
         fields: [
           { name: "여기", value: channelWide.table },
           {
@@ -662,7 +663,7 @@ export const COMMANDS: readonly DebugCommand[] = [
 
       return card("예약", user, {
         description:
-          "파일이 아니라 **지금 메모리에 떠 있는 타이머**입니다. 저장된 것과 어긋나면 그게 버그입니다.",
+          speak("파일이 아니라 **지금 메모리에 떠 있는 타이머**입니다. 저장된 것과 어긋나면 그게 버그입니다."),
         fields: [
           {
             name: `예약 (${reservations.length}건)`,
@@ -737,7 +738,7 @@ export const COMMANDS: readonly DebugCommand[] = [
         status: worst ? "failure" : "info",
         description:
           entries.length === 0
-            ? "남아 있는 기록이 없습니다."
+            ? speak("남아 있는 기록이 없습니다.")
             : `최근 **${entries.length}줄**${level === undefined ? "" : ` · \`${level}\` 이상`}`,
         fields:
           entries.length === 0
@@ -778,7 +779,7 @@ export const COMMANDS: readonly DebugCommand[] = [
       if (!isLogLevel(wanted)) {
         return card("로그레벨", user, {
           status: "failure",
-          description: `\`${wanted}\` 는 없는 기준입니다.`,
+          description: speak(`\`${wanted}\` 는 없는 기준입니다.`),
           fields: [{ name: "고를 수 있는 것", value: chips(LOG_LEVELS, LOG_LEVELS.length) }],
         });
       }
@@ -790,7 +791,7 @@ export const COMMANDS: readonly DebugCommand[] = [
         status: "success",
         fields: [
           { name: "기준", value: `\`${before}\` → \`${wanted}\`` },
-          { name: "되돌리기", value: "봇을 껐다 켜면 `.env` 의 `LOG_LEVEL` 로 돌아갑니다." },
+          { name: "되돌리기", value: speak("봇을 껐다 켜면 `.env` 의 `LOG_LEVEL` 로 돌아갑니다.") },
         ],
       });
     },
@@ -807,7 +808,7 @@ export const COMMANDS: readonly DebugCommand[] = [
       if (id === null) {
         return card("조회", user, {
           status: "failure",
-          description: "17~20자리 id 를 붙이거나 멘션해 주세요.",
+          description: speak("17~20자리 id 를 붙이거나 멘션해 주세요."),
         });
       }
 
@@ -826,7 +827,7 @@ export const COMMANDS: readonly DebugCommand[] = [
           { name: "만들어진 때", value: atWithCountdown(createdAt(id)) },
           {
             name: "무엇인지",
-            value: found === null ? "찾지 못했습니다 _(이 봇이 볼 수 없는 것일 수 있어요)_" : `${found.kind} · ${found.label}`,
+            value: found === null ? speak("찾지 못했습니다 _(이 봇이 볼 수 없는 것일 수 있어요)_") : `${found.kind} · ${found.label}`,
           },
         ],
       });
@@ -857,7 +858,7 @@ export const COMMANDS: readonly DebugCommand[] = [
         description: `\`${input}\``,
         fields: [
           { name: "읽은 값", value: `**${count(parsed.seconds)}초** = ${formatDuration(parsed.seconds)}` },
-          { name: "지금 걸면", value: `${at(until)} 에 끝납니다 (${countdown(until)})` },
+          { name: "지금 걸면", value: speak(`${at(until)} 에 끝납니다 (${countdown(until)})`) },
         ],
       });
     },
@@ -886,7 +887,7 @@ export const COMMANDS: readonly DebugCommand[] = [
             { name: "내 등급", value: `**${LEVEL_LABEL[level]}**` },
             {
               name: "따로 지정하지 않아도 되는 사람",
-              value: "봇 주인과 이 서버의 **관리자**는 지정 없이 그냥 쓸 수 있어요.",
+              value: speak("봇 주인과 이 서버의 **관리자**는 지정 없이 그냥 쓸 수 있어요."),
             },
           ],
         });
@@ -896,7 +897,7 @@ export const COMMANDS: readonly DebugCommand[] = [
       if (id === null) {
         return card("허용", user, {
           status: "failure",
-          description: "지정할 사람을 멘션하거나 id 를 붙여 주세요.",
+          description: speak("지정할 사람을 멘션하거나 id 를 붙여 주세요."),
         });
       }
 
@@ -904,7 +905,7 @@ export const COMMANDS: readonly DebugCommand[] = [
 
       return card("허용", user, {
         status: added ? "success" : "progress",
-        description: added ? `<@${id}> 님이 디버그를 쓸 수 있습니다.` : `<@${id}> 님은 이미 지정돼 있어요.`,
+        description: added ? speak(`<@${id}> 님이 디버그를 쓸 수 있습니다.`) : speak(`<@${id}> 님은 이미 지정돼 있어요.`),
         fields: [{ name: "지정된 사람", value: `**${listed.length + (added ? 1 : 0)}명**` }],
       });
     },
@@ -922,7 +923,7 @@ export const COMMANDS: readonly DebugCommand[] = [
       if (id === null) {
         return card("해제", user, {
           status: "failure",
-          description: "거둬들일 사람을 멘션하거나 id 를 붙여 주세요.",
+          description: speak("거둬들일 사람을 멘션하거나 id 를 붙여 주세요."),
         });
       }
 
@@ -931,12 +932,12 @@ export const COMMANDS: readonly DebugCommand[] = [
 
       return card("해제", user, {
         status: removed ? "success" : "progress",
-        description: removed ? `<@${id}> 님의 지정을 거뒀습니다.` : `<@${id}> 님은 지정돼 있지 않았어요.`,
+        description: removed ? speak(`<@${id}> 님의 지정을 거뒀습니다.`) : speak(`<@${id}> 님은 지정돼 있지 않았어요.`),
         fields: [
           { name: "지정된 사람", value: `**${left.length}명**` },
           ...field(
             "그래도 쓸 수 있는 경우",
-            removed ? "관리자 권한이 있으면 지정과 상관없이 계속 쓸 수 있어요." : null,
+            removed ? speak("관리자 권한이 있으면 지정과 상관없이 계속 쓸 수 있어요.") : null,
           ),
         ],
       });
@@ -965,7 +966,7 @@ export const COMMANDS: readonly DebugCommand[] = [
         card("미리보기 · 빨강", user, {
           status: "failure",
           description: "작업 실패.",
-          error: new Error("보기용 오류입니다"),
+          error: new Error(speak("보기용 오류입니다")),
         }),
         card("미리보기 · 파랑", user, {
           status: "info",
@@ -997,11 +998,11 @@ export const COMMANDS: readonly DebugCommand[] = [
     async run({ user }) {
       return card("재시작", user, {
         status: "progress",
-        description: "지금 처리 중인 것이 있으면 끊깁니다.",
+        description: speak("지금 처리 중인 것이 있으면 끊깁니다."),
         fields: [
           {
-            name: "다시 켜는 것은 실행기가 합니다",
-            value: "`run.bat` 으로 돌리고 있어야 다시 켜집니다. 아니면 그대로 꺼진 채로 남습니다.",
+            name: speak("다시 켜는 것은 실행기가 합니다"),
+            value: speak("`run.bat` 으로 돌리고 있어야 다시 켜집니다. 아니면 그대로 꺼진 채로 남습니다."),
           },
         ],
         rows: [confirmRow("restart")],
@@ -1018,7 +1019,7 @@ export const COMMANDS: readonly DebugCommand[] = [
     async run({ user }) {
       return card("종료", user, {
         status: "progress",
-        description: "다시 켜려면 직접 실행해야 합니다.",
+        description: speak("다시 켜려면 직접 실행해야 합니다."),
         rows: [confirmRow("stop")],
       });
     },

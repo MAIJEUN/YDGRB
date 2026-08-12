@@ -5,6 +5,7 @@ import { formatBalance, formatBalanceBy } from "./format.js";
 import { PANEL, RANK_PAGE_SIZE, type PanelKind } from "./ids.js";
 import { checkRows, panelRows, panelSwitchButton, rankRows } from "./panels.js";
 import { getBalance, getRanking, getSettings, type RankSort } from "./store.js";
+import { speak } from "../ui/tone.js";
 
 /**
  * 패널·확인·랭킹은 무언가를 바꾸는 게 아니라 보여 주기만 한다 — 전부 파랑(정보).
@@ -27,16 +28,16 @@ export async function panelView(
       status: "info",
       title: "소원권 · 관리자 패널",
       description: [
-        "**수수** — 소원권/조각을 지급하거나 회수합니다.",
-        "**흡혈** — 한 유저의 소원권/조각을 다른 유저에게 옮깁니다.",
-        "**설정** — 소원 전달 채널과 제작 비용을 정합니다.",
+        speak("**수수** — 소원권/조각을 지급하거나 회수합니다."),
+        speak("**흡혈** — 한 유저의 소원권/조각을 다른 유저에게 옮깁니다."),
+        speak("**설정** — 소원 전달 채널과 제작 비용을 정합니다."),
       ].join("\n"),
       fields: [
         {
           name: "소원 전달 채널",
           value:
             settings.wishChannelId === null
-              ? "_아직 설정되지 않았습니다._"
+              ? speak("_아직 설정되지 않았습니다._")
               : `<#${settings.wishChannelId}>`,
           inline: true,
         },
@@ -58,11 +59,11 @@ export async function panelView(
     status: "info",
     title: "소원권 · 유저 패널",
     description: [
-      "**확인** — 내 보유 수량과 다른 사람의 보유 수량을 봅니다.",
-      "**랭킹** — 소원권/조각 보유 순위를 봅니다.",
-      `**제작** — 조각 ${settings.fragmentsPerTicket}개로 소원권 1장을 만듭니다.`,
-      "**사용** — 소원권 1장으로 소원을 빕니다.",
-      "**낭비** — 소원권이나 조각 1개를 버립니다.",
+      speak("**확인** — 내 보유 수량과 다른 사람의 보유 수량을 봅니다."),
+      speak("**랭킹** — 소원권/조각 보유 순위를 봅니다."),
+      speak(`**제작** — 조각 ${settings.fragmentsPerTicket}개로 소원권 1장을 만듭니다.`),
+      speak("**사용** — 소원권 1장으로 소원을 빕니다."),
+      speak("**낭비** — 소원권이나 조각 1개를 버립니다."),
     ].join("\n"),
     fields: [{ name: "내 보유", value: formatBalance(balance) }],
     user,
@@ -83,7 +84,7 @@ export async function checkView(
   return {
     status: "info",
     title: "소원권 확인",
-    description: `<@${targetId}> 님의 보유 현황입니다.`,
+    description: speak(`<@${targetId}> 님의 보유 현황입니다.`),
     fields: [
       { name: "보유", value: formatBalance(balance) },
       {
@@ -117,8 +118,8 @@ export async function rankView(
 
   const emptyMessage =
     sort === "tickets"
-      ? "_아직 소원권을 가진 사람이 없습니다._"
-      : "_아직 소원권 조각을 가진 사람이 없습니다._";
+      ? speak("_아직 소원권을 가진 사람이 없습니다._")
+      : speak("_아직 소원권 조각을 가진 사람이 없습니다._");
 
   return {
     status: "info",

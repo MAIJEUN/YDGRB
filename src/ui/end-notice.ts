@@ -4,6 +4,7 @@ import { logger } from "../logger.js";
 import { atWithCountdown } from "../time.js";
 import { reasonField } from "./reason.js";
 import { channelMessage, type MessageOptions, type ResponseField, type Status } from "./response.js";
+import { speak } from "./tone.js";
 
 /**
  * 기간이 끝나 풀리는 효과의 **종료 알림**.
@@ -70,15 +71,15 @@ export function endNoticeView(options: EndNoticeOptions): MessageOptions {
 
   const description = released
     ? by === null
-      ? `${subject}가 풀렸습니다.`
-      : `${subject}를 <@${by}> 님이 풀었습니다.`
-    : `${subject}가 끝났습니다.`;
+      ? speak(`${subject}가 풀렸습니다.`)
+      : speak(`${subject}를 <@${by}> 님이 풀었습니다.`)
+    : speak(`${subject}가 끝났습니다.`);
 
   return {
     // 뒷정리가 있었으면 그 결과 색, 없으면 파랑(정보).
     status: options.outcome?.status ?? "info",
     title: `${options.effect} — ${released ? "해제" : "기간 만료"}`,
-    description: options.targetLeft === true ? `${description}\n_(서버를 떠난 사람입니다)_` : description,
+    description: options.targetLeft === true ? speak(`${description}\n_(서버를 떠난 사람입니다)_`) : description,
     // 대상은 내용이 이미 말했다 — 칸을 따로 두지 않는다.
     fields: [
       {

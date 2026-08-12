@@ -1,4 +1,5 @@
 import type { GameContext, GameDefinition } from "./types.js";
+import { speak } from "../ui/tone.js";
 
 /**
  * **채팅으로 먼저 맞히면 이기는** 게임의 공통 부분.
@@ -52,7 +53,7 @@ async function finish(
 
   // 색은 골격이 정한다 — 맞혔든 아무도 못 맞혔든 「끝났다」는 알림이라 같은 파랑이다.
   await context.end({
-    description: winnerId === null ? "아무도 맞히지 못했습니다." : `<@${winnerId}> 님이 맞혔습니다.`,
+    description: winnerId === null ? speak("아무도 맞히지 못했습니다.") : speak(`<@${winnerId}> 님이 맞혔습니다.`),
     fields: [{ name: "정답", value: reveal(round.answer) }],
   });
 }
@@ -68,7 +69,7 @@ export const answerGame: Pick<GameDefinition, "start" | "onMessage" | "onTimeout
   start(context) {
     // 문제는 판을 열 때 화면에 실려 있다. 여기서 따로 할 일이 없다.
     if (!hasAnswer(context.session.id)) {
-      void context.end({ status: "failure", description: "문제를 잃어버렸습니다." });
+      void context.end({ status: "failure", description: speak("문제를 잃어버렸습니다.") });
     }
   },
 

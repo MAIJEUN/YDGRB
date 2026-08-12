@@ -5,6 +5,7 @@ import { ACTION, NICK } from "../nickname/ids.js";
 import { cancelRun } from "../nickname/registry.js";
 import { response } from "../ui/response.js";
 import { defineComponentHandler } from "../types.js";
+import { speak } from "../ui/tone.js";
 
 /**
  * 별명 시스템의 버튼을 처리한다. 지금은 취소 버튼 하나뿐이다.
@@ -24,8 +25,8 @@ export default defineComponentHandler({
       await interaction.reply(
         response({
           status: "failure",
-          title: "권한이 없습니다",
-          description: "이 기능은 **별명 관리** 권한을 가진 사람만 쓸 수 있어요.",
+          title: speak("권한이 없습니다"),
+          description: speak("이 기능은 **별명 관리** 권한을 가진 사람만 쓸 수 있어요."),
           user: interaction.user,
         }),
       );
@@ -39,8 +40,8 @@ export default defineComponentHandler({
       await interaction.reply(
         response({
           status: "failure",
-          title: "취소할 작업이 없습니다",
-          description: "이미 끝났거나 다른 작업으로 바뀐 것 같아요.",
+          title: speak("취소할 작업이 없습니다"),
+          description: speak("이미 끝났거나 다른 작업으로 바뀐 것 같아요."),
           user: interaction.user,
         }),
       );

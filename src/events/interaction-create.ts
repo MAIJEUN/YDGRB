@@ -4,6 +4,7 @@ import type { Interaction, RepliableInteraction } from "discord.js";
 import { logger } from "../logger.js";
 import { response } from "../ui/response.js";
 import { contextMenuKey, defineEvent } from "../types.js";
+import { speak } from "../ui/tone.js";
 
 /**
  * 오류를 알린다. 어디서 막혔는지 짐작할 수 있게 짧은 원인도 함께 보여 준다.
@@ -15,8 +16,8 @@ async function replyWithError(
 ): Promise<void> {
   const payload = response({
     status: "failure",
-    title: "처리 중 문제가 생겼어요",
-    description: "잠시 후 다시 시도해 주세요. 계속 같은 문제가 나오면 관리자에게 알려 주세요.",
+    title: speak("처리 중 문제가 생겼어요"),
+    description: speak("잠시 후 다시 시도해 주세요. 계속 같은 문제가 나오면 관리자에게 알려 주세요."),
     error,
     user: interaction.user,
   });
@@ -65,7 +66,7 @@ export default defineEvent({
         if (command === undefined) {
           // 코드에서 지웠지만 디스코드에는 남아 있는 커맨드. `npm run deploy` 로 동기화한다.
           logger.warn(`등록되지 않은 커맨드 호출: ${describe(interaction)}`);
-          await replyWithError(interaction, `등록되지 않은 커맨드입니다: /${interaction.commandName}`);
+          await replyWithError(interaction, speak(`등록되지 않은 커맨드입니다: /${interaction.commandName}`));
           return;
         }
 
@@ -78,7 +79,7 @@ export default defineEvent({
 
         if (command === undefined) {
           logger.warn(`등록되지 않은 컨텍스트 메뉴 호출: ${key}`);
-          await replyWithError(interaction, `등록되지 않은 컨텍스트 메뉴입니다: ${key}`);
+          await replyWithError(interaction, speak(`등록되지 않은 컨텍스트 메뉴입니다: ${key}`));
           return;
         }
 
@@ -91,7 +92,7 @@ export default defineEvent({
           await command.execute(interaction);
         } else {
           logger.warn(`컨텍스트 메뉴 종류가 등록된 것과 다릅니다: ${key}`);
-          await replyWithError(interaction, `컨텍스트 메뉴 종류가 맞지 않습니다: ${key}`);
+          await replyWithError(interaction, speak(`컨텍스트 메뉴 종류가 맞지 않습니다: ${key}`));
         }
       }
       // ── 버튼 · 셀렉트 메뉴 · 모달 제출 ──────────────────────
@@ -105,7 +106,7 @@ export default defineEvent({
           logger.warn(`처리할 핸들러가 없습니다: ${describe(interaction)}`);
           await replyWithError(
             interaction,
-            `처리할 핸들러가 없습니다: ${interaction.customId}\n(봇이 업데이트되기 전 메시지일 수 있어요)`,
+            speak(`처리할 핸들러가 없습니다: ${interaction.customId}\n(봇이 업데이트되기 전 메시지일 수 있어요)`),
           );
           return;
         }

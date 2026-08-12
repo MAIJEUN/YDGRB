@@ -5,6 +5,7 @@ import { refusedView } from "../games/views.js";
 import { toChoseong } from "../hangul.js";
 import { defineComponentHandler } from "../types.js";
 import { response } from "../ui/response.js";
+import { speak } from "../ui/tone.js";
 
 /**
  * 초성퀴즈 모달 — 여기서 판이 열린다.
@@ -27,7 +28,7 @@ export default defineComponentHandler({
 
     if (text === "") {
       await interaction.reply(
-        response(refusedView("초성퀴즈 실패", "낼 글자를 적어 주세요.", interaction.user)),
+        response(refusedView("초성퀴즈 실패", speak("낼 글자를 적어 주세요."), interaction.user)),
       );
       return;
     }

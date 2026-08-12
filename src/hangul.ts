@@ -15,6 +15,26 @@ const LAST_SYLLABLE = 0xd7a3; // 힣
 /** 초성 하나가 거느리는 음절 수 (중성 21 × 종성 28). */
 const PER_CHOSEONG = 21 * 28;
 
+/** 받침 27자. 유니코드 순서 그대로다 — 「받침 없음」 은 0번이라 표에 넣지 않는다. */
+const JONGSEONG = "ㄱㄲㄳㄴㄵㄶㄷㄹㄺㄻㄼㄽㄾㄿㅀㅁㅂㅄㅅㅆㅇㅈㅊㅋㅌㅍㅎ";
+
+/** 중성 하나가 거느리는 음절 수 (= 받침 가짓수). */
+const PER_JUNGSEONG = 28;
+
+/**
+ * 음절의 **받침**을 돌려준다 — `합` → `ㅂ`, `아` → `""`
+ *
+ * 한글 음절이 아니거나 받침이 없으면 빈 글자다.
+ * [말투](ui/tone.ts)가 `합니다`(어미)와 `아니다`(어미 아님)를 가르는 데 쓴다.
+ */
+export function finalOf(char: string): string {
+  const code = char.codePointAt(0) ?? 0;
+  if (code < FIRST_SYLLABLE || code > LAST_SYLLABLE) return "";
+
+  const index = (code - FIRST_SYLLABLE) % PER_JUNGSEONG;
+  return index === 0 ? "" : (JONGSEONG[index - 1] ?? "");
+}
+
 /**
  * 글자를 초성으로 바꾼다 — `안녕하세요` → `ㅇㄴㅎㅅㅇ`
  *

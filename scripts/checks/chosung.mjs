@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { DIST, PROJECT, assert, finish } from "./_harness.mjs";
+import { DIST, PROJECT, assert, finish, speak } from "./_harness.mjs";
 
 const read = (rel) => readFileSync(`${PROJECT}/${rel}`, "utf8");
 
@@ -210,7 +210,7 @@ console.log("\n=== 6. 아무도 못 맞히면 ===");
   assert("기간이 끝나면 스스로 끝남", (await store.getSession(G, session.id)) === undefined);
 
   const result = bodyOf(client.sent.at(-1).payload);
-  assert("  └ 아무도 못 맞혔다고", result.includes("아무도 맞히지 못했습니다"), result);
+  assert("  └ 아무도 못 맞혔다고", result.includes(speak("아무도 맞히지 못했습니다")), result);
   assert("  └ 원래 글자를 공개", result.includes("아무도 모름"), result);
 }
 

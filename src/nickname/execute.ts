@@ -9,6 +9,7 @@ import { applyNickname, memberFetchRetryDelay } from "./runner.js";
 import { cancelAllExpiry, cancelExpiry, scheduleExpiry } from "./scheduler.js";
 import { clearAllStates, clearState, setState } from "./store.js";
 import { preparingView, progressView, resultView, type ViewOptions } from "./views.js";
+import { speak } from "../ui/tone.js";
 
 export interface RunOptions {
   readonly mode: Mode;
@@ -86,7 +87,7 @@ export async function runNicknameChange(
 ): Promise<void> {
   const { guild } = interaction;
   if (guild === null) {
-    await refuse(interaction, "서버 전용", "이 명령은 서버 안에서만 사용할 수 있어요.");
+    await refuse(interaction, "서버 전용", speak("이 명령은 서버 안에서만 사용할 수 있어요."));
     return;
   }
 
@@ -94,8 +95,8 @@ export async function runNicknameChange(
   if (guild.members.me?.permissions.has(PermissionFlagsBits.ManageNicknames) !== true) {
     await refuse(
       interaction,
-      "봇 권한이 없습니다",
-      "봇에게 **별명 관리(Manage Nicknames)** 권한을 주세요. 서버 설정 > 역할 에서 봇 역할에 추가할 수 있습니다.",
+      speak("봇 권한이 없습니다"),
+      speak("봇에게 **별명 관리(Manage Nicknames)** 권한을 주세요. 서버 설정 > 역할 에서 봇 역할에 추가할 수 있습니다."),
     );
     return;
   }
@@ -147,10 +148,10 @@ export async function runNicknameChange(
           status: "failure",
           title: `${label} 실패`,
           description: throttled
-            ? "디스코드가 멤버 목록 요청을 잠시 제한했습니다. 조금 뒤에 다시 시도해 주세요."
+            ? speak("디스코드가 멤버 목록 요청을 잠시 제한했습니다. 조금 뒤에 다시 시도해 주세요.")
             : wholeServer
-              ? "멤버 목록을 받아오지 못했습니다. 봇의 **서버 멤버(Server Members)** 특권 인텐트가 켜져 있는지 확인해 주세요."
-              : "대상을 찾지 못했습니다. 서버에 없는 사람일 수 있어요.",
+              ? speak("멤버 목록을 받아오지 못했습니다. 봇의 **서버 멤버(Server Members)** 특권 인텐트가 켜져 있는지 확인해 주세요.")
+              : speak("대상을 찾지 못했습니다. 서버에 없는 사람일 수 있어요."),
           error,
           user: interaction.user,
         }),

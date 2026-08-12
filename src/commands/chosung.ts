@@ -2,6 +2,7 @@ import { InteractionContextType, SlashCommandBuilder } from "discord.js";
 
 import { chosungModal } from "../games/list/chosung.js";
 import { defineCommand } from "../types.js";
+import { speak } from "../ui/tone.js";
 
 /**
  * `/초성퀴즈` — 옵션이 하나도 없다.
@@ -14,7 +15,7 @@ import { defineCommand } from "../types.js";
 export default defineCommand({
   data: new SlashCommandBuilder()
     .setName("초성퀴즈")
-    .setDescription("초성만 보고 원래 글자를 맞히는 게임입니다.")
+    .setDescription(speak("초성만 보고 원래 글자를 맞히는 게임입니다."))
     .setContexts(InteractionContextType.Guild),
 
   async execute(interaction) {

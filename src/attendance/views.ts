@@ -5,6 +5,7 @@ import { customId } from "../types.js";
 import type { MessageOptions } from "../ui/response.js";
 import { ACTION, AGAIN_LABEL, ATTENDANCE, BUTTON_LABEL } from "./ids.js";
 import type { AttendanceRecord } from "./store.js";
+import { speak } from "../ui/tone.js";
 
 /** 출헉 이미지 파일 이름. 컨테이너가 `attachment://` 로 가리킨다. */
 export const IMAGE_NAME = "attendance.png";
@@ -55,8 +56,8 @@ export function todayView(
 export function alreadyView(link: string, extraId: string, user: User): MessageOptions {
   return {
     status: "failure",
-    title: "오늘은 이미 올렸습니다",
-    description: `${link}이 이미 올라와 있어요.`,
+    title: speak("오늘은 이미 올렸습니다"),
+    description: speak(`${link}이 이미 올라와 있어요.`),
     user,
     rows: [
       row(
@@ -94,8 +95,8 @@ export function successView(
 export function extraSuccessView(user: User): MessageOptions {
   return {
     status: "info",
-    title: "맞혔습니다 (기록 안 됨)",
-    description: `<@${user.id}> 맞혔어요!`,
+    title: speak("맞혔습니다 (기록 안 됨)"),
+    description: speak(`<@${user.id}> 맞혔어요!`),
     user,
   };
 }

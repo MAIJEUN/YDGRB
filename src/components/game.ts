@@ -10,6 +10,7 @@ import { noticeView, refusedView } from "../games/views.js";
 import { logger } from "../logger.js";
 import { defineComponentHandler } from "../types.js";
 import { response } from "../ui/response.js";
+import { speak } from "../ui/tone.js";
 
 /**
  * 모집 패널의 버튼 — 참가 · 나가기 · 시작 · 접기.
@@ -21,11 +22,11 @@ import { response } from "../ui/response.js";
  */
 
 const JOIN_PROBLEM: Record<string, string> = {
-  gone: "이미 끝난 판입니다.",
-  closed: "모집이 끝났습니다.",
-  already: "이미 참가해 있어요.",
-  full: "자리가 다 찼습니다.",
-  notJoined: "참가하지 않은 판입니다.",
+  gone: speak("이미 끝난 판입니다."),
+  closed: speak("모집이 끝났습니다."),
+  already: speak("이미 참가해 있어요."),
+  full: speak("자리가 다 찼습니다."),
+  notJoined: speak("참가하지 않은 판입니다."),
 };
 
 /**
@@ -50,7 +51,7 @@ export default defineComponentHandler({
 
     if (session === undefined) {
       await interaction.reply(
-        response(refusedView("끝난 판", "이미 끝났거나 사라진 판입니다.", interaction.user)),
+        response(refusedView("끝난 판", speak("이미 끝났거나 사라진 판입니다."), interaction.user)),
       );
       return;
     }
@@ -58,7 +59,7 @@ export default defineComponentHandler({
     const game = getGame(session.gameId);
     if (game === undefined) {
       await interaction.reply(
-        response(refusedView("없는 게임", "이 판의 게임을 찾지 못했습니다.", interaction.user)),
+        response(refusedView("없는 게임", speak("이 판의 게임을 찾지 못했습니다."), interaction.user)),
       );
       return;
     }
@@ -74,14 +75,14 @@ export default defineComponentHandler({
         if (!result.ok) {
           await interaction.reply(
             response(
-              refusedView("참가하지 못했어요", JOIN_PROBLEM[result.reason] ?? "", interaction.user),
+              refusedView(speak("참가하지 못했어요"), JOIN_PROBLEM[result.reason] ?? "", interaction.user),
             ),
           );
           return;
         }
 
         await interaction.reply(
-          response(noticeView(`${game.name} — 참가`, "판에 들어왔습니다.", interaction.user)),
+          response(noticeView(`${game.name} — 참가`, speak("판에 들어왔습니다."), interaction.user)),
         );
         if (host !== null) await refreshPanel(interaction.client, result.session, host);
 
@@ -98,14 +99,14 @@ export default defineComponentHandler({
         if (!result.ok) {
           await interaction.reply(
             response(
-              refusedView("나가지 못했어요", JOIN_PROBLEM[result.reason] ?? "", interaction.user),
+              refusedView(speak("나가지 못했어요"), JOIN_PROBLEM[result.reason] ?? "", interaction.user),
             ),
           );
           return;
         }
 
         await interaction.reply(
-          response(noticeView(`${game.name} — 나가기`, "판에서 빠졌습니다.", interaction.user)),
+          response(noticeView(`${game.name} — 나가기`, speak("판에서 빠졌습니다."), interaction.user)),
         );
         if (host !== null) await refreshPanel(interaction.client, result.session, host);
         return;
@@ -115,7 +116,7 @@ export default defineComponentHandler({
         if (!mayControl(interaction, session.hostId)) {
           await interaction.reply(
             response(
-              refusedView("시작하지 못했어요", "판을 연 사람과 관리자만 시작할 수 있습니다.", interaction.user),
+              refusedView(speak("시작하지 못했어요"), speak("판을 연 사람과 관리자만 시작할 수 있습니다."), interaction.user),
             ),
           );
           return;
@@ -125,8 +126,8 @@ export default defineComponentHandler({
           await interaction.reply(
             response(
               refusedView(
-                "시작하지 못했어요",
-                `최소 **${minPlayersOf(game)}명**이 모여야 시작할 수 있습니다.`,
+                speak("시작하지 못했어요"),
+                speak(`최소 **${minPlayersOf(game)}명**이 모여야 시작할 수 있습니다.`),
                 interaction.user,
               ),
             ),
@@ -144,7 +145,7 @@ export default defineComponentHandler({
         if (!mayControl(interaction, session.hostId)) {
           await interaction.reply(
             response(
-              refusedView("접지 못했어요", "판을 연 사람과 관리자만 접을 수 있습니다.", interaction.user),
+              refusedView(speak("접지 못했어요"), speak("판을 연 사람과 관리자만 접을 수 있습니다."), interaction.user),
             ),
           );
           return;

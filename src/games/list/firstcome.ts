@@ -5,6 +5,7 @@ import { customId } from "../../types.js";
 import type { ResponseField } from "../../ui/response.js";
 import { defineGame } from "../types.js";
 import type { GameSession } from "../types.js";
+import { speak } from "../../ui/tone.js";
 
 /**
  * 선착순 — **즉시 시작** 형식. 버튼으로 겨룬다.
@@ -162,13 +163,13 @@ export function pressField(race: Race): ResponseField[] {
 export default defineGame({
   id: FIRSTCOME,
   name: "선착순",
-  description: "버튼을 눌러 자리를 잡습니다.",
+  description: speak("버튼을 눌러 자리를 잡습니다."),
   mode: "instant",
 
   start(context) {
     // 목표는 판을 열 때 맡겨져 있다. 여기서 따로 할 일이 없다.
     if (!races.has(context.session.id)) {
-      void context.end({ status: "failure", description: "판을 잃어버렸습니다." });
+      void context.end({ status: "failure", description: speak("판을 잃어버렸습니다.") });
     }
   },
 
@@ -203,8 +204,8 @@ export default defineGame({
     await context.end({
       description:
         winners.length === 0
-          ? "시간이 다 되도록 아무도 채우지 못했습니다."
-          : `시간이 다 되어 ${winners.map((id) => `<@${id}>`).join(" ")} 님이 가져갑니다.`,
+          ? speak("시간이 다 되도록 아무도 채우지 못했습니다.")
+          : speak(`시간이 다 되어 ${winners.map((id) => `<@${id}>`).join(" ")} 님이 가져갑니다.`),
       fields: pressField(race),
     });
   },

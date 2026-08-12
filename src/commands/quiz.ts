@@ -2,6 +2,7 @@ import { InteractionContextType, SlashCommandBuilder } from "discord.js";
 
 import { quizModal } from "../games/list/quiz.js";
 import { defineCommand } from "../types.js";
+import { speak } from "../ui/tone.js";
 
 /**
  * `/퀴즈` — 옵션이 하나도 없다.
@@ -14,7 +15,7 @@ import { defineCommand } from "../types.js";
 export default defineCommand({
   data: new SlashCommandBuilder()
     .setName("퀴즈")
-    .setDescription("문제를 내고, 이 채널에 답을 적어 맞히는 게임입니다.")
+    .setDescription(speak("문제를 내고, 이 채널에 답을 적어 맞히는 게임입니다."))
     .setContexts(InteractionContextType.Guild),
 
   async execute(interaction) {

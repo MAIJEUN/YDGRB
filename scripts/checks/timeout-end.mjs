@@ -2,7 +2,7 @@
 //
 // 뚜따이 · 타임아웃 · 타살버가 전부 이 한 곳을 지난다. 모양이 갈라지면 읽는 사람이
 // 매번 다시 읽어야 하므로, 색 · 문구 · 다는 자리를 여기서 못 박는다.
-import { DIST, PROJECT, assert, finish } from "./_harness.mjs";
+import { DIST, PROJECT, assert, finish, speak } from "./_harness.mjs";
 
 const { readFileSync } = await import("node:fs");
 const read = (rel) => readFileSync(`${PROJECT}/${rel}`, "utf8");
@@ -35,7 +35,7 @@ console.log("\n=== 1. 기간 만료 ===");
   assert("제목이 「효과 — 기간 만료」", text.startsWith("### 타임아웃 — 기간 만료"), text);
   assert("  └ 파랑(알림성)", json.accent_color === 0x5865f2, String(json.accent_color));
   assert("대상을 멘션으로", text.includes(`<@${U}> 님의`), text);
-  assert("  └ 끝났다고 말함", text.includes("끝났습니다"), text);
+  assert("  └ 끝났다고 말함", text.includes(speak("끝났습니다")), text);
   assert("풀린 시각을 적음", text.includes("**풀린 시각**"), text);
   assert("  └ 타임스탬프 마크다운", text.includes(`<t:${stamp}:F> (<t:${stamp}:R>)`), text);
   assert("대상을 칸으로 또 적지 않음", !text.includes("**대상**"), text);
@@ -49,7 +49,7 @@ console.log("\n=== 2. 사람이 풀었을 때 ===");
   );
 
   assert("제목이 「효과 — 해제」", text.startsWith("### 타살버 — 해제"), text);
-  assert("  └ 푼 사람을 멘션으로", text.includes(`<@${BY}> 님이 풀었습니다`), text);
+  assert("  └ 푼 사람을 멘션으로", text.includes(speak(`<@${BY}> 님이 풀었습니다`)), text);
   assert("  └ 원래 풀릴 시각을 적음", text.includes("**원래 풀릴 시각**"), text);
 }
 {
@@ -57,7 +57,7 @@ console.log("\n=== 2. 사람이 풀었을 때 ===");
   const { text } = render(
     endNoticeView({ effect: "타임아웃", target: `<@${U}>`, until, reason: { kind: "released", byId: null }, user }),
   );
-  assert("푼 사람을 모르면 그냥 풀렸다고", text.includes("풀렸습니다") && !text.includes("님이 풀었"), text);
+  assert("푼 사람을 모르면 그냥 풀렸다고", text.includes(speak("풀렸습니다")) && !text.includes("님이 풀었"), text);
 }
 
 console.log("\n=== 3. 조사 ===");
@@ -73,7 +73,7 @@ console.log("\n=== 4. 서버를 떠난 사람 ===");
   const { text } = render(
     endNoticeView({ effect: "타임아웃", target: `<@${U}>`, until, reason: { kind: "expired" }, targetLeft: true, user }),
   );
-  assert("떠났다고 덧붙임", text.includes("서버를 떠난 사람입니다"), text);
+  assert("떠났다고 덧붙임", text.includes(speak("서버를 떠난 사람입니다")), text);
 }
 
 console.log("\n=== 5. 뒷정리가 실패했을 때 ===");
@@ -193,7 +193,7 @@ console.log("\n=== 7. 푼 사람이 봇이면 이름을 지움 ===");
 
   const body = JSON.stringify(client.sent[0]?.payload.components[0].toJSON());
   assert("봇 멘션이 안 나옴", !body.includes(`<@${BOT}>`), body);
-  assert("  └ 그냥 풀렸다고만", body.includes("풀렸습니다"), body);
+  assert("  └ 그냥 풀렸다고만", body.includes(speak("풀렸습니다")), body);
 }
 {
   const client = makeClient();

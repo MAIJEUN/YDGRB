@@ -24,6 +24,7 @@ import { channelMessage, response } from "../ui/response.js";
 import { customId, defineComponentHandler, type ComponentInteraction } from "../types.js";
 import { formatBalanceChange } from "../wish/format.js";
 import { applyBalanceChange } from "../wish/store.js";
+import { speak } from "../ui/tone.js";
 
 /**
  * 출헉 버튼과 받아쓰기 모달.
@@ -42,7 +43,7 @@ export default defineComponentHandler({
 
     const guildId = interaction.guildId;
     if (guildId === null) {
-      await fail(interaction, "서버 전용", "이 기능은 서버 안에서만 쓸 수 있어요.");
+      await fail(interaction, "서버 전용", speak("이 기능은 서버 안에서만 쓸 수 있어요."));
       return;
     }
 
@@ -61,7 +62,7 @@ export default defineComponentHandler({
 
       default:
         logger.warn(`출헉: 모르는 customId ${interaction.customId}`);
-        await fail(interaction, "처리할 수 없음", "알 수 없는 동작입니다.");
+        await fail(interaction, "처리할 수 없음", speak("알 수 없는 동작입니다."));
     }
   },
 });
@@ -93,7 +94,7 @@ function answerModal(extraId: string | undefined): ModalBuilder {
     .setTitle("출헉")
     .addLabelComponents(
       new LabelBuilder()
-        .setLabel("이미지에 적힌 글자를 그대로 적어 주세요")
+        .setLabel(speak("이미지에 적힌 글자를 그대로 적어 주세요"))
         .setTextInputComponent(
           new TextInputBuilder()
             .setCustomId(FIELD.answer)
@@ -119,7 +120,7 @@ async function openAnswerModal(
 
   // 어제 메시지의 버튼일 수 있다.
   if ((await textOf(guildId, extraId)) === null) {
-    await fail(interaction, "지난 출헉입니다", "오늘 올라온 출헉에서만 참여할 수 있어요.");
+    await fail(interaction, speak("지난 출헉입니다"), speak("오늘 올라온 출헉에서만 참여할 수 있어요."));
     return;
   }
 
@@ -140,12 +141,12 @@ async function submitAnswer(
 
   const text = await textOf(guildId, extraId);
   if (text === null) {
-    await fail(interaction, "지난 출헉입니다", "오늘 올라온 출헉에서만 참여할 수 있어요.");
+    await fail(interaction, speak("지난 출헉입니다"), speak("오늘 올라온 출헉에서만 참여할 수 있어요."));
     return;
   }
 
   if (!matches(interaction.fields.getTextInputValue(FIELD.answer), text)) {
-    await fail(interaction, "출헉 실패", "적은 글자가 이미지와 다릅니다. 다시 확인해 주세요.");
+    await fail(interaction, "출헉 실패", speak("적은 글자가 이미지와 다릅니다. 다시 확인해 주세요."));
     return;
   }
 
@@ -157,7 +158,7 @@ async function submitAnswer(
 
   const result = await checkIn(guildId, interaction.user.id, REWARD_EVERY);
   if (!result.ok) {
-    await fail(interaction, "이미 했습니다", "오늘은 이미 출헉했어요.");
+    await fail(interaction, speak("이미 했습니다"), speak("오늘은 이미 출헉했어요."));
     return;
   }
 
@@ -188,19 +189,19 @@ async function postExtra(
 
   // 버튼은 관리자에게만 갔지만, 눌린 것을 그대로 믿지 않는다.
   if (interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) !== true) {
-    await fail(interaction, "권한이 없습니다", "출헉은 **관리자** 권한을 가진 사람만 올릴 수 있어요.");
+    await fail(interaction, speak("권한이 없습니다"), speak("출헉은 **관리자** 권한을 가진 사람만 올릴 수 있어요."));
     return;
   }
 
   const extra = extraId === undefined ? null : await getExtra(guildId, extraId);
   if (extra === null) {
-    await fail(interaction, "올릴 수 없습니다", "올릴 내용을 찾지 못했어요. 명령을 다시 써 주세요.");
+    await fail(interaction, speak("올릴 수 없습니다"), speak("올릴 내용을 찾지 못했어요. 명령을 다시 써 주세요."));
     return;
   }
 
   const channel = interaction.channel;
   if (channel === null || !channel.isSendable()) {
-    await fail(interaction, "출헉 실패", "이 채널에 메시지를 보낼 수 없어요.");
+    await fail(interaction, "출헉 실패", speak("이 채널에 메시지를 보낼 수 없어요."));
     return;
   }
 
@@ -218,7 +219,7 @@ async function postExtra(
       response({
         status: "failure",
         title: "출헉 실패",
-        description: "출헉을 올리지 못했습니다.",
+        description: speak("출헉을 올리지 못했습니다."),
         error,
         user: interaction.user,
       }),

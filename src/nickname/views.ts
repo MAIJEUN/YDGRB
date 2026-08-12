@@ -6,6 +6,7 @@ import { MODE_LABEL, type Mode } from "./ids.js";
 import { cancelButton } from "./panels.js";
 import type { ActiveRun } from "./registry.js";
 import type { Progress, RunResult } from "./runner.js";
+import { speak } from "../ui/tone.js";
 
 /**
  * 별명 작업 화면.
@@ -44,8 +45,8 @@ function subject(options: ViewOptions): string {
   const target = who(options.targetIds);
 
   return options.mode === "dduttai"
-    ? `${target} 별명을 \`${options.nickname ?? ""}\` 로 바꿉니다.`
-    : `${target} 별명을 지워 디스코드 기본값(사용자명)으로 되돌립니다.`;
+    ? speak(`${target} 별명을 \`${options.nickname ?? ""}\` 로 바꿉니다.`)
+    : speak(`${target} 별명을 지워 디스코드 기본값(사용자명)으로 되돌립니다.`);
 }
 
 /** 만료 안내 — 시각은 반드시 타임스탬프 마크다운으로 낸다. */
@@ -76,7 +77,7 @@ export function preparingView(options: ViewOptions, run: ActiveRun | null): Mess
     title: `${MODE_LABEL[options.mode]} 준비 중`,
     description:
       options.targetIds.length === 0
-        ? `${subject(options)}\n멤버 목록을 받아오고 있습니다.`
+        ? speak(`${subject(options)}\n멤버 목록을 받아오고 있습니다.`)
         : subject(options),
     fields: expiryField(options.expiresAt),
     user: options.user,
@@ -109,12 +110,12 @@ export function progressView(
 /** 취소된 이유를 사람이 읽을 수 있게. */
 function cancelReason(run: ActiveRun): string {
   if (run.supersededBy !== null) {
-    return `**${MODE_LABEL[run.supersededBy]}** 이(가) 시작되어 중단했습니다.`;
+    return speak(`**${MODE_LABEL[run.supersededBy]}** 이(가) 시작되어 중단했습니다.`);
   }
 
   return run.cancelledBy === null
-    ? "중단했습니다."
-    : `<@${run.cancelledBy}> 님이 취소했습니다.`;
+    ? speak("중단했습니다.")
+    : speak(`<@${run.cancelledBy}> 님이 취소했습니다.`);
 }
 
 export function resultView(
@@ -128,8 +129,8 @@ export function resultView(
       status: "progress",
       title: `${MODE_LABEL[options.mode]} 취소됨`,
       description: [
-        run === undefined || run === null ? "중단했습니다." : cancelReason(run),
-        "이미 바뀐 사람은 그대로 남아 있습니다.",
+        run === undefined || run === null ? speak("중단했습니다.") : cancelReason(run),
+        speak("이미 바뀐 사람은 그대로 남아 있습니다."),
       ].join(" "),
       fields: [
         { name: "진행", value: bar(result.done, result.total) },

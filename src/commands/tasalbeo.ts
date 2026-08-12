@@ -11,6 +11,7 @@ import { atWithCountdown, describeDurationError, formatDuration, parseDuration }
 import { auditReason, reasonField, reasonOption, readReason } from "../ui/reason.js";
 import { editResponse, response } from "../ui/response.js";
 import { defineCommand } from "../types.js";
+import { speak } from "../ui/tone.js";
 
 /**
  * `/타살버` — 타임아웃인데 살짝 약한 버전.
@@ -26,15 +27,15 @@ function whyNotEligible(target: GuildMember, actor: GuildMember): string | undef
   const { guild } = target;
 
   if (target.id === guild.ownerId) {
-    return "서버 소유자는 별명을 바꿀 수 없어서 타살버를 걸 수 없습니다.";
+    return speak("서버 소유자는 별명을 바꿀 수 없어서 타살버를 걸 수 없습니다.");
   }
 
   if (target.user.bot) {
-    return "봇에게는 걸 수 없습니다.";
+    return speak("봇에게는 걸 수 없습니다.");
   }
 
   const me = guild.members.me;
-  if (me === null) return "봇 정보를 읽지 못했습니다.";
+  if (me === null) return speak("봇 정보를 읽지 못했습니다.");
 
   const missing = [
     me.permissions.has(PermissionFlagsBits.ManageRoles) ? "" : "**역할 관리(Manage Roles)**",
@@ -42,17 +43,17 @@ function whyNotEligible(target: GuildMember, actor: GuildMember): string | undef
   ].filter((name) => name !== "");
 
   if (missing.length > 0) {
-    return `봇에게 ${missing.join(" 과(와) ")} 권한을 주세요.`;
+    return speak(`봇에게 ${missing.join(" 과(와) ")} 권한을 주세요.`);
   }
 
   // 별명도 역할도 서열이 높으면 못 건드린다.
   if (me.roles.highest.comparePositionTo(target.roles.highest) <= 0) {
-    return "이 사람의 역할이 봇보다 높습니다. 서버 설정 > 역할 에서 봇 역할을 더 위로 올려 주세요.";
+    return speak("이 사람의 역할이 봇보다 높습니다. 서버 설정 > 역할 에서 봇 역할을 더 위로 올려 주세요.");
   }
 
   // 서버 소유자는 서열과 무관하게 다 만질 수 있다.
   if (guild.ownerId !== actor.id && actor.roles.highest.comparePositionTo(target.roles.highest) <= 0) {
-    return "자신보다 높거나 같은 역할을 가진 사람에게는 걸 수 없습니다.";
+    return speak("자신보다 높거나 같은 역할을 가진 사람에게는 걸 수 없습니다.");
   }
 
   return undefined;
@@ -61,7 +62,7 @@ function whyNotEligible(target: GuildMember, actor: GuildMember): string | undef
 export default defineCommand({
   data: new SlashCommandBuilder()
     .setName("타살버")
-    .setDescription("타임아웃인데 살짝 약한 버전. 기간을 비우면 해제합니다.")
+    .setDescription(speak("타임아웃인데 살짝 약한 버전. 기간을 비우면 해제합니다."))
     .setContexts(InteractionContextType.Guild)
     // 디스코드 쪽에서도 권한 없는 사람에게는 아예 안 보이게 한다.
     .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
@@ -81,7 +82,7 @@ export default defineCommand({
         response({
           status: "failure",
           title: "서버 전용",
-          description: "이 명령은 서버 안에서만 사용할 수 있어요.",
+          description: speak("이 명령은 서버 안에서만 사용할 수 있어요."),
           user: interaction.user,
         }),
       );
@@ -94,7 +95,7 @@ export default defineCommand({
         response({
           status: "failure",
           title: "타살버 실패",
-          description: "서버에 없는 사람입니다.",
+          description: speak("서버에 없는 사람입니다."),
           user: interaction.user,
         }),
       );
@@ -111,7 +112,7 @@ export default defineCommand({
         await interaction.reply(
           response({
             status: "failure",
-            title: "기간을 읽을 수 없습니다",
+            title: speak("기간을 읽을 수 없습니다"),
             description: describeDurationError(parsed.reason),
             fields: [{ name: "입력한 값", value: `\`${rawDuration}\`` }],
             user: interaction.user,
@@ -125,8 +126,8 @@ export default defineCommand({
         await interaction.reply(
           response({
             status: "failure",
-            title: "기간이 너무 깁니다",
-            description: `타살버는 최대 **${formatDuration(MAX_SECONDS)}** 까지만 걸 수 있어요. 역할을 계속 넣었다 뺐다 하기 때문입니다.`,
+            title: speak("기간이 너무 깁니다"),
+            description: speak(`타살버는 최대 **${formatDuration(MAX_SECONDS)}** 까지만 걸 수 있어요. 역할을 계속 넣었다 뺐다 하기 때문입니다.`),
             fields: [
               { name: "입력한 값", value: `\`${rawDuration}\` (${formatDuration(parsed.seconds)})` },
             ],
@@ -149,7 +150,7 @@ export default defineCommand({
           response({
             status: "failure",
             title: "타살버 실패",
-            description: `<@${target.id}> 님은 타살버 상태가 아닙니다.`,
+            description: speak(`<@${target.id}> 님은 타살버 상태가 아닙니다.`),
             user: interaction.user,
           }),
         );
@@ -164,7 +165,7 @@ export default defineCommand({
           status: "success",
           title: "타살버 — 해제",
           // 대상은 내용이 이미 말했다 — 칸을 따로 두지 않는다.
-          description: `<@${target.id}> 님의 타살버를 풀었습니다.`,
+          description: speak(`<@${target.id}> 님의 타살버를 풀었습니다.`),
           fields: reasonField(reason),
           user: interaction.user,
         }),
@@ -223,7 +224,7 @@ export default defineCommand({
         editResponse({
           status: "failure",
           title: "타살버 실패",
-          description: "타살버를 걸지 못했습니다.",
+          description: speak("타살버를 걸지 못했습니다."),
           error,
           fields: [{ name: "대상", value: `<@${target.id}>` }],
           user: interaction.user,
@@ -237,7 +238,7 @@ export default defineCommand({
         status: "success",
         title: "타살버 — 적용",
         // 대상은 내용이 이미 말했다 — 칸을 따로 두지 않는다.
-        description: `<@${target.id}> 님에게 ${formatDuration(seconds)} 동안 타살버를 걸었습니다.`,
+        description: speak(`<@${target.id}> 님에게 ${formatDuration(seconds)} 동안 타살버를 걸었습니다.`),
         fields: [{ name: "풀리는 시각", value: atWithCountdown(until) }, ...reasonField(reason)],
         user: interaction.user,
       }),

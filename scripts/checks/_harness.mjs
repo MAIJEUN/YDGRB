@@ -24,6 +24,15 @@ export const PROJECT = ROOT.replaceAll("\\", "/");
  */
 export const DIST = pathToFileURL(path.join(ROOT, "dist")).href;
 
+/**
+ * 봇의 말투를 씌운다 — 검사도 화면과 **같은 표**를 본다.
+ *
+ * 「끝났습니다」를 「끝났ㅅ-」로 손수 적어 두면 말투 표를 고치는 날 검사가 전부 터진다.
+ * 기대하는 말을 그냥 말투에 통과시키면 표가 바뀌어도 따라온다.
+ */
+const { speak } = await import(`${DIST}/ui/tone.js`);
+export { speak };
+
 let failed = 0;
 
 export function assert(label, condition, detail = "") {

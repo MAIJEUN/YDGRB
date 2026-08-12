@@ -4,7 +4,7 @@
 //   1) 한 번 막으면 다시 안 켜졌다 — has() 의 두 번째 인자를 빼면 관리자 권한이
 //      모든 검사를 통과시켜 버린다.
 //   2) 명령을 친 채널이 아니라 서버 전체가 바뀌었다.
-import { DIST, PROJECT, assert, finish } from "./_harness.mjs";
+import { DIST, PROJECT, assert, finish, speak } from "./_harness.mjs";
 
 const { readFileSync } = await import("node:fs");
 const requireFromProject = (await import("node:module")).createRequire(`${PROJECT}/package.json`);
@@ -134,7 +134,7 @@ console.log("\n=== 2. 막기 ===");
   const result = interaction.sent.at(-1);
   const body = bodyOf(result.payload);
   assert("응답이 초록", result.payload.components[0].toJSON().accent_color === 0x57f287);
-  assert("  └ 껐다고 알림", body.includes("껐습니다"), body);
+  assert("  └ 껐다고 알림", body.includes(speak("껐습니다")), body);
   assert("  └ 역할을 멘션으로", body.includes(`<@&${ROLE}>`), body);
   assert("  └ 채널도 멘션으로", body.includes(`<#${CH}>`), body);
   assert("  └ 변동을 적음", body.includes("허용 → **차단**"), body);
@@ -158,7 +158,7 @@ console.log("\n=== 3. 다시 켜기 ===");
   );
 
   const body = bodyOf(interaction.sent.at(-1).payload);
-  assert("  └ 켰다고 알림", body.includes("켰습니다"), body);
+  assert("  └ 켰다고 알림", body.includes(speak("켰습니다")), body);
   assert("  └ 변동을 적음", body.includes("차단 → **허용**"), body);
 }
 

@@ -14,6 +14,7 @@ import { attach, openGame } from "./runner.js";
 import type { OpenOptions } from "./runner.js";
 import type { GameDefinition } from "./types.js";
 import { refusedView } from "./views.js";
+import { speak } from "../ui/tone.js";
 
 /**
  * 게임 명령이 쓰는 부품.
@@ -80,7 +81,7 @@ export function checkDuration(raw: string, user: User): DurationCheck {
       ok: false,
       view: {
         status: "failure",
-        title: "기간을 읽을 수 없습니다",
+        title: speak("기간을 읽을 수 없습니다"),
         description: describeDurationError(parsed.reason),
         fields: [{ name: "입력한 값", value: `\`${raw}\`` }],
         user,
@@ -93,8 +94,8 @@ export function checkDuration(raw: string, user: User): DurationCheck {
       ok: false,
       view: {
         status: "failure",
-        title: "기간이 맞지 않습니다",
-        description: `**${formatDuration(MIN_GAME_SECONDS)}** 부터 **${formatDuration(MAX_GAME_SECONDS)}** 사이로 적어 주세요.`,
+        title: speak("기간이 맞지 않습니다"),
+        description: speak(`**${formatDuration(MIN_GAME_SECONDS)}** 부터 **${formatDuration(MAX_GAME_SECONDS)}** 사이로 적어 주세요.`),
         fields: [{ name: "입력한 값", value: `\`${raw}\` (${formatDuration(parsed.seconds)})` }],
         user,
       },
@@ -120,7 +121,7 @@ export async function openGameHere(
 ): Promise<boolean> {
   if (!interaction.inCachedGuild() || interaction.channel === null) {
     await interaction.reply(
-      response(refusedView("서버 전용", "이 명령은 서버 안에서만 사용할 수 있어요.", interaction.user)),
+      response(refusedView("서버 전용", speak("이 명령은 서버 안에서만 사용할 수 있어요."), interaction.user)),
     );
     return false;
   }
@@ -131,8 +132,8 @@ export async function openGameHere(
     await interaction.reply(
       response(
         refusedView(
-          "이미 판이 돌고 있어요",
-          "이 채널에서 도는 판이 끝나야 새로 열 수 있습니다.",
+          speak("이미 판이 돌고 있어요"),
+          speak("이 채널에서 도는 판이 끝나야 새로 열 수 있습니다."),
           interaction.user,
         ),
       ),

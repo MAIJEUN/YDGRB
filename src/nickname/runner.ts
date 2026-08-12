@@ -4,6 +4,7 @@ import type { Guild, GuildMember } from "discord.js";
 
 import { describeError } from "../errors.js";
 import { logger } from "../logger.js";
+import { speak } from "../ui/tone.js";
 
 /**
  * 서버 전원의 별명을 한꺼번에 바꾼다.
@@ -109,7 +110,7 @@ function emptyProgress(total: number): Progress {
 
 /** 실패 원인을 사람이 읽을 수 있게 묶는다. 개인별로 나열하면 너무 길어진다. */
 function describeFailure(guild: Guild, member: GuildMember, error: unknown): string {
-  if (member.id === guild.ownerId) return "서버 소유자 (디스코드가 변경을 막습니다)";
+  if (member.id === guild.ownerId) return speak("서버 소유자 (디스코드가 변경을 막습니다)");
 
   const code = (error as { code?: unknown }).code;
   if (code === 50013) return "봇보다 높은 역할 (권한 부족)";

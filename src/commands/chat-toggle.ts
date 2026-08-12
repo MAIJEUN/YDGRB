@@ -3,6 +3,7 @@ import type { GuildBasedChannel, GuildMember, Role } from "discord.js";
 
 import { editResponse, response } from "../ui/response.js";
 import { defineCommand } from "../types.js";
+import { speak } from "../ui/tone.js";
 
 /**
  * 역할의 채팅을 **명령을 쓴 채널에서** 켜고 끈다.
@@ -35,17 +36,17 @@ function whyNotEditable(
 ): string | undefined {
   // 관리자는 모든 권한을 갖고, 채널 덮어쓰기의 차단도 무시한다.
   if (role.permissions.has(PermissionFlagsBits.Administrator, false)) {
-    return "**관리자** 권한이 있는 역할입니다. 관리자는 채널 차단도 무시하기 때문에 채팅만 따로 막을 수 없어요.";
+    return speak("**관리자** 권한이 있는 역할입니다. 관리자는 채널 차단도 무시하기 때문에 채팅만 따로 막을 수 없어요.");
   }
 
   const me = channel.guild.members.me;
   if (me === null || !channel.permissionsFor(me).has(PermissionFlagsBits.ManageRoles)) {
-    return "이 채널에서 봇에게 **역할 관리(Manage Roles)** 권한이 없습니다.";
+    return speak("이 채널에서 봇에게 **역할 관리(Manage Roles)** 권한이 없습니다.");
   }
 
   // 서버 소유자는 서열과 무관하게 다 만질 수 있다.
   if (channel.guild.ownerId !== actor.id && actor.roles.highest.comparePositionTo(role) <= 0) {
-    return "자신의 역할보다 높거나 같은 역할은 바꿀 수 없습니다.";
+    return speak("자신의 역할보다 높거나 같은 역할은 바꿀 수 없습니다.");
   }
 
   return undefined;
@@ -54,7 +55,7 @@ function whyNotEditable(
 export default defineCommand({
   data: new SlashCommandBuilder()
     .setName("채팅뻥")
-    .setDescription("이 채널에서 역할의 채팅 권한(메시지 보내기)을 켜고 끕니다.")
+    .setDescription(speak("이 채널에서 역할의 채팅 권한(메시지 보내기)을 켜고 끕니다."))
     .setContexts(InteractionContextType.Guild)
     // 디스코드 쪽에서도 권한 없는 사람에게는 아예 안 보이게 한다.
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
@@ -68,7 +69,7 @@ export default defineCommand({
         response({
           status: "failure",
           title: "서버 전용",
-          description: "이 명령은 서버 안에서만 사용할 수 있어요.",
+          description: speak("이 명령은 서버 안에서만 사용할 수 있어요."),
           user: interaction.user,
         }),
       );
@@ -85,8 +86,8 @@ export default defineCommand({
       await interaction.reply(
         response({
           status: "failure",
-          title: "채널을 찾지 못했습니다",
-          description: "이 채널의 권한을 읽을 수 없어요. 스레드라면 부모 채널에서 다시 시도해 주세요.",
+          title: speak("채널을 찾지 못했습니다"),
+          description: speak("이 채널의 권한을 읽을 수 없어요. 스레드라면 부모 채널에서 다시 시도해 주세요."),
           user: interaction.user,
         }),
       );
@@ -101,8 +102,8 @@ export default defineCommand({
       await interaction.reply(
         response({
           status: "failure",
-          title: "역할을 찾지 못했습니다",
-          description: "방금 지워진 역할일 수 있어요.",
+          title: speak("역할을 찾지 못했습니다"),
+          description: speak("방금 지워진 역할일 수 있어요."),
           user: interaction.user,
         }),
       );
@@ -147,7 +148,7 @@ export default defineCommand({
         editResponse({
           status: "failure",
           title: "채팅뻥 실패",
-          description: "채널 권한을 바꾸지 못했습니다.",
+          description: speak("채널 권한을 바꾸지 못했습니다."),
           error,
           fields: [
             { name: "역할", value: label(role) },
@@ -162,8 +163,8 @@ export default defineCommand({
     await interaction.editReply(
       editResponse({
         status: "success",
-        title: wasBlocked ? "채팅뻥 — 켰습니다" : "채팅뻥 — 껐습니다",
-        description: `<#${channel.id}> 에서 ${label(role)} 의 채팅을 ${wasBlocked ? "풀었습니다" : "막았습니다"}.`,
+        title: wasBlocked ? speak("채팅뻥 — 켰습니다") : speak("채팅뻥 — 껐습니다"),
+        description: speak(`<#${channel.id}> 에서 ${label(role)} 의 채팅을 ${wasBlocked ? "풀었습니다" : "막았습니다"}.`),
         fields: [
           {
             name: "메시지 보내기",

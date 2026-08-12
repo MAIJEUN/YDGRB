@@ -12,6 +12,7 @@ import { liveGame } from "../games/runner.js";
 import { noticeView, refusedView, startedView } from "../games/views.js";
 import { defineComponentHandler } from "../types.js";
 import { response, updateResponse } from "../ui/response.js";
+import { speak } from "../ui/tone.js";
 
 /**
  * 선착순의 「누르기」 버튼.
@@ -26,9 +27,9 @@ import { response, updateResponse } from "../ui/response.js";
  * 마지막 한 사람이 채웠을 때만 화면을 갈아 끼운다 — 버튼을 떼기 위해서다.
  */
 const PROBLEM: Record<string, string> = {
-  gone: "이미 끝난 판입니다.",
-  closed: "자리가 다 찼습니다.",
-  already: "이미 누르셨어요. 한 번만 누를 수 있습니다.",
+  gone: speak("이미 끝난 판입니다."),
+  closed: speak("자리가 다 찼습니다."),
+  already: speak("이미 누르셨어요. 한 번만 누를 수 있습니다."),
 };
 
 export default defineComponentHandler({
@@ -54,7 +55,7 @@ export default defineComponentHandler({
     const result = press(sessionId, interaction.user.id);
     if (!result.ok) {
       await interaction.reply(
-        response(refusedView("누르지 못했어요", PROBLEM[result.reason] ?? "", interaction.user)),
+        response(refusedView(speak("누르지 못했어요"), PROBLEM[result.reason] ?? "", interaction.user)),
       );
       return;
     }
@@ -68,7 +69,7 @@ export default defineComponentHandler({
     // 아직 안 찼다 — 누른 사람에게만 몇 번째인지 알려 주고 화면은 그대로 둔다.
     if (!result.filled) {
       await interaction.reply(
-        response(noticeView("선착순", `**${result.order}번째**로 누르셨습니다.`, interaction.user)),
+        response(noticeView("선착순", speak(`**${result.order}번째**로 누르셨습니다.`), interaction.user)),
       );
       await context.join(interaction.user.id);
       return;
@@ -84,8 +85,8 @@ export default defineComponentHandler({
 
     await context.end({
       description: only
-        ? `**${race.target}번째**로 누른 ${winners.map((id) => `<@${id}>`).join(" ")} 님이 가져갑니다.`
-        : `${winners.map((id) => `<@${id}>`).join(" ")} 님이 가져갑니다.`,
+        ? speak(`**${race.target}번째**로 누른 ${winners.map((id) => `<@${id}>`).join(" ")} 님이 가져갑니다.`)
+        : speak(`${winners.map((id) => `<@${id}>`).join(" ")} 님이 가져갑니다.`),
       fields: pressField(race),
     });
   },

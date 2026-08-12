@@ -15,6 +15,7 @@ import firstcome, {
 import { refusedView } from "../games/views.js";
 import { response } from "../ui/response.js";
 import { defineCommand } from "../types.js";
+import { speak } from "../ui/tone.js";
 
 /**
  * `/선착순 [종류] [값] [제목]`
@@ -28,7 +29,7 @@ const OPTION = { mode: "종류", value: "값" } as const;
 export default defineCommand({
   data: new SlashCommandBuilder()
     .setName("선착순")
-    .setDescription("버튼을 먼저 누른 사람이 가져가는 게임입니다.")
+    .setDescription(speak("버튼을 먼저 누른 사람이 가져가는 게임입니다."))
     .setContexts(InteractionContextType.Guild)
     .addStringOption((option) =>
       option
@@ -36,8 +37,8 @@ export default defineCommand({
         .setDescription("먼저 누른 n명인지, 딱 n번째로 누른 사람인지")
         .setRequired(true)
         .addChoices(
-          { name: `${MODE_LABEL.count} — 먼저 누른 n명이 가져갑니다`, value: MODE.count },
-          { name: `${MODE_LABEL.nth} — 딱 n번째로 누른 사람이 가져갑니다`, value: MODE.nth },
+          { name: speak(`${MODE_LABEL.count} — 먼저 누른 n명이 가져갑니다`), value: MODE.count },
+          { name: speak(`${MODE_LABEL.nth} — 딱 n번째로 누른 사람이 가져갑니다`), value: MODE.nth },
         ),
     )
     .addIntegerOption((option) =>
@@ -53,7 +54,7 @@ export default defineCommand({
     const mode = interaction.options.getString(OPTION.mode, true);
     if (!isRaceMode(mode)) {
       await interaction.reply(
-        response(refusedView("선착순 실패", "종류를 골라 주세요.", interaction.user)),
+        response(refusedView("선착순 실패", speak("종류를 골라 주세요."), interaction.user)),
       );
       return;
     }

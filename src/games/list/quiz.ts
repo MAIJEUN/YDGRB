@@ -4,6 +4,7 @@ import { customId } from "../../types.js";
 import { answerGame } from "../answer.js";
 import { titleInput } from "../command.js";
 import { defineGame } from "../types.js";
+import { speak } from "../../ui/tone.js";
 
 /**
  * 퀴즈 — **즉시 시작** 형식.
@@ -55,7 +56,7 @@ export function quizModal(): ModalBuilder {
         new TextInputBuilder()
           .setCustomId(FIELD.answer)
           .setLabel("정답")
-          .setPlaceholder("공백과 대소문자는 따지지 않습니다")
+          .setPlaceholder(speak("공백과 대소문자는 따지지 않습니다"))
           .setStyle(TextInputStyle.Short)
           .setRequired(true)
           .setMaxLength(MAX_ANSWER_LENGTH),

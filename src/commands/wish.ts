@@ -4,6 +4,7 @@ import { response } from "../ui/response.js";
 import { defineCommand } from "../types.js";
 import { PANEL } from "../wish/ids.js";
 import { panelView } from "../wish/views.js";
+import { speak } from "../ui/tone.js";
 
 export default defineCommand({
   data: new SlashCommandBuilder()
@@ -11,7 +12,7 @@ export default defineCommand({
     .setDescription("소원권 시스템")
     // 소원권은 서버별로 관리되므로 DM 에서는 쓸 수 없다.
     .setContexts(InteractionContextType.Guild)
-    .addSubcommand((sub) => sub.setName("패널").setDescription("소원권 패널을 엽니다.")),
+    .addSubcommand((sub) => sub.setName("패널").setDescription(speak("소원권 패널을 엽니다."))),
 
   async execute(interaction) {
     if (interaction.guildId === null) {
@@ -19,7 +20,7 @@ export default defineCommand({
         response({
           status: "failure",
           title: "서버 전용",
-          description: "이 명령은 서버 안에서만 사용할 수 있어요.",
+          description: speak("이 명령은 서버 안에서만 사용할 수 있어요."),
           user: interaction.user,
         }),
       );

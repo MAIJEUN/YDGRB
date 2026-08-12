@@ -20,6 +20,7 @@ import { IMAGE_NAME, alreadyView, todayView } from "../attendance/views.js";
 import { logger } from "../logger.js";
 import { channelMessage, editResponse, response } from "../ui/response.js";
 import { defineCommand } from "../types.js";
+import { speak } from "../ui/tone.js";
 
 /**
  * `/출헉체흐 [텍스트]` — 오늘의 출헉을 올린다.
@@ -33,7 +34,7 @@ const OPTION = { text: "텍스트" } as const;
 export default defineCommand({
   data: new SlashCommandBuilder()
     .setName("출헉체흐")
-    .setDescription("오늘의 출헉을 올립니다. 하루에 한 번만 쓸 수 있어요.")
+    .setDescription(speak("오늘의 출헉을 올립니다. 하루에 한 번만 쓸 수 있어요."))
     .setContexts(InteractionContextType.Guild)
     // 디스코드 쪽에서도 권한 없는 사람에게는 아예 안 보이게 한다.
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
@@ -52,7 +53,7 @@ export default defineCommand({
         response({
           status: "failure",
           title: "서버 전용",
-          description: "이 명령은 서버 안에서만 사용할 수 있어요.",
+          description: speak("이 명령은 서버 안에서만 사용할 수 있어요."),
           user: interaction.user,
         }),
       );
@@ -65,7 +66,7 @@ export default defineCommand({
         response({
           status: "failure",
           title: "출헉 실패",
-          description: "이 채널에 메시지를 보낼 수 없어요.",
+          description: speak("이 채널에 메시지를 보낼 수 없어요."),
           user: interaction.user,
         }),
       );
@@ -78,7 +79,7 @@ export default defineCommand({
         response({
           status: "failure",
           title: "출헉 실패",
-          description: "받아 적게 할 글자를 적어 주세요.",
+          description: speak("받아 적게 할 글자를 적어 주세요."),
           user: interaction.user,
         }),
       );
@@ -126,8 +127,8 @@ export default defineCommand({
       await interaction.editReply(
         editResponse({
           status: "success",
-          title: "출헉을 올렸습니다",
-          description: `<#${channel.id}> 에 올렸어요.`,
+          title: speak("출헉을 올렸습니다"),
+          description: speak(`<#${channel.id}> 에 올렸어요.`),
           user: interaction.user,
         }),
       );
@@ -140,7 +141,7 @@ export default defineCommand({
         editResponse({
           status: "failure",
           title: "출헉 실패",
-          description: "출헉을 올리지 못했습니다.",
+          description: speak("출헉을 올리지 못했습니다."),
           error,
           user: interaction.user,
         }),

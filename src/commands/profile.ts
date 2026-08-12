@@ -3,6 +3,7 @@ import { InteractionContextType, SlashCommandBuilder } from "discord.js";
 import { profileView } from "../info/views.js";
 import { editResponse, response } from "../ui/response.js";
 import { defineCommand } from "../types.js";
+import { speak } from "../ui/tone.js";
 
 /** `/프로필쀼 [@유저]` — 비우면 자기 자신. */
 const OPTION = { user: "유저" } as const;
@@ -10,7 +11,7 @@ const OPTION = { user: "유저" } as const;
 export default defineCommand({
   data: new SlashCommandBuilder()
     .setName("프로필쀼")
-    .setDescription("유저의 정보를 보여줍니다. 비우면 자신의 정보를 봅니다.")
+    .setDescription(speak("유저의 정보를 보여줍니다. 비우면 자신의 정보를 봅니다."))
     .setContexts(InteractionContextType.Guild)
     .addUserOption((option) => option.setName(OPTION.user).setDescription("비우면 자신")),
 
@@ -20,7 +21,7 @@ export default defineCommand({
         response({
           status: "failure",
           title: "서버 전용",
-          description: "이 명령은 서버 안에서만 사용할 수 있어요.",
+          description: speak("이 명령은 서버 안에서만 사용할 수 있어요."),
           user: interaction.user,
         }),
       );
@@ -32,8 +33,8 @@ export default defineCommand({
       await interaction.reply(
         response({
           status: "failure",
-          title: "프로필을 볼 수 없습니다",
-          description: "서버에 없는 사람입니다.",
+          title: speak("프로필을 볼 수 없습니다"),
+          description: speak("서버에 없는 사람입니다."),
           user: interaction.user,
         }),
       );

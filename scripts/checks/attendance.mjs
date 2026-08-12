@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { DIST, PROJECT, assert, finish } from "./_harness.mjs";
+import { DIST, PROJECT, assert, finish, speak } from "./_harness.mjs";
 
 const sandbox = mkdtempSync(path.join(tmpdir(), "att-"));
 process.chdir(sandbox);
@@ -219,7 +219,7 @@ assert("  └ 나만 보기", alreadyView("x", "y", user).ephemeral !== false);
 
 const extraSuccess = buildContainer(extraSuccessView(user)).toJSON();
 assert("덤 성공은 파랑(기록 아님)", extraSuccess.accent_color === 0x5865f2);
-assert("  └ 제목에 기록 안 됨", extraSuccess.components[0].content.includes("맞혔습니다 (기록 안 됨)"));
+assert("  └ 제목에 기록 안 됨", extraSuccess.components[0].content.includes(speak("맞혔습니다 (기록 안 됨)")));
 assert("  └ 연속일수를 말하지 않음", !extraSuccess.components[0].content.includes("연속"));
 assert("  └ 본인에게만 보임", extraSuccessView(user).ephemeral !== false);
 

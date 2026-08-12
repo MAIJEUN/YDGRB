@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { DIST, PROJECT, assert, finish } from "./_harness.mjs";
+import { DIST, PROJECT, assert, finish, speak } from "./_harness.mjs";
 
 const read = (rel) => readFileSync(`${PROJECT}/${rel}`, "utf8");
 
@@ -335,7 +335,7 @@ console.log("\n=== 8. 게임이 터졌을 때 ===");
 
   assert("판을 정리함", (await store.getSession(G, session.id)) === undefined);
   const shown = JSON.stringify(client.sent.at(-1).payload);
-  assert("  └ 실패로 끝냄", shown.includes("끝까지 돌지 못했습니다"), shown.slice(0, 200));
+  assert("  └ 실패로 끝냄", shown.includes(speak("끝까지 돌지 못했습니다")), shown.slice(0, 200));
 }
 
 // ── 9. 한 채널에 한 판 ─────────────────────────────────────

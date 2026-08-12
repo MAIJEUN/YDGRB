@@ -9,6 +9,7 @@ import { COMMANDS, canUse, findCommand } from "./commands.js";
 import type { DebugContext } from "./commands.js";
 import { PREFIX } from "./ids.js";
 import { card } from "./views.js";
+import { speak } from "../ui/tone.js";
 
 /**
  * `!y …` 를 받아 처리한다.
@@ -66,7 +67,7 @@ export async function handleDebugMessage(message: Message<true>): Promise<boolea
     await send(message, [
       card(command.name, message.author, {
         status: "failure",
-        description: "디버그 명령이 끝까지 돌지 못했습니다.",
+        description: speak("디버그 명령이 끝까지 돌지 못했습니다."),
         error,
       }),
     ]);
@@ -85,7 +86,7 @@ export function asViews(
 function unknownView(context: DebugContext, name: string): MessageOptions {
   return card("도움", context.user, {
     status: "failure",
-    description: `\`${name}\` 는 없는 항목입니다.`,
+    description: speak(`\`${name}\` 는 없는 항목입니다.`),
     fields: [
       {
         name: "할 수 있는 것",
@@ -104,7 +105,7 @@ export function deniedView(
 ): MessageOptions {
   return card(name, context.user, {
     status: "failure",
-    description: `**${LEVEL_LABEL[required]}** 만 쓸 수 있는 항목입니다.`,
+    description: speak(`**${LEVEL_LABEL[required]}** 만 쓸 수 있는 항목입니다.`),
     fields: [{ name: "내 등급", value: `**${LEVEL_LABEL[context.level]}**` }],
   });
 }

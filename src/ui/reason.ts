@@ -1,6 +1,7 @@
 import type { ChatInputCommandInteraction, SlashCommandStringOption } from "discord.js";
 
 import type { ResponseField } from "./response.js";
+import { speak } from "./tone.js";
 
 /**
  * 패널티 명령의 **사유** 칸.
@@ -26,7 +27,7 @@ export const MAX_REASON_LENGTH = 200;
 export function reasonOption(option: SlashCommandStringOption): SlashCommandStringOption {
   return option
     .setName(REASON_OPTION)
-    .setDescription("왜 거는지. 감사 로그와 해제 안내에도 남습니다")
+    .setDescription(speak("왜 거는지. 감사 로그와 해제 안내에도 남습니다"))
     .setMaxLength(MAX_REASON_LENGTH);
 }
 

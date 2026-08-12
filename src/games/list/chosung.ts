@@ -44,6 +44,7 @@ export function chosungModal(): ModalBuilder {
         new TextInputBuilder()
           .setCustomId(FIELD.text)
           .setLabel("텍스트")
+          // 초성으로 바뀌는 본보기라 말투를 입히지 않는다 — 「안녕하ㅅ-」가 되면 뜻이 사라진다.
           .setPlaceholder("안녕하세요 → ㅇㄴㅎㅅㅇ")
           .setStyle(TextInputStyle.Short)
           .setRequired(true)

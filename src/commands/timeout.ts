@@ -8,6 +8,7 @@ import { setState } from "../timeout/store.js";
 import { auditReason, reasonField, reasonOption, readReason } from "../ui/reason.js";
 import { editResponse, response } from "../ui/response.js";
 import { defineCommand } from "../types.js";
+import { speak } from "../ui/tone.js";
 
 /**
  * 타임아웃 — 정해진 시각까지 말도 못 하고 반응도 못 달게 만든다.
@@ -40,26 +41,26 @@ function whyNotModeratable(target: GuildMember, actor: GuildMember): string | un
   const { guild } = target;
 
   if (target.id === guild.ownerId) {
-    return "서버 소유자는 타임아웃할 수 없습니다.";
+    return speak("서버 소유자는 타임아웃할 수 없습니다.");
   }
 
   // 관리자 권한이 있으면 디스코드가 타임아웃을 걸어 주지 않는다.
   if (target.permissions.has(PermissionFlagsBits.Administrator, false)) {
-    return "**관리자** 권한이 있는 사람은 타임아웃할 수 없습니다.";
+    return speak("**관리자** 권한이 있는 사람은 타임아웃할 수 없습니다.");
   }
 
   const me = guild.members.me;
   if (me === null || !me.permissions.has(PermissionFlagsBits.ModerateMembers)) {
-    return "봇에게 **멤버 타임아웃(Moderate Members)** 권한을 주세요.";
+    return speak("봇에게 **멤버 타임아웃(Moderate Members)** 권한을 주세요.");
   }
 
   if (me.roles.highest.comparePositionTo(target.roles.highest) <= 0) {
-    return "이 사람의 역할이 봇보다 높습니다. 서버 설정 > 역할 에서 봇 역할을 더 위로 올려 주세요.";
+    return speak("이 사람의 역할이 봇보다 높습니다. 서버 설정 > 역할 에서 봇 역할을 더 위로 올려 주세요.");
   }
 
   // 서버 소유자는 서열과 무관하게 다 만질 수 있다.
   if (guild.ownerId !== actor.id && actor.roles.highest.comparePositionTo(target.roles.highest) <= 0) {
-    return "자신보다 높거나 같은 역할을 가진 사람은 타임아웃할 수 없습니다.";
+    return speak("자신보다 높거나 같은 역할을 가진 사람은 타임아웃할 수 없습니다.");
   }
 
   return undefined;
@@ -68,7 +69,7 @@ function whyNotModeratable(target: GuildMember, actor: GuildMember): string | un
 export default defineCommand({
   data: new SlashCommandBuilder()
     .setName("타임아웃")
-    .setDescription("정한 기간 동안 채팅과 반응을 막습니다. 기간을 비우면 해제합니다.")
+    .setDescription(speak("정한 기간 동안 채팅과 반응을 막습니다. 기간을 비우면 해제합니다."))
     .setContexts(InteractionContextType.Guild)
     // 디스코드 쪽에서도 권한 없는 사람에게는 아예 안 보이게 한다.
     .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
@@ -88,7 +89,7 @@ export default defineCommand({
         response({
           status: "failure",
           title: "서버 전용",
-          description: "이 명령은 서버 안에서만 사용할 수 있어요.",
+          description: speak("이 명령은 서버 안에서만 사용할 수 있어요."),
           user: interaction.user,
         }),
       );
@@ -101,7 +102,7 @@ export default defineCommand({
         response({
           status: "failure",
           title: "타임아웃 실패",
-          description: "서버에 없는 사람입니다.",
+          description: speak("서버에 없는 사람입니다."),
           user: interaction.user,
         }),
       );
@@ -118,7 +119,7 @@ export default defineCommand({
         await interaction.reply(
           response({
             status: "failure",
-            title: "기간을 읽을 수 없습니다",
+            title: speak("기간을 읽을 수 없습니다"),
             description: describeDurationError(parsed.reason),
             fields: [{ name: "입력한 값", value: `\`${rawDuration}\`` }],
             user: interaction.user,
@@ -132,8 +133,8 @@ export default defineCommand({
         await interaction.reply(
           response({
             status: "failure",
-            title: "기간이 너무 깁니다",
-            description: `타임아웃은 최대 **${formatDuration(MAX_TIMEOUT_SECONDS)}** 까지만 걸 수 있어요.`,
+            title: speak("기간이 너무 깁니다"),
+            description: speak(`타임아웃은 최대 **${formatDuration(MAX_TIMEOUT_SECONDS)}** 까지만 걸 수 있어요.`),
             fields: [{ name: "입력한 값", value: `\`${rawDuration}\` (${formatDuration(parsed.seconds)})` }],
             user: interaction.user,
           }),
@@ -167,7 +168,7 @@ export default defineCommand({
         response({
           status: "failure",
           title: "타임아웃 실패",
-          description: `<@${target.id}> 님은 타임아웃 상태가 아닙니다.`,
+          description: speak(`<@${target.id}> 님은 타임아웃 상태가 아닙니다.`),
           user: interaction.user,
         }),
       );
@@ -188,7 +189,7 @@ export default defineCommand({
         editResponse({
           status: "failure",
           title: "타임아웃 실패",
-          description: "타임아웃을 적용하지 못했습니다.",
+          description: speak("타임아웃을 적용하지 못했습니다."),
           error,
           fields: [{ name: "대상", value: `<@${target.id}>` }],
           user: interaction.user,
@@ -245,8 +246,8 @@ export default defineCommand({
         // 대상은 내용이 이미 말했다 — 칸을 따로 두지 않는다.
         description:
           after === null
-            ? `<@${target.id}> 님의 타임아웃을 풀었습니다.`
-            : `<@${target.id}> 님을 ${formatDuration(seconds ?? 0)} 동안 타임아웃했습니다.`,
+            ? speak(`<@${target.id}> 님의 타임아웃을 풀었습니다.`)
+            : speak(`<@${target.id}> 님을 ${formatDuration(seconds ?? 0)} 동안 타임아웃했습니다.`),
         fields: [
           { name: "풀리는 시각", value: `${describeTimeout(before)} → **${describeTimeout(after)}**` },
           ...reasonField(reason),

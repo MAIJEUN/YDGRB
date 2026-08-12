@@ -10,6 +10,7 @@ import { logger } from "../logger.js";
 import { stopAllLoops } from "../tasalbeo/runner.js";
 import { defineComponentHandler } from "../types.js";
 import { updateResponse } from "../ui/response.js";
+import { speak } from "../ui/tone.js";
 
 /**
  * 디버그 화면의 버튼 — 새로고침 · 재시작 · 종료.
@@ -52,7 +53,7 @@ export default defineComponentHandler({
           updateResponse(
             card("취소", interaction.user, {
               status: "progress",
-              description: "아무것도 하지 않았습니다.",
+              description: speak("아무것도 하지 않았습니다."),
             }),
           ),
         );
@@ -114,7 +115,7 @@ async function finish(
       updateResponse(
         card(name, interaction.user, {
           status: "failure",
-          description: "**주인** 만 쓸 수 있는 항목입니다.",
+          description: speak("**주인** 만 쓸 수 있는 항목입니다."),
         }),
       ),
     );
@@ -126,7 +127,7 @@ async function finish(
     updateResponse(
       card(name, interaction.user, {
         status: "progress",
-        description: restarting ? "지금 끕니다. 실행기가 다시 켭니다." : "지금 끕니다.",
+        description: restarting ? speak("지금 끕니다. 실행기가 다시 켭니다.") : speak("지금 끕니다."),
       }),
     ),
   );

@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { DIST, PROJECT, assert, finish } from "./_harness.mjs";
+import { DIST, PROJECT, assert, finish, speak } from "./_harness.mjs";
 
 const read = (rel) => readFileSync(`${PROJECT}/${rel}`, "utf8");
 
@@ -300,7 +300,7 @@ console.log("\n=== 8. 시간 만료 ===");
   await new Promise((done) => setTimeout(done, 1400));
 
   const result = bodyOf(client.sent.at(-1).payload);
-  assert("n번째에 못 닿으면 이긴 사람 없음", result.includes("아무도 채우지 못했습니다"), result);
+  assert("n번째에 못 닿으면 이긴 사람 없음", result.includes(speak("아무도 채우지 못했습니다")), result);
   assert("  └ n번째는 눌린 순서를 남김", result.includes("**눌린 순서**"), result);
 }
 

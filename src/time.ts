@@ -1,4 +1,5 @@
 import { TimestampStyles, time } from "discord.js";
+import { speak } from "./ui/tone.js";
 
 /**
  * 시간 입력과 시간 출력을 한곳에서 다룬다.
@@ -98,13 +99,13 @@ export function parseDuration(input: string): DurationResult {
 export function describeDurationError(reason: Exclude<DurationResult, { ok: true }>["reason"]): string {
   switch (reason) {
     case "empty":
-      return "기간을 입력해 주세요.";
+      return speak("기간을 입력해 주세요.");
     case "zero":
-      return "기간은 0보다 커야 해요.";
+      return speak("기간은 0보다 커야 해요.");
     case "tooLong":
-      return "기간이 너무 깁니다. 365일 이내로 적어 주세요.";
+      return speak("기간이 너무 깁니다. 365일 이내로 적어 주세요.");
     case "invalid":
-      return "기간 형식을 알 수 없어요. `1일 4시간 45초` 처럼 적거나, 숫자만 쓰면 초로 봅니다 (`64` = 1분 4초).";
+      return speak("기간 형식을 알 수 없어요. `1일 4시간 45초` 처럼 적거나, 숫자만 쓰면 초로 봅니다 (`64` = 1분 4초).");
   }
 }
 
