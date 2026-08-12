@@ -111,32 +111,51 @@ console.log("\n=== 4. 이긴 사람 ===");
 // ── 5. 눌린 순서 ───────────────────────────────────────────
 console.log("\n=== 5. 눌린 순서 ===");
 {
-  race.keepRace("s5", race.MODE.count, 100);
+  race.keepRace("s5", race.MODE.nth, 100);
   for (const n of [1, 2, 3, 4]) race.press("s5", P(n));
 
   const board = race.pressBoard(race.raceOf("s5"));
   const lines = board.split("\n");
 
-  assert("늦게 누른 사람이 위", lines[0] === `4번째 : <@${P(4)}>`, lines[0]);
-  assert("  └ 아래로 갈수록 먼저", lines.at(-1) === `1번째 : <@${P(1)}>`, lines.at(-1));
+  assert("늦게 누른 사람이 위", lines[0] === `\`4번째\` <@${P(4)}>`, lines[0]);
+  assert("  └ 아래로 갈수록 먼저", lines.at(-1) === `\`1번째\` <@${P(1)}>`, lines.at(-1));
   assert("  └ 있는 만큼만 (4줄)", lines.length === 4, String(lines.length));
   assert("  └ 유저를 멘션으로", lines.every((line) => /<@\d+>$/u.test(line)), board);
+  // 번째를 인라인 코드로 감싸 칸처럼 보이게 한다.
+  assert("  └ 번째가 칸으로 감싸짐", lines.every((line) => /^`\d+번째`/u.test(line)), board);
+  // 코드블록으로 통째로 감싸면 그 안에서는 멘션이 날것으로 나온다.
+  assert("  └ 코드블록은 쓰지 않음", !board.includes("```"), board);
 
   // 넘치면 최근 것부터 10줄.
   for (let n = 5; n <= 25; n += 1) race.press("s5", P(n));
   const many = race.pressBoard(race.raceOf("s5")).split("\n");
 
   assert("10명을 넘으면 잘라 냄", many.length === race.MAX_SHOWN_PRESSES, String(many.length));
-  assert("  └ 가장 최근이 맨 위", many[0] === `25번째 : <@${P(25)}>`, many[0]);
-  assert("  └ 그 아래로 열 줄", many.at(-1) === `16번째 : <@${P(16)}>`, many.at(-1));
+  assert("  └ 가장 최근이 맨 위", many[0] === `\`25번째\` <@${P(25)}>`, many[0]);
+  assert("  └ 그 아래로 열 줄", many.at(-1) === `\`16번째\` <@${P(16)}>`, many.at(-1));
 
   race.dropRace("s5");
 }
 {
-  race.keepRace("s6", race.MODE.count, 3);
+  race.keepRace("s6", race.MODE.nth, 3);
   assert("아무도 안 눌렀으면 「아직 없음」", race.pressBoard(race.raceOf("s6")) === "아직 없음");
   assert("  └ 결과 칸도 만들지 않음", race.pressField(race.raceOf("s6")).length === 0);
   race.dropRace("s6");
+}
+{
+  // n명은 누른 사람이 곧 이긴 사람이라, 아래에 또 늘어놓지 않는다.
+  race.keepRace("s7", race.MODE.count, 3);
+  for (const n of [1, 2, 3]) race.press("s7", P(n));
+
+  assert("n명은 눌린 순서 칸을 안 만듦", race.pressField(race.raceOf("s7")).length === 0);
+  assert("  └ n번째는 만듦", (() => {
+    race.keepRace("s8", race.MODE.nth, 3);
+    for (const n of [1, 2, 3]) race.press("s8", P(n));
+    const made = race.pressField(race.raceOf("s8")).length === 1;
+    race.dropRace("s8");
+    return made;
+  })());
+  race.dropRace("s7");
 }
 
 console.log("\n=== 6. 목표 문구 ===");
@@ -262,7 +281,8 @@ console.log("\n=== 8. 시간 만료 ===");
 
   const result = bodyOf(client.sent.at(-1).payload);
   assert("  └ 덜 찼어도 누른 사람이 가져감", result.includes(`<@${P(1)}>`) && result.includes(`<@${P(2)}>`), result);
-  assert("  └ 끝나서야 눌린 순서를 남김", result.includes("**눌린 순서**"), result);
+  assert("  └ n명은 눌린 순서를 안 남김", !result.includes("**눌린 순서**"), result);
+  assert("  └ 참가자 칸도 따로 안 붙음", !result.includes("참가한 사람"), result);
   assert("  └ 제목에도 목표가", result.includes("선착순 5명"), result.split("\n")[0]);
   assert("  └ 파랑 (알림)", client.sent.at(-1).payload.components[0].toJSON().accent_color === 0x5865f2);
 }
@@ -281,6 +301,7 @@ console.log("\n=== 8. 시간 만료 ===");
 
   const result = bodyOf(client.sent.at(-1).payload);
   assert("n번째에 못 닿으면 이긴 사람 없음", result.includes("아무도 채우지 못했습니다"), result);
+  assert("  └ n번째는 눌린 순서를 남김", result.includes("**눌린 순서**"), result);
 }
 
 // ── 9. 제목 ────────────────────────────────────────────────

@@ -152,7 +152,10 @@ export function endedView(
   const fields: ResponseField[] = [...(result?.fields ?? [])];
 
   // 게임이 참가자를 따로 말하지 않았다면 여기서 한 번 적어 준다.
-  if (fields.length === 0 && session.players.length > 0) {
+  //
+  // **모집 게임만** 그렇게 한다. 즉시 시작은 게임이 결과에서 이미 누가 무엇을 했는지
+  // 말하므로(퀴즈의 맞힌 사람, 선착순의 가져간 사람), 아래에 또 늘어놓으면 같은 말이 된다.
+  if (game.mode === "recruit" && fields.length === 0 && session.players.length > 0) {
     fields.push({
       name: `참가한 사람 (${count(session.players.length)}명)`,
       value: playerList(session.players),

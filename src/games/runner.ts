@@ -79,8 +79,9 @@ export async function openGame(
     body: options.body ?? null,
     messageId: null,
     hostId: host.id,
-    // 모집 게임도 연 사람은 참가한 것으로 본다. 자기 판에 따로 참가 버튼을 누를 이유가 없다.
-    players: [host.id],
+    // 모집 게임은 연 사람도 참가한 것으로 본다 — 자기 판에 따로 참가 버튼을 누를 이유가 없다.
+    // 즉시 시작은 아니다. 열어만 놓고 안 할 수도 있으니, 참가는 게임을 하면서 세어진다.
+    players: recruiting ? [host.id] : [],
     phase: recruiting ? "recruiting" : "playing",
     openedAt: Date.now(),
     closesAt: recruiting

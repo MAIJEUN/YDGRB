@@ -119,8 +119,12 @@ export function winnersOf(race: Race): string[] {
 /**
  * 눌린 순서 — **늦게 누른 사람이 위**로 최대 10명.
  *
- *   4번째 : @…
- *   3번째 : @…
+ *   `4번째` @…
+ *   `3번째` @…
+ *
+ * 번째에 인라인 코드를 씌워 칸처럼 보이게 한다. 코드블록으로 통째로 감싸면 한 덩어리로
+ * 보기는 좋지만 **그 안에서는 멘션이 `<@123…>` 날것으로 나온다** — 유저는 언제나
+ * 멘션이라는 규칙과 부딪히므로 쓸 수 없다.
  *
  * 마지막에 누른 사람이 맨 위다. 판이 끝난 뒤 결과 화면에만 나간다.
  */
@@ -128,7 +132,7 @@ export function pressBoard(race: Race): string {
   if (race.pressed.length === 0) return "아직 없음";
 
   return race.pressed
-    .map((userId, index) => `${index + 1}번째 : <@${userId}>`)
+    .map((userId, index) => `\`${index + 1}번째\` <@${userId}>`)
     .slice(-MAX_SHOWN_PRESSES)
     .reverse()
     .join("\n");
@@ -144,9 +148,15 @@ export function raceName(mode: RaceMode, target: number): string {
   return mode === MODE.count ? `선착순 ${target}명` : `선착순 ${target}번째`;
 }
 
-/** 결과에 붙일 「눌린 순서」 칸. */
+/**
+ * 결과에 붙일 「눌린 순서」 칸.
+ *
+ * **n번째일 때만** 낸다. n명은 누른 사람이 곧 이긴 사람이라, 내용이 이미 말한 것을
+ * 아래에 한 번 더 늘어놓는 셈이 된다.
+ */
 export function pressField(race: Race): ResponseField[] {
-  return race.pressed.length === 0 ? [] : [{ name: "눌린 순서", value: pressBoard(race) }];
+  if (race.mode === MODE.count || race.pressed.length === 0) return [];
+  return [{ name: "눌린 순서", value: pressBoard(race) }];
 }
 
 export default defineGame({
