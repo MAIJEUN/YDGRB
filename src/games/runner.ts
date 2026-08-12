@@ -39,6 +39,14 @@ export interface OpenOptions {
   readonly body?: string | null;
   /** 즉시 시작 게임의 진행 시간. 다 되면 `onTimeout` 이 불린다. */
   readonly durationSeconds?: number | null;
+  /**
+   * 판 id 가 정해진 **직후, 화면을 만들기 전에** 불린다.
+   *
+   * 퀴즈의 정답이나 선착순의 목표처럼 게임이 판마다 들고 있어야 하는 것을 맡기는 자리다.
+   * 화면을 만든 뒤에 맡기면 첫 화면이 그것을 모른 채 그려지고(선착순은 버튼이 빠진다),
+   * 시작한 뒤에 맡기면 그 사이에 들어온 답을 놓친다.
+   */
+  readonly prepare?: (sessionId: string) => void;
 }
 
 export type OpenResult =
@@ -81,6 +89,8 @@ export async function openGame(
 
   const opened = await openSession(session);
   if (!opened.ok) return { ok: false, running: opened.running };
+
+  options.prepare?.(session.id);
 
   return {
     ok: true,
@@ -321,6 +331,17 @@ async function timeOut(
     const session = await getSession(guildId, sessionId);
     if (session !== undefined) await end(client, running.game, session, host, undefined);
   }
+}
+
+/**
+ * 돌고 있는 판을 집는다. 버튼으로 겨루는 게임이 자기 핸들러에서 쓴다.
+ *
+ * 진행 중인 판은 재시작을 견디지 않으므로, 없으면 이미 끝난 판이다.
+ */
+export function liveGame(
+  sessionId: string,
+): { readonly game: GameDefinition; readonly context: GameContext } | undefined {
+  return live.get(sessionId);
 }
 
 /**

@@ -1,4 +1,12 @@
-import type { Awaitable, Client, GuildTextBasedChannel, Message, User } from "discord.js";
+import type {
+  ActionRowBuilder,
+  Awaitable,
+  Client,
+  GuildTextBasedChannel,
+  Message,
+  MessageActionRowComponentBuilder,
+  User,
+} from "discord.js";
 
 import type { ResponseField, Status } from "../ui/response.js";
 
@@ -112,6 +120,13 @@ export interface GameDefinition {
    * 던지면 골격이 잡아서 실패로 끝낸다.
    */
   start(context: GameContext): Awaitable<void>;
+
+  /**
+   * 판 화면에 붙는 버튼. 선착순처럼 **버튼으로 겨루는** 게임이 쓴다.
+   *
+   * 판이 그려질 때마다 불리므로, 끝난 판에는 빈 배열을 돌려주면 버튼이 사라진다.
+   */
+  buttons?(session: GameSession): ActionRowBuilder<MessageActionRowComponentBuilder>[];
 
   /**
    * 판이 도는 동안 그 채널에 올라온 메시지. 퀴즈처럼 **채팅으로 겨루는** 게임이 쓴다.

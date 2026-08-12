@@ -130,6 +130,8 @@ export function startedView(
           ]
         : []),
     ],
+    // 버튼으로 겨루는 게임(선착순 같은)은 여기에 자기 버튼을 싣는다.
+    rows: game.buttons?.(session) ?? [],
     user: host,
     ephemeral: false,
   };

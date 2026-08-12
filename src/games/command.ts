@@ -116,15 +116,7 @@ type GameOpener = ChatInputCommandInteraction | ModalSubmitInteraction;
 export async function openGameHere(
   interaction: GameOpener,
   game: GameDefinition,
-  options: OpenOptions & {
-    /**
-     * 판 id 가 정해진 **직후, 시작하기 전에** 불린다.
-     *
-     * 퀴즈의 정답처럼 게임이 판마다 들고 있어야 하는 것을 맡기는 자리다.
-     * 시작한 뒤에 맡기면 그 사이에 들어온 답을 놓친다.
-     */
-    readonly prepare?: (sessionId: string) => void;
-  } = {},
+  options: OpenOptions = {},
 ): Promise<boolean> {
   if (!interaction.inCachedGuild() || interaction.channel === null) {
     await interaction.reply(
@@ -147,8 +139,6 @@ export async function openGameHere(
     );
     return false;
   }
-
-  options.prepare?.(opened.session.id);
 
   await interaction.reply(response(opened.view));
   const message = await interaction.fetchReply();
