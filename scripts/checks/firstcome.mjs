@@ -140,9 +140,8 @@ console.log("\n=== 5. 눌린 순서 ===");
 }
 
 console.log("\n=== 6. 목표 문구 ===");
-assert("n명", race.goalText(race.MODE.count, 3) === "선착순 **3명**", race.goalText(race.MODE.count, 3));
-assert("n번째", race.goalText(race.MODE.nth, 5) === "**5번째**로 누른 사람", race.goalText(race.MODE.nth, 5));
-assert("열 때 화면에 두 칸이 다 있음", race.openingBody(race.MODE.count, 3).includes("**눌린 순서**"));
+assert("n명", race.raceName(race.MODE.count, 3) === "선착순 3명", race.raceName(race.MODE.count, 3));
+assert("n번째", race.raceName(race.MODE.nth, 5) === "선착순 5번째", race.raceName(race.MODE.nth, 5));
 
 // ── 가짜 디스코드 ──────────────────────────────────────────
 function makeClient() {
@@ -195,7 +194,7 @@ function makeClient() {
 async function open(client, { mode, target, seconds = 60, title = null, channelId = CH }) {
   const opened = await runner.openGame(firstcome, G, channelId, host, {
     title,
-    body: race.openingBody(mode, target),
+    name: race.raceName(mode, target),
     durationSeconds: seconds,
     // 화면을 만들기 전에 맡겨야 첫 화면에 버튼이 붙는다.
     prepare: (sessionId) => race.keepRace(sessionId, mode, target),
@@ -228,7 +227,9 @@ console.log("\n=== 7. 버튼 ===");
     rows[0].components[0].custom_id === `firstcome:press:${session.id}`,
     rows[0].components[0].custom_id,
   );
-  assert("  └ 목표가 화면에", bodyOf(panel).includes("선착순 **2명**"), bodyOf(panel));
+  const head = bodyOf(panel).split("\n")[0];
+  assert("  └ 제목이 「선착순 2명」", head === "### 선착순 2명 — 시작", head);
+  assert("  └ 도는 동안 눌린 순서는 안 보임", !bodyOf(panel).includes("눌린 순서"), bodyOf(panel));
 
   // 다 차면 버튼이 사라진다 — 눌러도 아무 일 없는 버튼을 남기지 않는다.
   race.press(session.id, P(1));
@@ -261,7 +262,8 @@ console.log("\n=== 8. 시간 만료 ===");
 
   const result = bodyOf(client.sent.at(-1).payload);
   assert("  └ 덜 찼어도 누른 사람이 가져감", result.includes(`<@${P(1)}>`) && result.includes(`<@${P(2)}>`), result);
-  assert("  └ 눌린 순서를 남김", result.includes("**눌린 순서**"), result);
+  assert("  └ 끝나서야 눌린 순서를 남김", result.includes("**눌린 순서**"), result);
+  assert("  └ 제목에도 목표가", result.includes("선착순 5명"), result.split("\n")[0]);
   assert("  └ 파랑 (알림)", client.sent.at(-1).payload.components[0].toJSON().accent_color === 0x5865f2);
 }
 {
@@ -293,7 +295,11 @@ console.log("\n=== 9. 제목 ===");
   });
 
   const head = bodyOf(client.messages.get(String(session.messageId ?? "")).payload).split("\n")[0];
-  assert("제목이 「제목 (선착순)」", head === "### 보상은 소원권 1개 (선착순) — 시작", head);
+  assert(
+    "제목이 「제목 (선착순 1명)」",
+    head === "### 보상은 소원권 1개 (선착순 1명) — 시작",
+    head,
+  );
 
   race.dropRace(session.id);
   await store.dropSession(G, session.id);
@@ -311,11 +317,19 @@ assert(
 );
 assert("끝난 판에는 버튼을 안 남김", gameSource.includes("race.done) return []"));
 assert(
-  "화면은 누른 사람의 인터랙션으로 갈아 끼움",
-  buttonSource.includes("interaction.update("),
-  "봇이 채널 메시지를 직접 고치면 여럿이 몰릴 때 편집 제한에 걸린다",
+  "눌린 순서는 결과에만",
+  !gameSource.includes("pressBoard") || gameSource.indexOf("pressField") > gameSource.indexOf("pressBoard"),
 );
-assert("  └ 이미 누른 사람에게는 따로 알림", buttonSource.includes("interaction.reply("));
+assert(
+  "  └ 누를 때는 화면을 안 고침",
+  buttonSource.includes("화면은 건드리지 않는다"),
+  "도는 동안 순위표를 띄우면 눈치를 보게 된다",
+);
+assert(
+  "다 찼을 때만 화면을 갈아 끼움 (버튼을 떼려고)",
+  buttonSource.includes("if (!result.filled)") && buttonSource.includes("interaction.update("),
+);
+assert("  └ 누른 사람에게는 몇 번째인지 알림", buttonSource.includes("번째**로 누르셨습니다"));
 assert("누른 사람은 참가자로도 남김", buttonSource.includes("context.join(interaction.user.id)"));
 assert("제목 칸은 형식이 준 것", read("src/commands/firstcome.ts").includes("titleOption"));
 

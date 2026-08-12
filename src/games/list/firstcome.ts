@@ -41,7 +41,11 @@ export const MIN_TARGET = 1;
 /** 판 하나에 받을 사람 수의 상한. 이보다 크면 아무도 못 채운다. */
 export const MAX_TARGET = 100;
 
-/** 눌린 사람을 화면에 늘어놓는 최대 인원. 넘치면 최근 것부터 잘라 보여 준다. */
+/**
+ * 눌린 사람을 늘어놓는 최대 인원. 넘치면 최근 것부터 잘라 보여 준다.
+ *
+ * **끝났을 때만** 보여 준다 — 도는 동안 순위표를 띄우면 남이 누른 것을 보고 눈치를 본다.
+ */
 export const MAX_SHOWN_PRESSES = 10;
 
 /**
@@ -118,7 +122,7 @@ export function winnersOf(race: Race): string[] {
  *   4번째 : @…
  *   3번째 : @…
  *
- * 방금 누른 사람이 맨 위라 갱신될 때 눈이 따라가기 쉽다.
+ * 마지막에 누른 사람이 맨 위다. 판이 끝난 뒤 결과 화면에만 나간다.
  */
 export function pressBoard(race: Race): string {
   if (race.pressed.length === 0) return "아직 없음";
@@ -130,27 +134,14 @@ export function pressBoard(race: Race): string {
     .join("\n");
 }
 
-/** 목표를 한 줄로 — 화면 맨 위에 그대로 실린다. */
-export function goalText(mode: RaceMode, target: number): string {
-  return mode === MODE.count ? `선착순 **${target}명**` : `**${target}번째**로 누른 사람`;
-}
-
-function bodyOf(goal: string, board: string): string {
-  return [goal, "**눌린 순서**", board].join("\n\n");
-}
-
-/** 판 화면에 실을 내용 (목표 + 눌린 순서). */
-export function raceBody(race: Race): string {
-  return bodyOf(goalText(race.mode, race.target), pressBoard(race));
-}
-
 /**
- * 아직 아무도 안 누른 판의 화면.
+ * 이 판의 이름 — `선착순 3명` · `선착순 5번째`.
  *
- * 판을 여는 시점에는 race 가 만들어지기 전이라 따로 둔다 — 칸 모양은 같아야 한다.
+ * 목표를 **제목에** 싣는다. 화면 맨 위에 늘 보이고 결과 화면까지 그대로 이어지므로,
+ * 본문에 또 적으면 같은 말을 두 번 하는 셈이다.
  */
-export function openingBody(mode: RaceMode, target: number): string {
-  return bodyOf(goalText(mode, target), "아직 없음");
+export function raceName(mode: RaceMode, target: number): string {
+  return mode === MODE.count ? `선착순 ${target}명` : `선착순 ${target}번째`;
 }
 
 /** 결과에 붙일 「눌린 순서」 칸. */
@@ -161,7 +152,7 @@ export function pressField(race: Race): ResponseField[] {
 export default defineGame({
   id: FIRSTCOME,
   name: "선착순",
-  description: "버튼을 먼저 누른 사람이 가져가는 게임.",
+  description: "버튼을 눌러 자리를 잡습니다.",
   mode: "instant",
 
   start(context) {

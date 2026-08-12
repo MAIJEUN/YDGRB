@@ -44,6 +44,12 @@ export interface GameSession {
    */
   readonly title: string | null;
   /**
+   * 이 판에서 쓸 게임 이름. 없으면 게임에 적힌 이름.
+   *
+   * 「선착순 3명」 처럼 **판을 열 때의 값이 이름에 들어가는** 게임이 쓴다.
+   */
+  readonly name: string | null;
+  /**
    * 화면 내용. 게임이 판마다 다른 것을 보여 줄 때 쓴다 (퀴즈의 문제 같은 것).
    * 없으면 게임 설명을 쓴다.
    */
@@ -154,8 +160,10 @@ export function defineGame(game: GameDefinition): GameDefinition {
  * 어느 게임인지는 언제나 보여야 하므로 게임 이름을 떼지 않는다.
  */
 export function sessionTitle(game: GameDefinition, session: GameSession): string {
+  const name = session.name ?? game.name;
   const title = session.title?.trim() ?? "";
-  return title === "" ? game.name : `${title} (${game.name})`;
+
+  return title === "" ? name : `${title} (${name})`;
 }
 
 /** 최소 인원 — 적지 않았으면 둘. 혼자 하는 게임은 즉시 시작 쪽이 맞다. */

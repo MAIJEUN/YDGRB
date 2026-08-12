@@ -35,6 +35,8 @@ import { cancelledView, endedView, recruitView, startedView } from "./views.js";
 export interface OpenOptions {
   /** 판 제목. 모든 게임에 있는 선택 칸. */
   readonly title?: string | null;
+  /** 이 판에서 쓸 게임 이름 (「선착순 3명」). 없으면 게임에 적힌 이름. */
+  readonly name?: string | null;
   /** 화면 내용 (퀴즈의 문제 같은 것). 없으면 게임 설명. */
   readonly body?: string | null;
   /** 즉시 시작 게임의 진행 시간. 다 되면 `onTimeout` 이 불린다. */
@@ -73,6 +75,7 @@ export async function openGame(
     guildId,
     channelId,
     title: options.title ?? null,
+    name: options.name ?? null,
     body: options.body ?? null,
     messageId: null,
     hostId: host.id,

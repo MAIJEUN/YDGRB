@@ -5,12 +5,11 @@ import firstcome, {
   dropRace,
   press,
   pressField,
-  raceBody,
   raceOf,
   winnersOf,
 } from "../games/list/firstcome.js";
 import { liveGame } from "../games/runner.js";
-import { refusedView, startedView } from "../games/views.js";
+import { noticeView, refusedView, startedView } from "../games/views.js";
 import { defineComponentHandler } from "../types.js";
 import { response, updateResponse } from "../ui/response.js";
 
@@ -19,8 +18,12 @@ import { response, updateResponse } from "../ui/response.js";
  *
  * customId 규칙: `firstcome:press:<판 id>`
  *
- * 화면은 **누른 사람의 인터랙션으로** 갈아 끼운다. 채널 메시지를 봇이 직접 고치면
- * 여럿이 몰릴 때 채널 편집 제한에 걸리는데, 인터랙션 응답은 각자의 것이라 걸리지 않는다.
+ * 누른 사람에게는 **몇 번째인지만** 임시 메시지로 알려 준다. 판 화면은 건드리지 않는다 —
+ *   · 눌린 순서는 **끝났을 때만** 보여 준다. 도는 동안 순위표를 띄우면 남이 누른 것을
+ *     보고 눈치를 보게 된다.
+ *   · 누를 때마다 채널 메시지를 고치면 여럿이 몰릴 때 편집 제한에 걸린다.
+ *
+ * 마지막 한 사람이 채웠을 때만 화면을 갈아 끼운다 — 버튼을 떼기 위해서다.
  */
 const PROBLEM: Record<string, string> = {
   gone: "이미 끝난 판입니다.",
@@ -62,17 +65,18 @@ export default defineComponentHandler({
       return;
     }
 
-    // 누른 사람이 참가자로도 남는다.
+    // 아직 안 찼다 — 누른 사람에게만 몇 번째인지 알려 주고 화면은 그대로 둔다.
+    if (!result.filled) {
+      await interaction.reply(
+        response(noticeView("선착순", `**${result.order}번째**로 누르셨습니다.`, interaction.user)),
+      );
+      await context.join(interaction.user.id);
+      return;
+    }
+
+    // 다 찼다 — 이 인터랙션으로 화면을 갈아 끼워 버튼을 뗀다.
+    await interaction.update(updateResponse(startedView(firstcome, context.session, context.host)));
     await context.join(interaction.user.id);
-
-    // 화면을 이 인터랙션으로 갈아 끼운다. 다 찼으면 버튼도 같이 사라진다.
-    await interaction.update(
-      updateResponse(
-        startedView(firstcome, { ...context.session, body: raceBody(race) }, context.host),
-      ),
-    );
-
-    if (!result.filled) return;
 
     const winners = winnersOf(race);
     const only = race.mode === MODE.nth;

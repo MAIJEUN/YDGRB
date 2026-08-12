@@ -10,7 +10,7 @@ import firstcome, {
   RACE_SECONDS,
   isRaceMode,
   keepRace,
-  openingBody,
+  raceName,
 } from "../games/list/firstcome.js";
 import { refusedView } from "../games/views.js";
 import { response } from "../ui/response.js";
@@ -19,7 +19,7 @@ import { defineCommand } from "../types.js";
 /**
  * `/선착순 [종류] [값] [제목]`
  *
- * 여기는 감출 것이 없어 옵션으로 받는다 — 방식과 목표는 어차피 화면에 그대로 실린다.
+ * 여기는 감출 것이 없어 옵션으로 받는다 — 방식과 목표는 어차피 제목에 그대로 실린다.
  * (퀴즈처럼 정답이 끼어 있으면 모달이어야 한다.)
  */
 
@@ -62,9 +62,10 @@ export default defineCommand({
 
     await openGameHere(interaction, firstcome, {
       title: readTitle(interaction),
-      body: openingBody(mode, target),
+      // 목표는 제목에 싣는다 — 「선착순 3명 — 시작」
+      name: raceName(mode, target),
       durationSeconds: RACE_SECONDS,
-      // 시작하기 전에 맡긴다 — 여는 순간 누가 누를 수 있다.
+      // 화면을 만들기 전에 맡긴다 — 여는 순간 누가 누를 수 있고, 첫 화면에 버튼이 붙어야 한다.
       prepare: (sessionId) => {
         keepRace(sessionId, mode, target);
       },
