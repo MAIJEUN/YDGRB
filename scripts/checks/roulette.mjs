@@ -41,6 +41,9 @@ function makeClient() {
     isTextBased: () => true,
     isDMBased: () => false,
     isSendable: () => true,
+    // 회전판은 멘션이 아니라 **이름**을 적는다 (칸 안에서는 멘션이 날것으로 나오므로).
+    // 여기서는 id 를 그대로 이름으로 삼아 어느 줄인지 집어낼 수 있게 한다.
+    guild: { members: { fetch: async (userId) => ({ id: userId, displayName: userId }) } },
     send: async (payload) => {
       const messageId = String((nextId += 1));
       const message = {
@@ -92,6 +95,12 @@ async function open(client, { seats, channelId = CH, title = null }) {
 
 const bodyOf = (payload) => JSON.stringify(payload);
 
+/** 컨테이너 첫 구역의 글. 종료 버튼이 붙어 있으면 Section(9) 안에 들어 있다. */
+const textOf = (payload) => {
+  const head = JSON.parse(JSON.stringify(payload)).components[0].components[0];
+  return head.type === 9 ? head.components[0].content : head.content;
+};
+
 // ── 1. 커맨드 ──────────────────────────────────────────────
 console.log("\n=== 1. 커맨드 ===");
 const { collectCommands } = await import(`${DIST}/loaders/commands.js`);
@@ -125,30 +134,75 @@ assert(`  └ 최소 ${wheel.MIN_SEATS}명`, roulette.minPlayers === wheel.MIN_S
 assert("  └ 정원은 게임이 아니라 판이 정함", roulette.maxPlayers === null);
 assert("목록에서 자동으로 잡힘", registry.getGame("roulette") !== undefined);
 
-// ── 3. 자리표 ──────────────────────────────────────────────
+// ── 3. 회전판 ──────────────────────────────────────────────
 //
-// 줄 맨 앞의 `>` 는 디스코드에서 **인용문**이 된다. 굵게 싸야 그 일이 없다.
-console.log("\n=== 3. 자리표 ===");
+// 화살표는 가운데에 못 박혀 있고 이름이 그 앞을 지나간다. 칸(코드블록)으로 싸야 글꼴 폭이
+// 같아 줄이 맞고, 줄이 맞아야 도는 것으로 보인다.
+console.log("\n=== 3. 회전판 ===");
 {
-  const seats = [P(1), P(2), P(3)];
-  const drawn = wheel.board(seats, 1);
+  const names = ["@가", "@나", "@다", "@라", "@마", "@바", "@사"];
+  const drawn = wheel.board(names, 0);
   const lines = drawn.split("\n");
 
-  assert("한 줄에 한 사람", lines.length === 3, String(lines.length));
-  assert("  └ 전부 멘션으로", seats.every((id) => drawn.includes(`<@${id}>`)), drawn);
-  assert("표시한 줄은 화살표로 감쌈", lines[1] === `**>** <@${P(2)}> **<**`, lines[1]);
-  assert("  └ 나머지는 멘션만", lines[0] === `<@${P(1)}>` && lines[2] === `<@${P(3)}>`, lines[0]);
+  assert("칸 안에 그림", lines[0] === "```" && lines.at(-1) === "```", JSON.stringify(lines));
+
+  const rows = lines.slice(1, -1);
+  assert(`한 번에 ${wheel.WINDOW}줄`, rows.length === wheel.WINDOW, String(rows.length));
+  assert("  └ 사람이 많아도 그만큼만", wheel.board(names, 3).split("\n").length - 2 === wheel.WINDOW);
+
+  const center = Math.floor(wheel.WINDOW / 2);
+  assert("화살표는 가운데 줄", rows[center] === "> @가 <", rows[center]);
+  assert("  └ 나머지는 두 칸 들여씀", rows[0] === "  @바" && rows[1] === "  @사", rows.slice(0, 2).join("|"));
+
+  // 가운데를 기준으로 앞뒤가 감긴다 — 0번 앞은 마지막 사람이다.
   assert(
-    "  └ 줄 맨 앞이 `>` 가 아님 (인용문이 된다)",
-    lines.every((line) => !line.startsWith(">")),
-    drawn,
+    "  └ 앞뒤로 감김",
+    rows.join("|") === "  @바|  @사|> @가 <|  @나|  @다",
+    rows.join("|"),
   );
+
+  // 한 칸 돌면 이름이 한 줄씩 흘러간다. 화살표는 그 자리 그대로다.
+  const next = wheel.board(names, 1).split("\n").slice(1, -1);
+  assert("한 칸 돌면 이름만 흐름", next[center] === "> @나 <", next[center]);
+  assert("  └ 화살표는 같은 줄", next.findIndex((row) => row.startsWith(">")) === center);
+
   assert(
-    "  └ 코드블록으로 싸지 않음 (멘션이 날것으로 나온다)",
-    !drawn.includes("```"),
-    drawn,
+    "매 자리 화살표는 하나뿐",
+    names.every((_, at) => wheel.board(names, at).split("\n").filter((row) => row.startsWith(">")).length === 1),
   );
 }
+{
+  // 사람이 창보다 적으면 있는 만큼만 연다 — 빈 자리를 같은 사람으로 채우면
+  // 몇 명이 겨루는지 알 수 없게 된다.
+  for (const count of [2, 3, 4]) {
+    const names = Array.from({ length: count }, (_, i) => `@${i}`);
+    const rows = wheel.board(names, 0).split("\n").slice(1, -1);
+
+    assert(`${count}명이면 ${count}줄`, rows.length === count, String(rows.length));
+    assert(
+      `  └ 같은 사람이 두 번 서지 않음`,
+      new Set(rows.map((row) => row.replaceAll(/[>< ]/gu, ""))).size === count,
+      rows.join("|"),
+    );
+  }
+
+  assert("아무도 없으면 안 터짐", wheel.board([], 0).includes("```"));
+}
+
+// ── 3.5. 이름 ──────────────────────────────────────────────
+//
+// 이름은 유저가 정한다. 백틱이 섞이면 칸이 그 자리에서 닫히고 뒤가 통째로 새어 나온다.
+console.log("\n=== 3.5. 이름 ===");
+assert("이름 앞에 @", wheel.label("마이즌") === "@마이즌", wheel.label("마이즌"));
+assert("  └ 백틱을 걷어냄", !wheel.label("``` 나가기").includes("`"), wheel.label("``` 나가기"));
+assert("  └ 줄바꿈도", !wheel.label("가\n나").includes("\n"), JSON.stringify(wheel.label("가\n나")));
+assert(
+  `  └ ${wheel.MAX_NAME_LENGTH}자에서 자름`,
+  wheel.label("가".repeat(40)).length === wheel.MAX_NAME_LENGTH + 1,
+  String(wheel.label("가".repeat(40)).length),
+);
+assert("  └ 잘린 티를 냄", wheel.label("가".repeat(40)).endsWith("…"));
+assert("  └ 빈 이름도 한 자리", wheel.label("   ") === "@?", wheel.label("   "));
 
 // ── 4. 회전 ────────────────────────────────────────────────
 console.log("\n=== 4. 회전 ===");
@@ -247,32 +301,49 @@ console.log("\n=== 7. 돌려서 뽑기 ===");
 
   const panel = client.messages.get(session.messageId);
 
-  // 시작하면서 갈아 끼운 화면 하나는 아직 자리표가 아니다. 자리표만 골라 센다.
-  const drawn = panel.edits.map((payload) => bodyOf(payload)).filter((frame) => frame.includes("**>**"));
-  assert("자리표를 여러 번 고침 (회전)", drawn.length >= wheel.SPIN_FRAMES, String(drawn.length));
+  // 시작하면서 갈아 끼운 화면 하나는 아직 회전판이 아니다. 칸이 있는 것만 골라 센다.
+  const drawn = panel.edits.map((payload) => textOf(payload)).filter((frame) => frame.includes("```"));
+  assert("회전판을 여러 번 고침", drawn.length >= wheel.SPIN_FRAMES, String(drawn.length));
   assert(
-    "  └ 매 칸 한 사람만 표시됨",
-    drawn.every((frame) => (frame.match(/\*\*>\*\*/gu) ?? []).length === 1),
-    JSON.stringify(drawn.map((frame) => (frame.match(/\*\*>\*\*/gu) ?? []).length)),
+    "  └ 매 칸 화살표는 하나",
+    drawn.every((frame) => (frame.match(/^> .+ <$/gmu) ?? []).length === 1),
+    JSON.stringify(drawn.map((frame) => (frame.match(/^> .+ <$/gmu) ?? []).length)),
+  );
+  assert(
+    `  └ 매 칸 ${wheel.WINDOW}줄 이하`,
+    drawn.every((frame) => frame.split("\n").filter((row) => row.startsWith("  @") || row.startsWith("> ")).length <= wheel.WINDOW),
+  );
+  // 칸 **안**에만 해당한다. 밖의 「참가한 사람」 칸은 규칙대로 멘션이어야 한다.
+  const inFence = (frame) => frame.split("```")[1] ?? "";
+  assert(
+    "  └ 칸 안에는 멘션을 안 씀 (날것으로 나온다)",
+    drawn.every((frame) => !inFence(frame).includes("<@")),
+    inFence(drawn.at(-1)),
+  );
+  assert(
+    "  └ 칸 밖 참가자는 멘션 그대로",
+    drawn.every((frame) => frame.split("```")[2]?.includes("<@") === true),
+    drawn.at(-1),
   );
 
   const last = drawn.at(-1);
   assert("판이 끝남", (await store.getSession(G, session.id)) === undefined);
 
-  const result = bodyOf(client.sent.at(-1).payload);
+  const result = textOf(client.sent.at(-1).payload);
   assert("결과가 답장으로", client.sent.at(-1).replyTo === session.messageId);
   assert("  └ 당첨을 알림", result.includes(speak("님이 당첨되셨습니다")), result.slice(0, 300));
-  assert("  └ 파랑 (알림)", result.includes("5793266"), result.slice(0, 200));
+  assert("  └ 결과는 멘션 그대로", /<@\d+> 님이 당첨/u.test(result), result.slice(0, 300));
+  assert(
+    "  └ 파랑 (알림)",
+    JSON.stringify(client.sent.at(-1).payload).includes("5793266"),
+    result.slice(0, 200),
+  );
   assert("  └ 제목이 이어짐", result.includes("보상은 소원권 1개 (룰렛)"), result.slice(0, 200));
 
-  // 참가자 칸이 모두를 늘어놓으므로, 당첨자는 **내용 문장**에서 집어야 한다.
   const winner = /<@(\d+)> 님이 당첨/u.exec(result)?.[1];
   assert("  └ 당첨자는 참가자 중 하나", [HOST, P(1), P(2)].includes(winner), String(winner));
-  assert(
-    "  └ 멎은 자리가 곧 당첨자",
-    last.includes(`**>** <@${winner}> **<**`),
-    last.slice(0, 300),
-  );
+  // 가짜 서버는 id 를 그대로 이름으로 준다 — 멎은 줄이 곧 당첨자여야 한다.
+  assert("  └ 멎은 자리가 곧 당첨자", last.includes(`> @${winner} <`), last);
 }
 
 // ── 8. 도는 중에 종료 ──────────────────────────────────────

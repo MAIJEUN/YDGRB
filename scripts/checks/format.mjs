@@ -415,8 +415,30 @@ assert("색을 직접 정하는 파일 없음 (렌더러만)", raw.length === 0,
 const handRolled = sources.filter((f) => /name: "원인"/u.test(f.text));
 assert("「원인」 필드를 손으로 만드는 파일 없음", handRolled.length === 0, handRolled.map((f) => f.rel).join(", "));
 
-const fences = sources.filter((f) => f.rel !== "src/errors.ts" && /\\`\\`\\`/u.test(f.text));
+/**
+ * 코드블록을 직접 쓰는 곳.
+ *
+ * 안에서는 멘션이 `<@123…>` 날것으로 나오므로 원칙은 「쓰지 않는다」다. 예외는 둘뿐이고
+ * **둘 다 그 대가를 알고 치른 자리**다.
+ *
+ *   errors.ts   — 오류 원문. 애초에 사람 이름이 없다.
+ *   roulette.ts — 회전판. 글꼴 폭이 같아야 줄이 맞고, 줄이 맞아야 도는 것으로 보인다.
+ *                 대신 당첨 알림은 칸 밖이라 멘션 그대로다 (바로 아래에서 확인한다).
+ */
+const FENCE_ALLOWED = new Set(["src/errors.ts", "src/games/list/roulette.ts"]);
+const fences = sources.filter((f) => !FENCE_ALLOWED.has(f.rel) && /\\`\\`\\`/u.test(f.text));
 assert("코드블록을 직접 쓰는 파일 없음", fences.length === 0, fences.map((f) => f.rel).join(", "));
+
+const wheel = sources.find((f) => f.rel === "src/games/list/roulette.ts");
+assert(
+  "  └ 룰렛은 예외인 이유를 적어 둠",
+  wheel !== undefined && wheel.text.includes("여기만 멘션이 아니다"),
+);
+assert(
+  "  └ 당첨 알림은 칸 밖이라 멘션",
+  wheel !== undefined && /description: speak\(`<@\$\{/u.test(wheel.text),
+  "결과까지 글자로 적으면 뽑힌 사람이 자기가 불린 줄 모른다",
+);
 
 // 유저·역할은 항상 멘션으로. footer(`@사용자명`)와 로그·감사 로그만 예외.
 const RESPONSE_TEXT = /(?:description|value|title):\s*[`"][^`"]*@\$\{[^}]*(?:username|displayName|tag|\.name)/u;

@@ -9,26 +9,52 @@ import { startedView } from "../views.js";
 /**
  * 룰렛 — **참가** 형식. 모인 사람 중 하나를 뽑는다.
  *
- * 참가자를 한 줄에 하나씩 세워 놓고, 표시가 그 줄들을 훑으며 돈다.
+ * 화살표는 **가운데에 못 박혀 있고 이름이 그 앞을 지나간다.** 실제 룰렛이 그렇다 —
+ * 바늘은 가만히 있고 판이 돈다.
  *
- *   <@유저5>
- *   <@유저1>
- *   **>** <@유저2> **<**
- *   <@유저3>
- *   <@유저4>
+ *   ```
+ *     @유저4
+ *     @유저5
+ *   > @유저1 <
+ *     @유저2
+ *     @유저3
+ *   ```
+ *
+ * 한 번에 **다섯 줄**만 보인다. 스무 명이 다 늘어서 있으면 어디가 도는지 안 보이고,
+ * 창이 좁아야 지나가는 것이 보인다.
  *
  * 돌리는 시늉만 하는 것이 아니라 **당첨자를 먼저 뽑고 거기서 멎게** 한다. 화면을 고칠
  * 때마다 다시 뽑으면 편집이 하나라도 밀렸을 때 결과가 달라진다.
  *
  * 자리는 판이 시작될 때 한 번 섞는다. 참가한 차례대로 세우면 먼저 누른 사람이 늘 위라
  * 룰렛이 아니라 대기줄로 보인다.
+ *
+ * ── 여기만 멘션이 아니다 ──
+ *
+ * 판이 **코드블록 안**이라 그 안에서는 멘션이 `<@123…>` 날것으로 나온다. 그래서 회전판에는
+ * 이름을 글자로 적는다 — [출력 규칙](../../ui/response.ts)의 「유저는 언제나 멘션」에서
+ * 일부러 뺀 자리다. 칸이 있어야 줄이 맞고, 줄이 맞아야 도는 것으로 보인다.
+ *
+ * **당첨자를 알리는 결과는 멘션 그대로다.** 규칙이 지켜져야 하는 곳은 거기다 —
+ * 뽑힌 사람은 알림 없이도 자기가 불린 것을 알아야 한다.
  */
 
 export const ROULETTE = "roulette";
 
-/** 자리 수의 한계. 둘은 있어야 뽑을 것이 있고, 스무 줄이 넘으면 한눈에 안 들어온다. */
+/** 자리 수의 한계. 둘은 있어야 뽑을 것이 있고, 스무 명이 넘으면 모으다 마감이 온다. */
 export const MIN_SEATS = 2;
 export const MAX_SEATS = 20;
+
+/**
+ * 한 번에 보이는 줄 수.
+ *
+ * 사람이 이보다 적으면 있는 만큼만 보인다. 창을 넓히면 이름은 많이 보이지만 무엇이
+ * 지나가는지는 오히려 안 보인다.
+ */
+export const WINDOW = 5;
+
+/** 코드블록에 넣을 이름의 길이. 넘으면 잘라 「…」 을 붙인다. */
+export const MAX_NAME_LENGTH = 24;
 
 /**
  * 표시를 옮기는 횟수.
@@ -40,8 +66,8 @@ export const MAX_SEATS = 20;
 export const SPIN_FRAMES = 8;
 
 /** 첫 칸과 마지막 칸의 간격. 뒤로 갈수록 느려져야 멎는 것처럼 보인다. */
-const FIRST_FRAME_MS = 1000;
-const LAST_FRAME_MS = 2200;
+const FIRST_FRAME_MS = 1500;
+const LAST_FRAME_MS = 3200;
 
 /** 멎은 자리를 보여 주고 결과를 내기까지의 뜸. */
 const LAND_PAUSE_MS = 1200;
@@ -66,20 +92,42 @@ export function shuffle(userIds: readonly string[]): string[] {
 }
 
 /**
- * 자리표. 표시가 앉은 줄만 화살표로 감싼다.
+ * 코드블록에 넣을 이름 한 줄.
  *
- * 화살표를 굵게 싸는 이유는 **줄 맨 앞의 `>` 가 인용문이 되기 때문**이다. `> 아무개` 라고
- * 적으면 디스코드가 통째로 인용 상자에 넣어 버린다. `**` 가 먼저 오면 그 일이 없다.
- *
- * 줄을 맞추려 들지 않는다. 디스코드 글꼴은 폭이 제각각이라 공백을 아무리 넣어도
- * 이름 길이에 따라 어긋난다. 화살표가 굵어서 어느 줄인지는 그대로 보인다.
+ * 백틱과 줄바꿈을 걷어낸다. 이름은 **유저가 정하는 것**이라, 백틱이 섞이면 칸이 그 자리에서
+ * 닫히고 뒤의 글이 통째로 밖으로 새어 나온다.
  */
-export function board(seats: readonly string[], at: number): string {
-  return seats
-    .map((userId, index) =>
-      index === at ? `**>** <@${userId}> **<**` : `<@${userId}>`,
-    )
-    .join("\n");
+export function label(name: string): string {
+  const tidy = name.replaceAll(/[`\r\n]/gu, "").trim();
+  if (tidy === "") return "@?";
+
+  return `@${tidy.length > MAX_NAME_LENGTH ? `${tidy.slice(0, MAX_NAME_LENGTH - 1)}…` : tidy}`;
+}
+
+/**
+ * 회전판. **화살표는 가운데에 못 박혀 있고 이름이 그 앞을 지나간다.**
+ *
+ * 창은 다섯 줄이고, 사람이 그보다 적으면 있는 만큼만 연다 (덜 찬 창에 같은 사람을 두 번
+ * 세우면 몇 명이 겨루는지 알 수 없게 된다).
+ *
+ * 칸(코드블록)으로 싸는 이유는 **글꼴 폭이 같아야 줄이 맞기 때문**이다. 줄이 맞아야
+ * 이름이 위로 흘러가는 것으로 보인다. 대신 그 안에서는 멘션이 날것으로 나오므로
+ * 이름을 글자로 적는다 — 이 게임의 회전판만 그렇다.
+ */
+export function board(names: readonly string[], at: number): string {
+  const shown = Math.min(WINDOW, names.length);
+  if (shown === 0) return "```\n(비어 있음)\n```";
+
+  const center = Math.floor(shown / 2);
+
+  const lines = Array.from({ length: shown }, (_, offset) => {
+    const index = (((at - center + offset) % names.length) + names.length) % names.length;
+    const name = names[index] ?? "@?";
+
+    return offset === center ? `> ${name} <` : `  ${name}`;
+  });
+
+  return ["```", ...lines, "```"].join("\n");
 }
 
 /**
@@ -128,16 +176,17 @@ const roulette = defineGame({
 
     // 당첨자를 먼저 뽑는다. 회전은 그 자리로 가는 길일 뿐이다.
     const winner = randomInt(seats.length);
+    const names = await namesOf(context, seats);
     const draw = await painter(context);
 
-    await draw(board(seats, seatAt(0, seats.length, winner)));
+    await draw(board(names, seatAt(0, seats.length, winner)));
 
     for (let frame = 1; frame <= SPIN_FRAMES; frame += 1) {
       await wait(frameDelay(frame - 1));
       // 도는 동안 「종료」가 눌렸을 수 있다. 끝난 판의 화면을 덮어쓰면 안 된다.
       if (!context.alive()) return;
 
-      await draw(board(seats, seatAt(frame, seats.length, winner)));
+      await draw(board(names, seatAt(frame, seats.length, winner)));
     }
 
     await wait(LAND_PAUSE_MS);
@@ -146,6 +195,25 @@ const roulette = defineGame({
     await context.end({ description: speak(`<@${seats[winner]}> 님이 당첨되셨습니다.`) });
   },
 });
+
+/**
+ * 회전판에 적을 이름들. 자리 차례 그대로 돌려준다.
+ *
+ * **한 번만** 모은다 — 칸마다 다시 물으면 회전 내내 서버에 사람을 캐묻는 셈이다.
+ * 못 찾은 사람(도중에 나갔다든지)은 이름 자리를 비워 두지 않고 물음표로 채운다.
+ * 자리 수가 어긋나면 화살표가 엉뚱한 줄을 가리킨다.
+ */
+async function namesOf(context: GameContext, seats: readonly string[]): Promise<string[]> {
+  return Promise.all(
+    seats.map(async (userId) => {
+      const member = await context.channel.guild.members.fetch(userId).catch(() => null);
+      if (member !== null) return label(member.displayName);
+
+      const user = await context.client.users.fetch(userId).catch(() => null);
+      return user === null ? "@?" : label(user.displayName);
+    }),
+  );
+}
 
 /**
  * 판 화면을 고치는 붓.
