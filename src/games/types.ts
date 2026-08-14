@@ -56,6 +56,13 @@ export interface GameSession {
   readonly body: string | null;
   /** 모집 패널이나 시작 안내 메시지. 보내고 나서 채운다. */
   messageId: string | null;
+  /**
+   * 이 판만의 정원. 안 정했으면 null 이고, 그때는 게임에 적힌 `maxPlayers` 를 쓴다.
+   *
+   * 룰렛처럼 **몇 명을 받을지 명령에서 정하는** 게임이 쓴다. 게임에 박아 두면 판마다
+   * 다르게 열 수가 없다.
+   */
+  readonly maxPlayers: number | null;
   /** 판을 연 사람. footer 와 「주최자만」 판단에 쓴다. */
   readonly hostId: string;
   players: string[];
@@ -91,6 +98,13 @@ export interface GameContext {
    * 이미 참가했거나 정원이 찼으면 false.
    */
   join(userId: string): Promise<boolean>;
+  /**
+   * 이 판이 아직 도는가.
+   *
+   * **화면을 여러 번 고치는 게임**(룰렛의 회전 같은)이 한 칸마다 본다. 도는 도중에
+   * 「종료」가 눌리면 판은 이미 끝나 있는데, 그걸 모르면 끝난 판의 화면을 계속 덮어쓴다.
+   */
+  alive(): boolean;
   /**
    * 판을 끝낸다. 결과를 주면 채널에 남긴다.
    *
@@ -174,4 +188,14 @@ export function minPlayersOf(game: GameDefinition): number {
 /** 최대 인원 — 적지 않았거나 null 이면 제한 없음. */
 export function maxPlayersOf(game: GameDefinition): number | null {
   return game.maxPlayers ?? null;
+}
+
+/**
+ * 이 **판**의 정원. 판이 정한 것이 있으면 그것, 없으면 게임에 적힌 것.
+ *
+ * 정원을 보는 곳은 전부 이걸 쓴다 — 참가를 막는 자리와 화면에 적는 자리가 갈라지면
+ * 「최대 5명」 이라고 써 놓고 여섯째를 받는 일이 생긴다.
+ */
+export function seatsOf(game: GameDefinition, session: GameSession): number | null {
+  return session.maxPlayers ?? maxPlayersOf(game);
 }

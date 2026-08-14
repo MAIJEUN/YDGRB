@@ -19,7 +19,7 @@ import {
   removePlayer,
 } from "./store.js";
 import type { GameContext, GameDefinition, GameResult, GameSession } from "./types.js";
-import { maxPlayersOf, minPlayersOf } from "./types.js";
+import { minPlayersOf, seatsOf } from "./types.js";
 import { cancelledView, endedView, recruitView, startedView } from "./views.js";
 import { speak } from "../ui/tone.js";
 
@@ -38,6 +38,8 @@ export interface OpenOptions {
   readonly title?: string | null;
   /** 이 판에서 쓸 게임 이름 (「선착순 3명」). 없으면 게임에 적힌 이름. */
   readonly name?: string | null;
+  /** 이 판만의 정원 (룰렛의 「참가 인원」). 없으면 게임에 적힌 것. */
+  readonly maxPlayers?: number | null;
   /** 화면 내용 (퀴즈의 문제 같은 것). 없으면 게임 설명. */
   readonly body?: string | null;
   /** 즉시 시작 게임의 진행 시간. 다 되면 `onTimeout` 이 불린다. */
@@ -78,6 +80,7 @@ export async function openGame(
     title: options.title ?? null,
     name: options.name ?? null,
     body: options.body ?? null,
+    maxPlayers: options.maxPlayers ?? null,
     messageId: null,
     hostId: host.id,
     // 모집 게임은 연 사람도 참가한 것으로 본다 — 자기 판에 따로 참가 버튼을 누를 이유가 없다.
@@ -158,16 +161,16 @@ export async function join(
   const game = getGame(session.gameId);
   if (game === undefined) return { ok: false, reason: "gone" };
 
-  const result = await addPlayer(guildId, sessionId, userId, maxPlayersOf(game));
-  if (!result.ok) return result;
+  const seats = seatsOf(game, session);
 
-  const max = maxPlayersOf(game);
+  const result = await addPlayer(guildId, sessionId, userId, seats);
+  if (!result.ok) return result;
 
   // 다 찼으면 기다릴 이유가 없다 — 부르는 쪽이 바로 시작시킨다.
   return {
     ok: true,
     session: result.session,
-    full: max !== null && result.session.players.length >= max,
+    full: seats !== null && result.session.players.length >= seats,
   };
 }
 
@@ -337,10 +340,11 @@ async function beginPlay(
     channel,
     host,
     join: async (userId) => {
-      const result = await addPlayer(session.guildId, session.id, userId, maxPlayersOf(game));
+      const result = await addPlayer(session.guildId, session.id, userId, seatsOf(game, session));
       if (result.ok) session.players = [...result.session.players];
       return result.ok;
     },
+    alive: () => live.has(session.id),
     end: async (result) => {
       await end(client, game, session, host, result);
     },

@@ -7,7 +7,7 @@ import type { MessageOptions, ResponseField } from "../ui/response.js";
 import { customId } from "../types.js";
 import { ACTION, GAME, MAX_SHOWN_PLAYERS } from "./ids.js";
 import type { GameDefinition, GameResult, GameSession } from "./types.js";
-import { maxPlayersOf, minPlayersOf, sessionTitle } from "./types.js";
+import { minPlayersOf, seatsOf, sessionTitle } from "./types.js";
 
 /**
  * 미니게임 화면.
@@ -42,7 +42,7 @@ function playerList(players: readonly string[]): string {
 
 /** `**3명** (최소 2명 · 최대 6명)` — 최대가 없으면 그렇게 적는다. */
 function headcount(game: GameDefinition, session: GameSession): string {
-  const max = maxPlayersOf(game);
+  const max = seatsOf(game, session);
   const limits = [`최소 **${minPlayersOf(game)}명**`, max === null ? "최대 없음" : `최대 **${max}명**`];
 
   return `**${count(session.players.length)}명** _(${limits.join(" · ")})_`;
