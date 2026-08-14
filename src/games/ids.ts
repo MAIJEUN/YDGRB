@@ -13,7 +13,18 @@ export const ACTION = {
   leave: "leave",
   /** 주최자가 지금 시작 — `game:start:<판 id>` */
   start: "start",
-  /** 주최자가 판을 접음 — `game:cancel:<판 id>` */
+  /**
+   * 주최자가 판을 끝냄 — `game:stop:<판 id>`
+   *
+   * 모집 중이든 진행 중이든 같은 버튼이다. 판 화면 **오른쪽 위**에 붙는다.
+   */
+  stop: "stop",
+  /**
+   * 예전 「접기」 버튼 — `game:cancel:<판 id>`
+   *
+   * 이제 종료 하나로 합쳤다. 봇을 올리기 전에 뜬 모집 패널이 채널에 남아 있으므로
+   * 받기는 계속 받는다. 새로 그리는 화면에는 붙지 않는다.
+   */
   cancel: "cancel",
 } as const;
 

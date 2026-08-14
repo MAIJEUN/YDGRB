@@ -3,7 +3,7 @@ import type { ButtonInteraction } from "discord.js";
 
 import { ACTION, GAME } from "../games/ids.js";
 import { getGame } from "../games/registry.js";
-import { cancel, join, leave, refreshPanel, startNow } from "../games/runner.js";
+import { cancel, join, leave, refreshPanel, startNow, stopGame } from "../games/runner.js";
 import { getSession } from "../games/store.js";
 import { minPlayersOf } from "../games/types.js";
 import { noticeView, refusedView } from "../games/views.js";
@@ -13,12 +13,15 @@ import { response } from "../ui/response.js";
 import { speak } from "../ui/tone.js";
 
 /**
- * 모집 패널의 버튼 — 참가 · 나가기 · 시작 · 접기.
+ * 판 화면의 버튼 — 참가 · 나가기 · 시작(모집 패널) · 종료(오른쪽 위, 언제나).
  *
  * customId 규칙: `game:<동작>:<판 id>`
  *
  * 누른 사람에게만 보이는 짧은 답을 주고, **패널 자체는 따로 다시 그린다.**
  * `interaction.update()` 로 패널을 고치면 누른 사람에게 답을 줄 자리가 없어진다.
+ *
+ * 시작과 종료는 **판을 연 사람과 관리자**만 쓸 수 있다. 버튼은 채널에 공개로 남아 있어
+ * 지나가던 사람도 누를 수 있으므로, 막는 것은 언제나 여기서 한다.
  */
 
 const JOIN_PROBLEM: Record<string, string> = {
@@ -29,11 +32,7 @@ const JOIN_PROBLEM: Record<string, string> = {
   notJoined: speak("참가하지 않은 판입니다."),
 };
 
-/**
- * 시작 · 접기는 **판을 연 사람과 관리자**만 할 수 있다.
- *
- * 버튼은 채널에 공개로 남아 있어 지나가던 사람도 누를 수 있다.
- */
+/** 시작 · 종료는 **판을 연 사람과 관리자**만 할 수 있다. */
 function mayControl(interaction: ButtonInteraction, hostId: string): boolean {
   if (interaction.user.id === hostId) return true;
   return interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) === true;
@@ -141,6 +140,31 @@ export default defineComponentHandler({
         return;
       }
 
+      case ACTION.stop: {
+        if (!mayControl(interaction, session.hostId)) {
+          await interaction.reply(
+            response(
+              refusedView(speak("종료하지 못했어요"), speak("판을 연 사람과 관리자만 종료할 수 있습니다."), interaction.user),
+            ),
+          );
+          return;
+        }
+
+        // 게임이 마무리하면서 메시지를 뱉을 수 있으니 인터랙션부터 닫는다.
+        await interaction.deferUpdate();
+        if (host !== null) {
+          await stopGame(
+            interaction.client,
+            interaction.guildId,
+            sessionId,
+            host,
+            interaction.user.id,
+          );
+        }
+        return;
+      }
+
+      // 종료로 합치기 전에 뜬 모집 패널의 「접기」. 채널에 남아 있는 동안은 계속 받는다.
       case ACTION.cancel: {
         if (!mayControl(interaction, session.hostId)) {
           await interaction.reply(

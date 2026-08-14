@@ -467,12 +467,103 @@ assert(
 );
 
 const buttons = views.recruitView(duo, sample, host).rows[0].toJSON().components;
-assert("버튼 넷 (참가·나가기·시작·접기)", buttons.length === 4, String(buttons.length));
+assert("버튼 셋 (참가·나가기·시작)", buttons.length === 3, String(buttons.length));
 assert(
   "  └ customId 가 판을 가리킴",
   buttons.every((button) => button.custom_id.endsWith(`:${sample.id}`)),
   JSON.stringify(buttons.map((b) => b.custom_id)),
 );
+assert(
+  "  └ 접기는 없어짐 (종료로 합침)",
+  !buttons.some((button) => button.custom_id.includes(`:${ids.ACTION.cancel}:`)),
+  JSON.stringify(buttons.map((b) => b.custom_id)),
+);
+
+// ── 11.5. 종료 버튼 ────────────────────────────────────────
+//
+// 판을 멈추는 자리는 게임이 버튼을 몇 개 싣든 **늘 같은 곳**에 있어야 한다.
+// 액션 로우에 두면 게임 버튼에 밀려 자리가 옮겨 다닌다. 그래서 제목 오른쪽 위다.
+console.log("\n=== 11.5. 종료 버튼 ===");
+
+/** 컨테이너 첫 구역의 액세서리 — 제목 오른쪽 위에 붙는 버튼. */
+const accessoryOf = (view) => {
+  const head = buildContainer(view).toJSON().components[0];
+  return head.type === 9 ? head.accessory : undefined;
+};
+
+for (const [label, view] of [
+  ["모집 중", views.recruitView(duo, sample, host)],
+  ["진행 중", views.startedView(duo, { ...sample, phase: "playing" }, host)],
+]) {
+  const accessory = accessoryOf(view);
+  assert(`${label} 화면 오른쪽 위에 종료`, accessory?.label === "종료", JSON.stringify(accessory));
+  assert(
+    `  └ customId 는 ${ids.ACTION.stop}:<판>`,
+    accessory?.custom_id === `${ids.GAME}:${ids.ACTION.stop}:${sample.id}`,
+    String(accessory?.custom_id),
+  );
+  assert("  └ 빨강 (Danger=4)", accessory?.style === 4, String(accessory?.style));
+}
+
+for (const [label, view] of [
+  ["끝", views.endedView(duo, sample, host, {})],
+  ["취소", views.cancelledView(duo, sample, host, "접었습니다")],
+]) {
+  assert(`${label} 화면에는 없음`, accessoryOf(view) === undefined, JSON.stringify(accessoryOf(view)));
+}
+
+assert(
+  "누를 수 있는 사람을 핸들러가 가름",
+  read("src/components/game.ts").includes("판을 연 사람과 관리자만 종료할 수 있습니다"),
+);
+
+// 선착순처럼 자기 버튼을 싣는 게임도 종료 자리는 그대로다.
+{
+  const withRows = {
+    ...duo,
+    buttons: () => views.recruitView(duo, sample, host).rows,
+  };
+  const view = views.startedView(withRows, { ...sample, phase: "playing" }, host);
+  assert("게임이 버튼을 실어도 종료는 그 자리", accessoryOf(view)?.label === "종료");
+  assert("  └ 게임 버튼은 아래 로우로", view.rows.length === 1);
+}
+
+// 실제로 멈추는지 — 단계마다 끝나는 모양이 다르다.
+{
+  const client = makeClient();
+  const { session } = await open(client, "duo");
+
+  assert("모집 중에 종료", (await runner.stopGame(client, G, session.id, host, P2)) === true);
+  assert("  └ 판이 사라짐", (await store.getSession(G, session.id)) === undefined);
+
+  const shown = JSON.stringify(client.messages.get(String(session.messageId ?? ""))?.payload ?? {});
+  assert("  └ 취소로 끝남", shown.includes("취소"), shown.slice(0, 200));
+  assert("  └ 누가 접었는지 멘션으로", shown.includes(`<@${P2}>`), shown.slice(0, 300));
+}
+{
+  heard.length = 0;
+  const client = makeClient();
+  const { session } = await open(client, "chat", { durationSeconds: 60 });
+
+  assert("진행 중에 종료", (await runner.stopGame(client, G, session.id, host, P3)) === true);
+  assert("  └ 판이 사라짐", (await store.getSession(G, session.id)) === undefined);
+  assert("  └ 시계도 풀림", !scheduler.reservations().some((r) => r.sessionId === session.id));
+
+  const shown = JSON.stringify(client.sent.at(-1).payload);
+  assert("  └ 게임이 마무리를 맡음", shown.includes("아무도 못 맞혔습니다"), shown.slice(0, 200));
+  assert("  └ 끝낸 사람을 남김", shown.includes("끝낸 사람"), shown.slice(0, 300));
+  assert("  └ 멘션으로", shown.includes(`<@${P3}>`), shown.slice(0, 300));
+
+  await runner.handleGameMessage({ content: "끝난 뒤", channelId: CH, guildId: G, author: { id: P2 } });
+  assert("  └ 끝난 판에는 안 넘김", !heard.includes("끝난 뒤"), JSON.stringify(heard));
+}
+{
+  const client = makeClient();
+  const { session } = await open(client, "duo");
+  await runner.stopGame(client, G, session.id, host, HOST);
+
+  assert("없는 판을 또 종료해도 조용히", (await runner.stopGame(client, G, session.id, host, HOST)) === false);
+}
 
 // ── 12. 제목 ───────────────────────────────────────────────
 console.log("\n=== 12. 제목 ===");

@@ -60,6 +60,22 @@ function deadline(session: GameSession, name: string): ResponseField[] {
     : [{ name, value: atWithCountdown(new Date(session.closesAt)) }];
 }
 
+/**
+ * 판을 끝내는 버튼 — **제목 오른쪽 위**에 붙는다.
+ *
+ * 도는 판(모집 중 · 진행 중)에는 언제나 있다. 게임마다 자기 버튼이 몇 개든, 판을 멈추는
+ * 자리는 늘 같은 곳에 있어야 찾는다. 액션 로우에 두면 게임 버튼에 밀려 자리가 옮겨 다닌다.
+ *
+ * 누를 수 있는 사람은 **판을 연 사람과 관리자**뿐이다. 그 판단은 버튼을 받는
+ * [핸들러](../components/game.ts)가 한다 — 디스코드에는 버튼을 사람마다 숨기는 방법이 없다.
+ */
+function stopButton(session: GameSession): ButtonBuilder {
+  return new ButtonBuilder()
+    .setCustomId(customId(GAME, ACTION.stop, session.id))
+    .setLabel("종료")
+    .setStyle(ButtonStyle.Danger);
+}
+
 function recruitRows(session: GameSession): ActionRowBuilder<MessageActionRowComponentBuilder>[] {
   return [
     new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(
@@ -75,10 +91,6 @@ function recruitRows(session: GameSession): ActionRowBuilder<MessageActionRowCom
         .setCustomId(customId(GAME, ACTION.start, session.id))
         .setLabel("시작")
         .setStyle(ButtonStyle.Primary),
-      new ButtonBuilder()
-        .setCustomId(customId(GAME, ACTION.cancel, session.id))
-        .setLabel("접기")
-        .setStyle(ButtonStyle.Danger),
     ),
   ];
 }
@@ -98,6 +110,7 @@ export function recruitView(
       ...deadline(session, "마감"),
       { name: "참가한 사람", value: playerList(session.players) },
     ],
+    accessoryButton: stopButton(session),
     rows: recruitRows(session),
     user: host,
     ephemeral: false,
@@ -130,6 +143,7 @@ export function startedView(
           ]
         : []),
     ],
+    accessoryButton: stopButton(session),
     // 버튼으로 겨루는 게임(선착순 같은)은 여기에 자기 버튼을 싣는다.
     rows: game.buttons?.(session) ?? [],
     user: host,
@@ -148,6 +162,8 @@ export function endedView(
   session: GameSession,
   host: User,
   result: GameResult | undefined,
+  /** 「종료」 를 누른 사람. 기간이 다 돼서 끝났으면 없다. */
+  stoppedById?: string,
 ): MessageOptions {
   const fields: ResponseField[] = [...(result?.fields ?? [])];
 
@@ -160,6 +176,11 @@ export function endedView(
       name: `참가한 사람 (${count(session.players.length)}명)`,
       value: playerList(session.players),
     });
+  }
+
+  // 맨 끝에 붙인다 — 게임의 결과가 먼저고, 왜 여기서 멎었는지가 그 다음이다.
+  if (stoppedById !== undefined) {
+    fields.push({ name: "끝낸 사람", value: `<@${stoppedById}>` });
   }
 
   return {

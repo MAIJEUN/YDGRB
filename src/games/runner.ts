@@ -134,7 +134,7 @@ function armClock(client: Client, session: GameSession, host: User): void {
   scheduleClose(session.guildId, session.id, session.closesAt, () => {
     void (session.phase === "recruiting"
       ? expireRecruiting(client, session.guildId, session.id, host)
-      : timeOut(client, session.guildId, session.id, host));
+      : finishPlay(client, session.guildId, session.id, host));
   });
 }
 
@@ -230,7 +230,7 @@ export async function startNow(
   return true;
 }
 
-/** 주최자가 접었다. */
+/** 주최자가 접었다. 예전 「접기」 버튼이 남은 패널이 아직 이걸 부른다. */
 export async function cancel(
   client: Client,
   guildId: string,
@@ -241,6 +241,45 @@ export async function cancel(
   if (session === undefined || session.phase !== "recruiting") return false;
 
   await expireRecruiting(client, guildId, sessionId, host, speak("주최자가 판을 접었습니다."));
+  return true;
+}
+
+/**
+ * 사람이 판을 끝냈다 — 화면 오른쪽 위의 「종료」.
+ *
+ * 어느 단계든 같은 버튼이지만 끝나는 모양은 다르다.
+ *
+ *   모집 중 → **취소**. 굴러가지도 못했으니 결과랄 것이 없다.
+ *   진행 중 → **끝**. 기간이 다 됐을 때와 같은 자리로 보낸다 — 게임이 스스로 마무리해야
+ *             퀴즈는 정답을 밝히고 선착순은 아무도 못 채웠다고 말할 수 있다.
+ *             골격이 임의로 끊으면 그 판이 무엇이었는지 아무도 모르게 끝난다.
+ *
+ * 누가 끝냈는지는 `end()` 가 결과에 덧붙인다.
+ */
+export async function stopGame(
+  client: Client,
+  guildId: string,
+  sessionId: string,
+  host: User,
+  byId: string,
+): Promise<boolean> {
+  const session = await getSession(guildId, sessionId);
+  if (session === undefined) return false;
+
+  if (session.phase === "recruiting") {
+    await expireRecruiting(client, guildId, sessionId, host, speak(`<@${byId}> 님이 판을 접었습니다.`));
+    return true;
+  }
+
+  if (session.phase !== "playing") return false;
+
+  stoppedBy.set(sessionId, byId);
+  try {
+    await finishPlay(client, guildId, sessionId, host);
+  } finally {
+    stoppedBy.delete(sessionId);
+  }
+
   return true;
 }
 
@@ -270,6 +309,14 @@ const live = new Map<string, { readonly game: GameDefinition; readonly context: 
 
 /** 두 번 끝나지 않게 하는 표식. 게임이 여러 갈래로 끝나도 한 번만 정리된다. */
 const finished = new Set<string>();
+
+/**
+ * 사람이 끝낸 판 — 「끝낸 사람」을 결과에 덧붙이려고 잠깐 들고 있는다.
+ *
+ * 게임이 스스로 `context.end(결과)` 를 부르기 때문에 그 결과에 직접 끼워 넣을 자리가 없다.
+ * 판 id 로 여기 적어 두면 `end()` 가 마지막에 붙인다.
+ */
+const stoppedBy = new Map<string, string>();
 
 async function beginPlay(
   client: Client,
@@ -313,8 +360,13 @@ async function beginPlay(
   }
 }
 
-/** 기간이 다 됐다. 게임이 마무리를 맡지 않으면 그냥 끝낸다. */
-async function timeOut(
+/**
+ * 판을 마무리한다. 게임이 마무리를 맡지 않으면 그냥 끝낸다.
+ *
+ * 기간이 다 됐을 때와 사람이 「종료」 를 눌렀을 때가 **같은 자리**로 온다 —
+ * 어느 쪽이든 판은 다 돌지 못하고 멎는 것이고, 그 뒷정리는 게임만 할 수 있다.
+ */
+async function finishPlay(
   client: Client,
   guildId: string,
   sessionId: string,
@@ -391,7 +443,8 @@ async function end(
     await announceAt(
       client,
       { channelId: session.channelId, messageId: session.messageId },
-      endedView(game, ended, host, result),
+      // 게임이 뭐라고 끝맺었든, 사람이 끊은 판이면 누가 끊었는지는 남아야 한다.
+      endedView(game, ended, host, result, stoppedBy.get(session.id)),
     );
 
     await dropSession(session.guildId, session.id);

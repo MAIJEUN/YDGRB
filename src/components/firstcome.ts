@@ -85,8 +85,8 @@ export default defineComponentHandler({
 
     await context.end({
       description: only
-        ? speak(`**${race.target}번째**로 누른 ${winners.map((id) => `<@${id}>`).join(" ")} 님이 가져갑니다.`)
-        : speak(`${winners.map((id) => `<@${id}>`).join(" ")} 님이 가져갑니다.`),
+        ? speak(`**${race.target}번째**로 누른 ${winners.map((id) => `<@${id}>`).join(" ")} 님이 당첨됐습니다.`)
+        : speak(`${winners.map((id) => `<@${id}>`).join(" ")} 님이 당첨됐습니다.`),
       fields: pressField(race),
     });
   },
