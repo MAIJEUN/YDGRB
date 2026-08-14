@@ -446,6 +446,20 @@ assert("참가자를 멘션으로 적음", panelText.includes(`<@${HOST}>`) && p
 assert("  └ 마감을 타임스탬프로", TIMESTAMP.test(panelText), panelText);
 assert("  └ 인원을 적음", panelText.includes("**2명**"), panelText);
 
+// 끝 화면에는 명단을 넣지 않는다. 답장이 달리는 그 메시지가 바로 위에서 이미 보여 주고,
+// 결과는 누가 이겼는지를 말한다. 그 사이에 명단을 끼우면 봐야 할 한 줄이 밀린다.
+for (const [label, view] of [
+  ["결과가 있을 때", views.endedView(duo, sample, host, { description: "끝" })],
+  ["게임이 아무 말 없을 때", views.endedView(duo, sample, host, undefined)],
+  ["종료로 끊겼을 때", views.endedView(duo, sample, host, undefined, HOST)],
+]) {
+  assert(`끝 화면에 참가자 칸 없음 (${label})`, !bodyOf(view).includes("참가한 사람"), bodyOf(view));
+}
+assert(
+  "  └ 끝낸 사람은 그대로 남음",
+  bodyOf(views.endedView(duo, sample, host, undefined, HOST)).includes("끝낸 사람"),
+);
+
 const crowd = { ...sample, players: Array.from({ length: 40 }, (_, i) => String(100000000000000000 + i)) };
 const crowdText = bodyOf(views.recruitView(registry.getGame("many"), crowd, host));
 assert("사람이 많으면 잘라서 적음", crowdText.includes("외 25명"), crowdText.slice(0, 200));

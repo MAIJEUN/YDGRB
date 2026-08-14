@@ -156,6 +156,10 @@ export function startedView(
  *
  * 이 화면은 **판을 연 메시지에 답장**으로 달린다 — 효과의 종료 안내와 같은 자리다.
  * 새 메시지로만 던지면 무엇에 대한 결과인지 스크롤을 올려 찾아야 한다.
+ *
+ * **참가자는 적지 않는다.** 답장이 달리는 그 메시지가 바로 위에서 이미 누가 있었는지
+ * 보여 주고 있고, 결과는 누가 이겼는지를 말한다. 그 사이에 명단을 한 번 더 끼우면
+ * 정작 봐야 할 한 줄이 밀린다 — [결과만 적는다](../ui/response.ts)는 규칙 그대로다.
  */
 export function endedView(
   game: GameDefinition,
@@ -166,17 +170,6 @@ export function endedView(
   stoppedById?: string,
 ): MessageOptions {
   const fields: ResponseField[] = [...(result?.fields ?? [])];
-
-  // 게임이 참가자를 따로 말하지 않았다면 여기서 한 번 적어 준다.
-  //
-  // **모집 게임만** 그렇게 한다. 즉시 시작은 게임이 결과에서 이미 누가 무엇을 했는지
-  // 말하므로(퀴즈의 맞힌 사람, 선착순의 가져간 사람), 아래에 또 늘어놓으면 같은 말이 된다.
-  if (game.mode === "recruit" && fields.length === 0 && session.players.length > 0) {
-    fields.push({
-      name: `참가한 사람 (${count(session.players.length)}명)`,
-      value: playerList(session.players),
-    });
-  }
 
   // 맨 끝에 붙인다 — 게임의 결과가 먼저고, 왜 여기서 멎었는지가 그 다음이다.
   if (stoppedById !== undefined) {
