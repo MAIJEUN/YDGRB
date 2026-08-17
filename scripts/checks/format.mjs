@@ -333,8 +333,12 @@ checkView("별명 — 대상 지정", progressView({ ...nickOptions, targetIds: 
 const attendance = await import(`${DIST}/attendance/views.js`);
 const record = { userId: withId.id, total: 12, streak: 3, lastDate: "2026-07-28" };
 
-checkView("출헉 — 오늘의 출헉", attendance.todayView(record, user));
-checkView("출헉 — 덤", attendance.todayView(null, user, "abcd1234"));
+checkView("출헉 — 오늘의 출헉", attendance.todayView({ top: record, attenders: [] }, user));
+checkView(
+  "출헉 — 오늘의 출헉 (명단)",
+  attendance.todayView({ top: record, attenders: [withId.id, "444444444444444444"] }, user),
+);
+checkView("출헉 — 덤", attendance.todayView(attendance.EMPTY_BOARD, user, "abcd1234"));
 checkView("출헉 — 이미 올림", attendance.alreadyView("[오늘의 출헉](https://x)", "abcd1234", user));
 checkView("출헉 — 성공", attendance.successView(record, "소원권 조각: 0개 → 1개", user));
 checkView("출헉 — 덤 성공", attendance.extraSuccessView(withId));

@@ -6,7 +6,12 @@ import type {
   User,
 } from "discord.js";
 
-import { describeDurationError, formatDuration, parseDuration } from "../time.js";
+import {
+  MAX_DURATION_SECONDS,
+  describeDurationError,
+  formatDuration,
+  parseDuration,
+} from "../time.js";
 import { response } from "../ui/response.js";
 import type { MessageOptions } from "../ui/response.js";
 import { MAX_TITLE_LENGTH, TITLE_OPTION } from "./ids.js";
@@ -62,11 +67,18 @@ export function readTitle(interaction: ChatInputCommandInteraction): string | nu
 /**
  * 기간이 있는 게임의 한계.
  *
- * 너무 짧으면 문제를 읽기도 전에 끝나고, 너무 길면 그 채널이 하루 종일 묶인다
- * (한 채널에 한 판이므로).
+ * 아래만 게임이 정한다 — 너무 짧으면 문제를 읽기도 전에 끝난다.
+ *
+ * 위는 [기간 파서](../time.ts)의 한계를 그대로 쓴다 (**365일**). 예전에는 한 시간으로
+ * 끊었는데, 한 채널에 한 판이라 오래 걸리는 판이 채널을 묶는다는 이유였다. 그런데 며칠
+ * 걸리는 판(출제해 두고 천천히 맞히는 퀴즈 같은)이 있을 수 있고, 묶인 채널은 이제
+ * [오른쪽 위 종료](views.ts)로 언제든 풀 수 있다. 골격이 미리 막을 일이 아니다.
+ *
+ * 다만 **진행 중인 판은 재시작을 못 견딘다** ([runner](runner.ts) 의 `restoreGames`).
+ * 며칠짜리 판은 그 사이에 봇이 한 번 꺼지면 중단된다.
  */
 export const MIN_GAME_SECONDS = 10;
-export const MAX_GAME_SECONDS = 60 * 60;
+export const MAX_GAME_SECONDS = MAX_DURATION_SECONDS;
 
 export type DurationCheck =
   | { readonly ok: true; readonly seconds: number }

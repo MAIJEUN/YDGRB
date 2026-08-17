@@ -163,6 +163,22 @@ const headOf = (view) => bodyOf(view).split("\n")[0];
 // ── 1. 형식 ────────────────────────────────────────────────
 console.log("\n=== 1. 형식 ===");
 assert("방식은 두 가지뿐", new Set(registry.allGames().map((g) => g.mode)).size === 2);
+{
+  const command = await import(`${DIST}/games/command.js`);
+  const time = await import(`${DIST}/time.js`);
+
+  assert("기간의 아래 한계는 10초", command.MIN_GAME_SECONDS === 10, String(command.MIN_GAME_SECONDS));
+  assert(
+    "  └ 위 한계는 기간 파서와 같음 (365일)",
+    command.MAX_GAME_SECONDS === time.MAX_DURATION_SECONDS,
+    `${command.MAX_GAME_SECONDS} vs ${time.MAX_DURATION_SECONDS}`,
+  );
+  assert("  └ 하루가 넘는 기간도 받음", command.checkDuration("2일", host).ok === true);
+  assert("  └ 30일도", command.checkDuration("30일", host).ok === true);
+  assert("  └ 9초는 막음", command.checkDuration("9초", host).ok === false);
+  assert("  └ 366일은 막음", command.checkDuration("366일", host).ok === false);
+}
+
 assert("모집 마감은 5분", ids.RECRUIT_TIMEOUT_SECONDS === 5 * 60, String(ids.RECRUIT_TIMEOUT_SECONDS));
 assert("  └ 게임이 고를 수 없음", !read("src/games/types.ts").includes("recruitSeconds"));
 assert("최소 인원 기본은 2", minPlayersOf({ mode: "recruit" }) === 2);

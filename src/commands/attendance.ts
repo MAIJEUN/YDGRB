@@ -112,13 +112,16 @@ export default defineCommand({
       by: interaction.user.id,
       channelId: channel.id,
       messageId: null,
+      attenders: [],
     });
 
     try {
       const image = new AttachmentBuilder(renderText(text), { name: IMAGE_NAME });
 
       const message = await channel.send({
-        ...channelMessage(todayView(await topAttender(interaction.guildId), interaction.user)),
+        ...channelMessage(
+          todayView({ top: await topAttender(interaction.guildId), attenders: [] }, interaction.user),
+        ),
         files: [image],
       });
 

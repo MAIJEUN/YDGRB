@@ -54,7 +54,7 @@ export function chosungModal(): ModalBuilder {
         new TextInputBuilder()
           .setCustomId(FIELD.duration)
           .setLabel("기간")
-          .setPlaceholder("3분 · 90(숫자만 쓰면 초). 10초 ~ 1시간")
+          .setPlaceholder("3분 · 2일 · 90(숫자만 쓰면 초). 10초 ~ 365일")
           .setStyle(TextInputStyle.Short)
           .setRequired(true)
           .setMaxLength(30),

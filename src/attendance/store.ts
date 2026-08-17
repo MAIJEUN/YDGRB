@@ -30,6 +30,13 @@ export interface TodayCheck {
   by: string;
   channelId: string;
   messageId: string | null;
+  /**
+   * 오늘 출헉한 사람. **맞힌 차례 그대로** 쌓인다.
+   *
+   * `records` 에서 `lastDate` 로 골라내도 같은 사람들이 나오지만 **차례가 없다.**
+   * 먼저 온 사람이 위에 있어야 명단이 읽힌다. 날이 바뀌면 이 칸도 함께 새로 시작한다.
+   */
+  attenders: string[];
 }
 
 /**
@@ -62,8 +69,9 @@ const file = new JsonFile<AttendanceData>(
 function guildOf(data: AttendanceData, guildId: string): GuildAttendance {
   const guild = (data.guilds[guildId] ??= { today: null, records: {}, extras: {} });
 
-  // 예전 파일에는 extras 가 없다.
+  // 예전 파일에는 extras 도, 명단도 없다.
   guild.extras ??= {};
+  if (guild.today !== null) guild.today.attenders ??= [];
 
   return guild;
 }
@@ -136,6 +144,10 @@ export async function checkIn(
     };
 
     guild.records[userId] = record;
+
+    // 명단에도 올린다. 한 트랜잭션 안이라 연타해도 두 번 오르지 않는다
+    // (위에서 이미 오늘 한 사람은 돌려보냈다).
+    if (guild.today?.date === today) guild.today.attenders.push(userId);
 
     return { ok: true, record, rewarded: record.total % rewardEvery === 0 } as const;
   });

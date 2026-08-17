@@ -150,6 +150,29 @@ assert("배경에 잡선을 깖", imageSource.includes("NOISE_LINES"));
 assert("한글 폰트를 찾음", imageSource.includes("Malgun Gothic"));
 assert("  └ 없으면 알려 줌", imageSource.includes("한글 폰트를 찾지 못했습니다"));
 
+// ── 6-1. 명단 (저장소) ─────────────────────────────────────
+console.log("\n=== 6-1. 명단 (저장소) ===");
+{
+  const ROSTER = "777777777777777777";
+
+  await store.setToday(ROSTER, {
+    date: store.dateKey(),
+    text: "글자",
+    by: A,
+    channelId: "999999999999999999",
+    messageId: "1",
+    attenders: [],
+  });
+
+  await store.checkIn(ROSTER, A, 4);
+  await store.checkIn(ROSTER, B, 4);
+
+  assert("맞힌 차례로 쌓임", (await store.getToday(ROSTER))?.attenders.join() === `${A},${B}`);
+
+  await store.checkIn(ROSTER, A, 4);
+  assert("  └ 두 번 하려 해도 한 번만", (await store.getToday(ROSTER))?.attenders.join() === `${A},${B}`);
+}
+
 console.log("\n=== 7-1. 덤 (그래도 계속) ===");
 const extraStore = await freshStore("extra");
 
@@ -173,12 +196,14 @@ assert("  └ 새로 올릴 때 치워짐", afterPrune.guilds[G].extras.old12345
 
 console.log("\n=== 8. 화면 ===");
 const { buildContainer } = await import(`${DIST}/ui/response.js`);
-const { todayView, alreadyView, successView, extraSuccessView, IMAGE_NAME } = await import(
+const { todayView, alreadyView, successView, extraSuccessView, EMPTY_BOARD, MAX_SHOWN_ATTENDERS, IMAGE_NAME } =
+  await import(
   `${DIST}/attendance/views.js`
 );
 const user = { username: "테스터" };
 
-const todayJson = buildContainer(todayView({ userId: B, total: 12, streak: 3, lastDate: today }, user)).toJSON();
+const board = { userId: B, total: 12, streak: 3, lastDate: today };
+const todayJson = buildContainer(todayView({ top: board, attenders: [] }, user)).toJSON();
 const todayBody = todayJson.components[0].content;
 
 assert("제목은 「오늘의 출헉」", todayBody.startsWith("### 오늘의 출헉"), todayBody);
@@ -186,8 +211,8 @@ assert("글자를 본문에 적지 않음", !todayBody.includes("오늘의암호
 assert("제출많을 멘션으로", todayBody.includes(`**제출많**\n<@${B}> (12일)`), todayBody);
 assert("이미지를 묶음으로 붙임", JSON.stringify(todayJson).includes(`attachment://${IMAGE_NAME}`));
 assert("  └ 버튼이 있음", JSON.stringify(todayJson).includes("안녕난버튼이야"));
-assert("  └ 공개로 나감", todayView(null, user).ephemeral === false);
-assert("제출많이 없으면 칸도 없음", !buildContainer(todayView(null, user)).toJSON().components[0].content.includes("제출많"));
+assert("  └ 공개로 나감", todayView(EMPTY_BOARD, user).ephemeral === false);
+assert("제출많이 없으면 칸도 없음", !buildContainer(todayView(EMPTY_BOARD, user)).toJSON().components[0].content.includes("제출많"));
 
 const successJson = buildContainer(
   successView({ userId: A, total: 4, streak: 4, lastDate: today }, "소원권 조각: 0개 → 1개", user),
@@ -203,13 +228,13 @@ assert(
 );
 
 // 덤 메시지 — 기록 안 된다는 것이 분명해야 한다.
-const extraJson = buildContainer(todayView(null, user, "abcd1234")).toJSON();
+const extraJson = buildContainer(todayView(EMPTY_BOARD, user, "abcd1234")).toJSON();
 const extraBody = extraJson.components[0].content;
 
 assert("덤은 제목에 기록 안 됨", extraBody.startsWith("### 출헉 (기록 안 됨)"), extraBody);
 assert("  └ 제출많을 보여 주지 않음", !extraBody.includes("제출많"));
 assert("  └ 버튼에 덤 id 를 실음", JSON.stringify(extraJson).includes("att:check:abcd1234"));
-assert("오늘의 출헉 버튼에는 id 없음", JSON.stringify(buildContainer(todayView(null, user)).toJSON()).includes('"att:check"'));
+assert("오늘의 출헉 버튼에는 id 없음", JSON.stringify(buildContainer(todayView(EMPTY_BOARD, user)).toJSON()).includes('"att:check"'));
 
 const alreadyJson = buildContainer(alreadyView("[오늘의 출헉](https://x)", "abcd1234", user)).toJSON();
 assert("이미 올렸을 때 빨강", alreadyJson.accent_color === 0xed4245);
@@ -224,7 +249,49 @@ assert("  └ 연속일수를 말하지 않음", !extraSuccess.components[0].con
 assert("  └ 본인에게만 보임", extraSuccessView(user).ephemeral !== false);
 
 // 출헉 메시지 자체는 공개, 성공은 나만 보기.
-assert("오늘의 출헉은 공개", todayView(null, user).ephemeral === false);
+assert("오늘의 출헉은 공개", todayView(EMPTY_BOARD, user).ephemeral === false);
+
+// ── 8-1. 오늘 출헉한 사람 ──────────────────────────────────
+//
+// 성공 안내는 여전히 누른 사람에게만 간다. 대신 누가 했는지는 출헉 메시지 한 곳에 모인다.
+console.log("\n=== 8-1. 오늘 출헉한 사람 ===");
+{
+  const withList = buildContainer(todayView({ top: null, attenders: [A, B] }, user)).toJSON();
+  const listBody = withList.components[0].content;
+
+  assert("명단 칸이 붙음", listBody.includes("**오늘 출헉 (2명)**"), listBody);
+  assert("  └ 멘션으로", listBody.includes(`<@${A}> <@${B}>`), listBody);
+  assert("  └ 이름을 글자로 적지 않음", !listBody.includes("테스터"), listBody);
+
+  // 맞힌 차례 그대로. 뒤집으면 화면도 뒤집힌다.
+  const flipped = buildContainer(todayView({ top: null, attenders: [B, A] }, user)).toJSON();
+  assert("차례를 지킴", flipped.components[0].content.includes(`<@${B}> <@${A}>`));
+
+  assert(
+    "아무도 없으면 칸도 없음",
+    !buildContainer(todayView(EMPTY_BOARD, user)).toJSON().components[0].content.includes("오늘 출헉"),
+  );
+
+  const crowd = Array.from({ length: MAX_SHOWN_ATTENDERS + 7 }, (_, i) => String(500000000000000000 + i));
+  const crowdBody = buildContainer(todayView({ top: null, attenders: crowd }, user)).toJSON().components[0].content;
+
+  assert("많으면 잘라서 적음", crowdBody.includes("외 7명"), crowdBody.slice(0, 200));
+  assert(
+    `  └ 늘어놓는 것은 ${MAX_SHOWN_ATTENDERS}명까지`,
+    (crowdBody.match(/<@\d+>/gu) ?? []).length === MAX_SHOWN_ATTENDERS,
+    String((crowdBody.match(/<@\d+>/gu) ?? []).length),
+  );
+  assert("  └ 전체 인원은 그대로 셈", crowdBody.includes(`오늘 출헉 (${crowd.length}명)`), crowdBody.slice(0, 120));
+
+  // 명단이 먼저, 여태까지의 기록이 그다음.
+  const both = buildContainer(todayView({ top: board, attenders: [A] }, user)).toJSON().components[0].content;
+  assert("명단이 제출많보다 먼저", both.indexOf("오늘 출헉") < both.indexOf("제출많"), both);
+
+  assert(
+    "덤에는 명단이 없음 (출헉으로 안 셈)",
+    !buildContainer(todayView({ top: board, attenders: [A] }, user, "abcd1234")).toJSON().components[0].content.includes("오늘 출헉"),
+  );
+}
 
 console.log("\n=== 9. 연결 ===");
 const commandSource = read("src/commands/attendance.ts");
@@ -264,6 +331,17 @@ assert("  └ 소원권 저장소를 그대로 씀", componentSource.includes('f
 
 const { collectComponentHandlers } = await import(`${DIST}/loaders/components.js`);
 const handlers = await collectComponentHandlers();
+// 명단이 늘면 채널의 출헉 메시지를 다시 그린다.
+assert("출헉하면 명단을 다시 그림", componentSource.includes("await refreshBoard(interaction, guildId)"));
+assert(
+  "  └ 첨부를 id 그대로 다시 넘김",
+  componentSource.includes("attachments: retained(message)"),
+  "안 넘기면 attachment:// 참조가 풀려 받아쓸 이미지가 사라진다",
+);
+assert("  └ footer 는 올린 사람 그대로", componentSource.includes("users.fetch(today.by)"));
+assert("  └ 못 고쳐도 그냥 넘어감", componentSource.includes("출헉: 명단을 고치지 못했습니다"));
+assert("  └ 성공 안내는 여전히 나만 보기", !componentSource.includes("successView(result.record, rewarded, interaction.user), { ephemeral: false }"));
+
 assert("컴포넌트 핸들러 등록", handlers.some((h) => h.namespace === "att"), handlers.map((h) => h.namespace).join(","));
 
 finish();

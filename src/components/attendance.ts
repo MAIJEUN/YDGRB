@@ -17,11 +17,19 @@ import {
   REWARD_FRAGMENTS,
 } from "../attendance/ids.js";
 import { renderText } from "../attendance/image.js";
-import { checkIn, getExtra, getToday } from "../attendance/store.js";
-import { IMAGE_NAME, extraSuccessView, successView, todayView } from "../attendance/views.js";
+import { checkIn, getExtra, getToday, topAttender } from "../attendance/store.js";
+import {
+  EMPTY_BOARD,
+  IMAGE_NAME,
+  extraSuccessView,
+  successView,
+  todayView,
+} from "../attendance/views.js";
 import { logger } from "../logger.js";
-import { channelMessage, response } from "../ui/response.js";
+import { channelMessage, messageEdit, response } from "../ui/response.js";
 import { customId, defineComponentHandler, type ComponentInteraction } from "../types.js";
+// 첨부를 그대로 남기는 방법은 소원권 쪽이 먼저 부딪혀 정리해 뒀다. 도메인과 무관한 부품이다.
+import { retained } from "../wish/attachments.js";
 import { formatBalanceChange } from "../wish/format.js";
 import { applyBalanceChange } from "../wish/store.js";
 import { speak } from "../ui/tone.js";
@@ -174,6 +182,41 @@ async function submitAnswer(
 
   // 성공은 누른 사람에게만 보인다 (response 기본값이 나만 보기).
   await interaction.reply(response(successView(result.record, rewarded, interaction.user)));
+
+  // 채널의 출헉 메시지에는 명단만 늘려 둔다.
+  await refreshBoard(interaction, guildId);
+}
+
+/**
+ * 출헉 메시지를 다시 그린다 — 오늘 출헉한 사람이 하나 늘었으니.
+ *
+ * **첨부를 id 그대로 다시 넘긴다.** 수정 요청에 첨부를 안 실으면 컨테이너의
+ * `attachment://` 참조가 풀려 받아쓸 이미지가 사라진다.
+ *
+ * 못 고쳐도 조용히 넘긴다 — 출헉은 이미 기록됐고, 명단이 한 박자 늦는 것이 전부다.
+ * 화면마다 저장된 명단을 통째로 다시 그리므로, 편집이 밀려도 마지막 것이 맞다.
+ */
+async function refreshBoard(interaction: ComponentInteraction, guildId: string): Promise<void> {
+  const today = await getToday(guildId);
+  if (today === null || today.messageId === null) return;
+
+  const channel = await interaction.client.channels.fetch(today.channelId).catch(() => null);
+  if (channel === null || !channel.isTextBased()) return;
+
+  const message = await channel.messages.fetch(today.messageId).catch(() => null);
+  if (message === null) return;
+
+  // footer 는 판을 올린 사람 그대로여야 한다 — 명단이 늘었다고 주인이 바뀌지 않는다.
+  const poster = await interaction.client.users.fetch(today.by).catch(() => null);
+  if (poster === null) return;
+
+  const board = { top: await topAttender(guildId), attenders: today.attenders };
+
+  await message
+    .edit({ ...messageEdit(todayView(board, poster)), attachments: retained(message) })
+    .catch((error: unknown) => {
+      logger.debug("출헉: 명단을 고치지 못했습니다", error);
+    });
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -209,7 +252,7 @@ async function postExtra(
 
   try {
     await channel.send({
-      ...channelMessage(todayView(null, interaction.user, extra.id)),
+      ...channelMessage(todayView(EMPTY_BOARD, interaction.user, extra.id)),
       files: [new AttachmentBuilder(renderText(extra.text), { name: IMAGE_NAME })],
     });
   } catch (error) {
