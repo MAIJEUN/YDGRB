@@ -136,10 +136,12 @@ const png = renderText("오늘의암호 abc 123");
 assert("PNG 를 만듦", png.subarray(0, 8).toString("hex") === "89504e470d0a1a0a", png.subarray(0, 8).toString("hex"));
 assert("  └ 비어 있지 않음", png.length > 1000, `${png.length}바이트`);
 
-// 같은 글자라도 매번 조금씩 다르게 그려진다 (기울기·잡선이 무작위).
+// 같은 글자는 **늘 같은 그림**이어야 한다. 명단이 늘 때마다 이 그림을 다시 올리는데,
+// 그때마다 잡선과 기울기가 달라지면 받아쓰는 사람 눈앞에서 그림이 계속 흔들린다.
 const twice = renderText("같은글자");
 const thrice = renderText("같은글자");
-assert("매번 다르게 그려짐", !twice.equals(thrice), "잡선과 기울기가 무작위여야 한다");
+assert("같은 글자는 같은 바이트", twice.equals(thrice), "다시 올려도 화면이 그대로여야 한다");
+assert("  └ 다른 글자는 다른 그림", !renderText("다른글자").equals(twice));
 
 const wide = renderText("아주아주아주긴글자입니다");
 assert("글자가 길면 넓어짐", wide.length > renderText("짧").length);
@@ -334,10 +336,12 @@ const handlers = await collectComponentHandlers();
 // 명단이 늘면 채널의 출헉 메시지를 다시 그린다.
 assert("출헉하면 명단을 다시 그림", componentSource.includes("await refreshBoard(interaction, guildId)"));
 assert(
-  "  └ 첨부를 id 그대로 다시 넘김",
-  componentSource.includes("attachments: retained(message)"),
-  "안 넘기면 attachment:// 참조가 풀려 받아쓸 이미지가 사라진다",
+  "  └ 이미지를 다시 올림",
+  componentSource.includes("files: [new AttachmentBuilder(renderText(today.text)"),
+  "V2 메시지는 붙어 있던 첨부 목록이 비어 돌아온다. 안 올리면 attachment:// 참조가 풀린다",
 );
+assert("  └ 같은 글자는 같은 그림이라 화면은 그대로", imageSource.includes("seededRandom"));
+assert("    └ Math.random 을 쓰지 않음", !imageSource.includes("Math.random("));
 assert("  └ footer 는 올린 사람 그대로", componentSource.includes("users.fetch(today.by)"));
 assert("  └ 못 고쳐도 그냥 넘어감", componentSource.includes("출헉: 명단을 고치지 못했습니다"));
 assert("  └ 성공 안내는 여전히 나만 보기", !componentSource.includes("successView(result.record, rewarded, interaction.user), { ephemeral: false }"));

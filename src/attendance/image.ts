@@ -58,13 +58,43 @@ function font(): string {
   return `${FONT_SIZE}px "${fontFamily}"`;
 }
 
-/** -1 ~ 1 사이의 무작위 값. */
-function jitter(): number {
-  return Math.random() * 2 - 1;
+/**
+ * 글자에서 뽑은 씨앗으로 도는 난수 (mulberry32).
+ *
+ * `Math.random` 이 아닌 이유는 **같은 글자가 늘 같은 그림이 되어야** 하기 때문이다.
+ * [명단](views.ts)이 늘 때마다 이 그림을 다시 올리는데, 그때마다 잡선과 기울기가 달라지면
+ * 받아쓰는 사람 눈앞에서 그림이 계속 흔들린다.
+ *
+ * 예측 가능해도 상관없는 자리다 — 막으려는 것은 **복사·붙여넣기**지 사람의 추측이 아니고,
+ * 씨앗이 곧 정답이라 미리 알아낼 것도 없다.
+ */
+function seededRandom(text: string): () => number {
+  // FNV-1a 로 글자를 32비트 씨앗 하나로 접는다.
+  let state = 0x811c9dc5;
+  for (const character of text) {
+    state = Math.imul(state ^ (character.codePointAt(0) ?? 0), 0x01000193) >>> 0;
+  }
+
+  return () => {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let value = Math.imul(state ^ (state >>> 15), 1 | state);
+    value = (value + Math.imul(value ^ (value >>> 7), 61 | value)) ^ value;
+    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
-/** 출헉 글자를 PNG 로. 디스코드에 그대로 첨부할 수 있다. */
+/**
+ * 출헉 글자를 PNG 로. 디스코드에 그대로 첨부할 수 있다.
+ *
+ * **같은 글자를 넣으면 늘 같은 바이트가 나온다.** 명단이 늘 때마다 다시 올려도 화면은
+ * 그대로여야 한다.
+ */
 export function renderText(text: string): Buffer {
+  const random = seededRandom(text);
+
+  /** -1 ~ 1 사이의 값. 같은 글자면 늘 같은 차례로 나온다. */
+  const jitter = (): number => random() * 2 - 1;
+
   // 글자 폭을 재려면 캔버스가 하나 필요하다. 크기는 곧 다시 정한다.
   const measure = createCanvas(1, 1).getContext("2d");
   measure.font = font();
@@ -82,8 +112,8 @@ export function renderText(text: string): Buffer {
   ctx.lineWidth = 1;
   for (let index = 0; index < NOISE_LINES; index += 1) {
     ctx.beginPath();
-    ctx.moveTo(Math.random() * canvas.width, Math.random() * canvas.height);
-    ctx.lineTo(Math.random() * canvas.width, Math.random() * canvas.height);
+    ctx.moveTo(random() * canvas.width, random() * canvas.height);
+    ctx.lineTo(random() * canvas.width, random() * canvas.height);
     ctx.stroke();
   }
 

@@ -28,8 +28,6 @@ import {
 import { logger } from "../logger.js";
 import { channelMessage, messageEdit, response } from "../ui/response.js";
 import { customId, defineComponentHandler, type ComponentInteraction } from "../types.js";
-// 첨부를 그대로 남기는 방법은 소원권 쪽이 먼저 부딪혀 정리해 뒀다. 도메인과 무관한 부품이다.
-import { retained } from "../wish/attachments.js";
 import { formatBalanceChange } from "../wish/format.js";
 import { applyBalanceChange } from "../wish/store.js";
 import { speak } from "../ui/tone.js";
@@ -190,8 +188,13 @@ async function submitAnswer(
 /**
  * 출헉 메시지를 다시 그린다 — 오늘 출헉한 사람이 하나 늘었으니.
  *
- * **첨부를 id 그대로 다시 넘긴다.** 수정 요청에 첨부를 안 실으면 컨테이너의
- * `attachment://` 참조가 풀려 받아쓸 이미지가 사라진다.
+ * **이미지를 다시 올린다.** 처음에는 붙어 있던 첨부를 id 그대로 넘겨 아끼려 했는데,
+ * Components V2 메시지에서는 그 목록이 비어 돌아온다. 빈 목록으로 고치면 컨테이너의
+ * `attachment://` 참조가 풀려 디스코드가 요청째로 거절한다
+ * (`UNFURLED_MEDIA_ITEM_REFERENCED_ATTACHMENT_NOT_FOUND`).
+ *
+ * 다시 그려도 화면은 그대로다 — 같은 글자는 [늘 같은 그림](../attendance/image.ts)이다.
+ * 그림은 여기서 만들므로 새로 받아 올 것도 없다.
  *
  * 못 고쳐도 조용히 넘긴다 — 출헉은 이미 기록됐고, 명단이 한 박자 늦는 것이 전부다.
  * 화면마다 저장된 명단을 통째로 다시 그리므로, 편집이 밀려도 마지막 것이 맞다.
@@ -213,7 +216,10 @@ async function refreshBoard(interaction: ComponentInteraction, guildId: string):
   const board = { top: await topAttender(guildId), attenders: today.attenders };
 
   await message
-    .edit({ ...messageEdit(todayView(board, poster)), attachments: retained(message) })
+    .edit({
+      ...messageEdit(todayView(board, poster)),
+      files: [new AttachmentBuilder(renderText(today.text), { name: IMAGE_NAME })],
+    })
     .catch((error: unknown) => {
       logger.debug("출헉: 명단을 고치지 못했습니다", error);
     });
