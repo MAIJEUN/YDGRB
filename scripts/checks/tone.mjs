@@ -210,8 +210,13 @@ for (const found of globSync("src/**/*.ts", { cwd: PROJECT })) {
 
     for (const literal of literalsOf(line)) {
       if (!POLITE.test(literal.text)) continue;
-      // `speak(` 바로 뒤면 이미 말투를 탄다.
-      if (line.slice(0, literal.at).trimEnd().endsWith("speak(")) continue;
+
+      // `speak(` 바로 뒤면 이미 말투를 탄다. 문장이 길면 줄을 넘겨 적으므로
+      // (`speak(` 만 있고 다음 줄이 문장) 앞줄까지 본다.
+      const before = line.slice(0, literal.at).trimEnd();
+      const opener = before === "" ? (lines[index - 1] ?? "").trimEnd() : before;
+      if (opener.endsWith("speak(")) continue;
+
       leaks.push({ where: `${rel}:${index + 1}`, text: literal.text });
     }
   });

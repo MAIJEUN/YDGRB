@@ -1,6 +1,7 @@
 import type { User } from "discord.js";
 
 import type { MessageOptions, ResponseField, Status } from "../ui/response.js";
+import { count } from "../info/format.js";
 import { day } from "../time.js";
 import {
   formatBalance,
@@ -100,6 +101,7 @@ export async function checkView(
 ): Promise<MessageOptions> {
   const balance = await getBalance(guildId, targetId);
   const { fragmentsPerTicket } = await getSettings(guildId);
+  // 반 조각이 남아 있어도 소원권은 장 단위로만 나온다.
   const craftable = Math.floor(balance.fragments / fragmentsPerTicket);
 
   const days = showHistory ? await getHistoryDays(guildId) : [];
@@ -112,7 +114,7 @@ export async function checkView(
       { name: "보유", value: formatBalance(balance) },
       {
         name: "제작 가능",
-        value: `${craftable}장 _(조각 ${fragmentsPerTicket}개당 소원권 1장)_`,
+        value: `${count(craftable)}장 _(조각 ${fragmentsPerTicket}개당 소원권 1장)_`,
       },
       // 펼쳤는데 아무것도 없으면 그 말을 해 준다. 빈 드롭다운을 눌러 보게 두지 않는다.
       ...(showHistory && days.length === 0

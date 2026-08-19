@@ -85,25 +85,71 @@ const strict = await store.applyBalanceChange(G, C, { tickets: -1 }, { note: { s
 assert("켜지 않으면 모자랄 때 그대로 거절", strict.ok === false && strict.reason === "insufficient");
 
 console.log("\n=== 1-1-2. 갯수 한계 ===");
-const { MAX_AMOUNT, MAX_AMOUNT_DIGITS } = await import(`${DIST}/wish/ids.js`);
+const amount = await import(`${DIST}/wish/amount.js`);
+const { MAX_AMOUNT, MAX_AMOUNT_LENGTH, DECIMALS } = amount;
 
-assert("정수로 정확한 최대값까지", MAX_AMOUNT === Number.MAX_SAFE_INTEGER, String(MAX_AMOUNT));
-assert("  └ 자릿수는 그 수의 길이", MAX_AMOUNT_DIGITS === String(MAX_AMOUNT).length);
-assert("  └ 예전 4자리 한계가 아님", MAX_AMOUNT_DIGITS > 4, String(MAX_AMOUNT_DIGITS));
+// 눈금 단위로 세어도 정수로 정확해야 한다. 그 위로는 더한 값이 슬금슬금 어긋난다.
+assert(
+  "눈금까지 정확한 최대값",
+  MAX_AMOUNT === Math.floor(Number.MAX_SAFE_INTEGER / 10 ** DECIMALS),
+  String(MAX_AMOUNT),
+);
+assert("  └ 입력 칸은 소수점 자리까지 열림", MAX_AMOUNT_LENGTH === String(MAX_AMOUNT).length + 1 + DECIMALS);
+assert("  └ 예전 4자리 한계가 아님", MAX_AMOUNT_LENGTH > 4, String(MAX_AMOUNT_LENGTH));
 
-// 그 위로는 저장하지 않는다 — 넘기면 더한 값이 어긋난다.
+// 그 위로는 저장하지 않는다.
 await store.applyBalanceChange(G, D, { tickets: MAX_AMOUNT }, { note: { source: "검사" } });
 const piled = await store.applyBalanceChange(G, D, { tickets: MAX_AMOUNT }, { note: { source: "검사" } });
+assert("한계 위로는 올라가지 않음", piled.ok && piled.after.tickets === MAX_AMOUNT, JSON.stringify(piled));
 assert(
-  "한계 위로는 올라가지 않음",
-  piled.ok && piled.after.tickets === Number.MAX_SAFE_INTEGER,
-  JSON.stringify(piled),
+  "  └ 눈금 단위로도 정수",
+  Number.isSafeInteger((await store.getBalance(G, D)).tickets * 10 ** DECIMALS),
 );
-assert("  └ 정수로 정확한 범위 안", Number.isSafeInteger((await store.getBalance(G, D)).tickets));
 
 // 아래 랭킹 검사에 끼어들지 않게 걷어 낸다 (회수가 있는 만큼만 걷는다는 것도 한 번 더 쓴다).
 await store.applyBalanceChange(G, D, { tickets: -MAX_AMOUNT }, { note: { source: "검사" }, clamp: true });
 assert("  └ 걷어 내면 0", (await store.getBalance(G, D)).tickets === 0);
+
+console.log("\n=== 1-1-3. 소수점 ===");
+//
+// 반 장도 셀 수 있어야 하지만, 부동소수점을 그대로 담으면 더할수록 어긋난다.
+// 눈금(0.01)을 정해 두고 저장 직전에 맞춘다.
+for (const [raw, expected] of [
+  ["3", 3],
+  ["0.5", 0.5],
+  ["1.25", 1.25],
+  [" 2.50 ", 2.5],
+  ["1.005", undefined],
+  ["0", undefined],
+  ["-1", undefined],
+  ["1e3", undefined],
+  ["abc", undefined],
+  [String(MAX_AMOUNT + 1), undefined],
+]) {
+  assert(`읽기: ${JSON.stringify(raw)} → ${expected}`, amount.parseAmount(raw) === expected, String(amount.parseAmount(raw)));
+}
+
+assert("눈금에 맞춤", amount.quantize(0.1 + 0.2) === 0.3, String(amount.quantize(0.1 + 0.2)));
+assert("  └ 이미 맞은 값은 그대로", amount.quantize(1.25) === 1.25);
+
+const DEC = "888888888888888880";
+for (let index = 0; index < 10; index += 1) {
+  await store.applyBalanceChange(G, DEC, { tickets: 0.1 }, { note: { source: "검사" } });
+}
+assert("0.1 을 열 번 더해도 안 어긋남", (await store.getBalance(G, DEC)).tickets === 1, String((await store.getBalance(G, DEC)).tickets));
+
+await store.applyBalanceChange(G, DEC, { tickets: -0.55 }, { note: { source: "검사" } });
+assert("  └ 소수로 걷기", (await store.getBalance(G, DEC)).tickets === 0.45, String((await store.getBalance(G, DEC)).tickets));
+
+const short = await store.applyBalanceChange(G, DEC, { tickets: -0.5 }, { note: { source: "검사" } });
+assert("  └ 모자라면 막힘", short.ok === false, JSON.stringify(short));
+
+assert("뒤에 붙는 0 은 떼고 적음", amount.formatAmount(3) === "3", amount.formatAmount(3));
+assert("  └ 소수는 그대로", amount.formatAmount(0.5) === "0.5", amount.formatAmount(0.5));
+assert("  └ 천 단위는 콤마, 소수점 아래는 그대로", amount.formatAmount(1234.25) === "1,234.25", amount.formatAmount(1234.25));
+
+await store.applyBalanceChange(G, DEC, { tickets: -100 }, { note: { source: "검사" }, clamp: true });
+
 
 console.log("\n=== 1-2. 흡혈 (빼고 → 더하기) ===");
 const V = "666666666666666666"; // 흡혈될 유저

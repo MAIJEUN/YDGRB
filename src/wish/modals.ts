@@ -11,6 +11,7 @@ import {
   UserSelectMenuBuilder,
 } from "discord.js";
 
+import { MAX_AMOUNT_LENGTH } from "./amount.js";
 import { reasonInput } from "../ui/reason.js";
 import { customId } from "../types.js";
 import {
@@ -18,7 +19,6 @@ import {
   FIELD,
   ITEM,
   ITEM_LABEL,
-  MAX_AMOUNT_DIGITS,
   MODAL_ID,
   WISH,
 } from "./ids.js";
@@ -143,14 +143,14 @@ export function grantModal(): ModalBuilder {
         ),
       new LabelBuilder()
         .setLabel("갯수")
-        .setDescription("1 이상의 정수")
+        .setDescription("0보다 큰 수 · 소수점 아래 2자리까지")
         .setTextInputComponent(
           new TextInputBuilder()
             .setCustomId(FIELD.grantAmount)
             .setStyle(TextInputStyle.Short)
-            .setPlaceholder("예: 3")
+            .setPlaceholder("예: 3 · 0.5 · 1.25")
             .setValue("1")
-            .setMaxLength(MAX_AMOUNT_DIGITS)
+            .setMaxLength(MAX_AMOUNT_LENGTH)
             .setRequired(true),
         ),
       // 모달 칸은 다섯 개가 한계다. 지급/회수 · 항목 · 유저 · 갯수 · 사유로 딱 찬다.
@@ -191,14 +191,14 @@ export function bloodModal(): ModalBuilder {
         ),
       new LabelBuilder()
         .setLabel("흡혈할 갯수")
-        .setDescription("1 이상의 정수")
+        .setDescription("0보다 큰 수 · 소수점 아래 2자리까지")
         .setTextInputComponent(
           new TextInputBuilder()
             .setCustomId(FIELD.bloodAmount)
             .setStyle(TextInputStyle.Short)
-            .setPlaceholder("예: 3")
+            .setPlaceholder("예: 3 · 0.5 · 1.25")
             .setValue("1")
-            .setMaxLength(MAX_AMOUNT_DIGITS)
+            .setMaxLength(MAX_AMOUNT_LENGTH)
             .setRequired(true),
         ),
       // 여기도 다섯 칸이 꽉 찬다 — 항목 · 빼앗길 유저 · 가져갈 유저 · 갯수 · 사유.

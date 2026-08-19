@@ -1,4 +1,5 @@
 import { clock, dayLabel, dayStamp } from "../time.js";
+import { formatAmount } from "./amount.js";
 import { ITEM, ITEM_EMOJI, ITEM_LABEL, ITEM_UNIT, type Item } from "./ids.js";
 import type { BalanceChange, HistoryDay, RankSort } from "./store.js";
 import type { Balance, LedgerEntry } from "./types.js";
@@ -14,11 +15,13 @@ export function formatBalanceChange(change: BalanceChange): string | undefined {
   const lines: string[] = [];
 
   if (change.before.tickets !== change.after.tickets) {
-    lines.push(`소원권: ${change.before.tickets}장 → ${change.after.tickets}장`);
+    lines.push(`소원권: ${formatAmount(change.before.tickets)}장 → ${formatAmount(change.after.tickets)}장`);
   }
 
   if (change.before.fragments !== change.after.fragments) {
-    lines.push(`소원권 조각: ${change.before.fragments}개 → ${change.after.fragments}개`);
+    lines.push(
+      `소원권 조각: ${formatAmount(change.before.fragments)}개 → ${formatAmount(change.after.fragments)}개`,
+    );
   }
 
   return lines.length === 0 ? undefined : lines.join("\n");
@@ -30,14 +33,14 @@ export function formatBalanceChangeFor(userId: string, change: BalanceChange): s
 }
 
 export function formatBalance(balance: Balance): string {
-  return `소원권 **${balance.tickets}장** · 소원권 조각 **${balance.fragments}개**`;
+  return `소원권 **${formatAmount(balance.tickets)}장** · 소원권 조각 **${formatAmount(balance.fragments)}개**`;
 }
 
 /** 랭킹처럼 기준이 되는 한 항목만 보여줄 때. */
 export function formatBalanceBy(balance: Balance, sort: RankSort): string {
   return sort === "tickets"
-    ? `${ITEM_LABEL.ticket} **${balance.tickets}${ITEM_UNIT.ticket}**`
-    : `${ITEM_LABEL.fragment} **${balance.fragments}${ITEM_UNIT.fragment}**`;
+    ? `${ITEM_LABEL.ticket} **${formatAmount(balance.tickets)}${ITEM_UNIT.ticket}**`
+    : `${ITEM_LABEL.fragment} **${formatAmount(balance.fragments)}${ITEM_UNIT.fragment}**`;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -46,7 +49,7 @@ export function formatBalanceBy(balance: Balance, sort: RankSort): string {
 
 /** `+3장` · `-5개` — 부호를 반드시 붙인다. 역사는 「얼마가 됐나」가 아니라 「얼마나 움직였나」다. */
 function moved(amount: number, item: Item): string {
-  return `${amount > 0 ? "+" : "−"}${Math.abs(amount)}${ITEM_UNIT[item]}`;
+  return `${amount > 0 ? "+" : "−"}${formatAmount(Math.abs(amount))}${ITEM_UNIT[item]}`;
 }
 
 /**
@@ -81,7 +84,10 @@ export function formatHistorySummary(day: HistoryDay): string {
   ] as const) {
     if (moves.gained === 0 && moves.lost === 0) continue;
 
-    const swing = [moves.gained > 0 ? `+${moves.gained}` : "", moves.lost > 0 ? `−${moves.lost}` : ""]
+    const swing = [
+      moves.gained > 0 ? `+${formatAmount(moves.gained)}` : "",
+      moves.lost > 0 ? `−${formatAmount(moves.lost)}` : "",
+    ]
       .filter((part) => part !== "")
       .join(" ");
 

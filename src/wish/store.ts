@@ -3,6 +3,7 @@ import path from "node:path";
 
 import { JsonFile } from "../storage/json-file.js";
 import { dateKey } from "../time.js";
+import { MAX_AMOUNT, quantize } from "./amount.js";
 import type {
   Balance,
   GuildData,
@@ -112,8 +113,8 @@ export interface ChangeOptions {
   readonly clamp?: boolean;
 }
 
-/** 정수로 정확히 다룰 수 있는 한계. 넘겨 두면 더한 값이 슬금슬금 어긋난다. */
-const MAX_BALANCE = Number.MAX_SAFE_INTEGER;
+/** 다룰 수 있는 한계. [수량](amount.ts)이 정한 것을 그대로 쓴다. */
+const MAX_BALANCE = MAX_AMOUNT;
 
 /**
  * 역사에 남겨 두는 최대 줄 수.
@@ -147,17 +148,21 @@ export async function applyBalanceChanges(
       }
 
       // 0 밑으로도, 정확히 셀 수 있는 한계 위로도 가지 않는다.
+      //
+      // **저장 직전에 눈금에 맞춘다.** 반 장을 몇 번 주고받으면 부동소수점이 조금씩
+      // 어긋나는데, 한 번 저장된 어긋난 값은 아무도 되돌리지 못한다. 수량이 바뀌는 곳이
+      // 여기 하나뿐이라, 여기만 지키면 저장된 값은 언제나 눈금 위에 있다.
       const after: Balance = {
-        tickets: Math.min(Math.max(wanted.tickets, 0), MAX_BALANCE),
-        fragments: Math.min(Math.max(wanted.fragments, 0), MAX_BALANCE),
+        tickets: quantize(Math.min(Math.max(wanted.tickets, 0), MAX_BALANCE)),
+        fragments: quantize(Math.min(Math.max(wanted.fragments, 0), MAX_BALANCE)),
       };
 
       guild.balances[userId] = after;
       results.set(userId, { ok: true, before, after });
 
       // 아무것도 안 바뀐 변동은 역사가 아니다 (0을 더하거나, 이미 0인 데서 걷었거나).
-      const tickets = after.tickets - before.tickets;
-      const fragments = after.fragments - before.fragments;
+      const tickets = quantize(after.tickets - before.tickets);
+      const fragments = quantize(after.fragments - before.fragments);
       if (tickets === 0 && fragments === 0) continue;
 
       guild.history.push({
@@ -215,8 +220,9 @@ function emptyMoves(): { gained: number; lost: number } {
 }
 
 function addMove(into: { gained: number; lost: number }, amount: number): void {
-  if (amount > 0) into.gained += amount;
-  else into.lost -= amount;
+  // 여러 줄을 더하는 동안 어긋난 끝자리는 마지막에 털어 낸다.
+  if (amount > 0) into.gained = quantize(into.gained + amount);
+  else into.lost = quantize(into.lost - amount);
 }
 
 /**

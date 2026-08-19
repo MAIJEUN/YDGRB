@@ -8,9 +8,17 @@ import type { Guild } from "discord.js";
  * 시각은 여기서 다루지 않는다 — 반드시 [time.ts](../time.ts) 의 타임스탬프 마크다운을 쓴다.
  */
 
-/** `1234` → `1,234`. 숫자 서식이라 날짜와 달리 로케일 API 를 쓰지 않는다. */
+/**
+ * `1234` → `1,234` · `1234.5` → `1,234.5`
+ *
+ * 숫자 서식이라 날짜와 달리 로케일 API 를 쓰지 않는다.
+ * **소수점 아래는 건드리지 않는다** — 콤마는 정수 자리를 세는 것이지 자릿수를 세는 것이 아니다.
+ */
 export function count(value: number): string {
-  return value.toString().replace(/\B(?=(\d{3})+(?!\d))/gu, ",");
+  const [whole = "", fraction] = value.toString().split(".");
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/gu, ",");
+
+  return fraction === undefined ? grouped : `${grouped}.${fraction}`;
 }
 
 /** 값이 없으면 「없음」. 빈 칸을 만들지 않기 위해. */

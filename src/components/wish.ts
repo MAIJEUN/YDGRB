@@ -1,7 +1,6 @@
 import { MessageFlags, PermissionFlagsBits } from "discord.js";
 import type { ModalBuilder, ModalSubmitInteraction, User } from "discord.js";
 
-import { count } from "../info/format.js";
 import { logger } from "../logger.js";
 import { reasonField, readModalReason } from "../ui/reason.js";
 import { channelMessage, response, updateResponse, type MessageOptions } from "../ui/response.js";
@@ -14,6 +13,7 @@ import {
   retained,
   toUploadFiles,
 } from "../wish/attachments.js";
+import { amountError, formatAmount, parseAmount } from "../wish/amount.js";
 import { formatBalance, formatBalanceChange, formatBalanceChangeFor } from "../wish/format.js";
 import {
   ACTION,
@@ -22,7 +22,6 @@ import {
   ITEM,
   ITEM_LABEL,
   ITEM_UNIT,
-  MAX_AMOUNT,
   MODAL_ID,
   PANEL,
   WISH,
@@ -805,7 +804,7 @@ async function submitGrant(interaction: ComponentInteraction, guildId: string): 
       status,
       // 회수는 적은 만큼 다 걷히지 않을 수 있으므로 「최대」 라고 적는다.
       title: `수수 — ${label}`,
-      description: `${ITEM_LABEL[item]} **${taking ? "최대 " : ""}${count(amount)}${ITEM_UNIT[item]}** · 대상 ${userIds.length}명 중 ${changed.length}명 처리`,
+      description: `${ITEM_LABEL[item]} **${taking ? "최대 " : ""}${formatAmount(amount)}${ITEM_UNIT[item]}** · 대상 ${userIds.length}명 중 ${changed.length}명 처리`,
       fields: [
         ...(rejected.length > 0 ? [{ name: "처리하지 못함", value: rejected.join("\n") }] : []),
         // 사유는 늘 맨 끝이다 — 패널티 쪽과 같은 자리.
@@ -832,24 +831,6 @@ function adminFailure(
     panel: PANEL.admin,
     isAdmin: isAdmin(interaction),
   });
-}
-
-/**
- * 갯수 입력 검증 — 1 이상의 정수.
- *
- * 위 한계는 자바스크립트가 정수로 **정확히** 다룰 수 있는 최대값이다. 그보다 크게 적으면
- * 저장된 수가 슬금슬금 어긋나므로 거기서 끊는다.
- */
-function parseAmount(raw: string): number | undefined {
-  const trimmed = raw.trim();
-  if (!/^\d+$/.test(trimmed)) return undefined;
-
-  const amount = Number.parseInt(trimmed, 10);
-  return amount >= 1 && amount <= MAX_AMOUNT ? amount : undefined;
-}
-
-function amountError(raw: string): string {
-  return speak(`갯수는 1 이상 ${count(MAX_AMOUNT)} 이하의 정수여야 해요. (입력: \`${raw.trim()}\`)`);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -936,7 +917,7 @@ async function submitBlood(interaction: ComponentInteraction, guildId: string): 
     noticeView({
       status: "success",
       title: "흡혈",
-      description: `${ITEM_LABEL[item]} **${amount}${ITEM_UNIT[item]}** · <@${from}> → <@${to}>`,
+      description: `${ITEM_LABEL[item]} **${formatAmount(amount)}${ITEM_UNIT[item]}** · <@${from}> → <@${to}>`,
       fields: reasonField(reason),
       balance: [formatBalanceChangeFor(from, drained), formatBalanceChangeFor(to, gained)].join("\n\n"),
       user: interaction.user,
