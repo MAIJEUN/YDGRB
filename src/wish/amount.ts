@@ -8,7 +8,7 @@ import { speak } from "../ui/tone.js";
  * `0.1 + 0.2` 가 `0.3` 이 아니고, 더할수록 조금씩 어긋난다. 소원권은 사람이 세는 것이라
  * 어긋난 값이 한 번 저장되면 아무도 되돌리지 못한다.
  *
- * 그래서 **눈금을 정해 두고 그 배수만** 존재하게 한다 — 소수점 아래 둘째 자리, 곧 0.01 이다.
+ * 그래서 **눈금을 정해 두고 그 배수만** 존재하게 한다 — 소수점 아래 첫째 자리, 곧 0.1 이다.
  * 수량이 바뀌는 [단 하나의 통로](store.ts)가 저장 직전에 눈금에 맞추므로, 저장된 값은
  * 언제나 눈금 위에 있다.
  *
@@ -17,10 +17,16 @@ import { speak } from "../ui/tone.js";
  */
 
 /** 소수점 아래 자릿수. */
-export const DECIMALS = 2;
+export const DECIMALS = 1;
 
 /** 눈금 — 모든 수량은 `1/STEP` 의 배수다. */
 const STEP = 10 ** DECIMALS;
+
+/** 가장 작은 수량. 입력 칸 설명과 안내가 같은 값을 말하도록 여기서 뽑는다. */
+export const SMALLEST_AMOUNT = 1 / STEP;
+
+/** 입력 칸에 적어 줄 한 줄. 표를 고치면 화면도 따라 바뀐다. */
+export const AMOUNT_HINT = `0보다 큰 수 · 소수점 아래 ${DECIMALS}자리까지`;
 
 /**
  * 다룰 수 있는 가장 큰 수량.
@@ -52,7 +58,7 @@ export function quantize(value: number): number {
 export function parseAmount(raw: string): number | undefined {
   const trimmed = raw.trim();
 
-  // 부호도 지수도 받지 않는다. 「3」 · 「0.5」 · 「1.25」 만.
+  // 부호도 지수도 받지 않는다. 「3」 · 「0.5」 만.
   if (!/^\d+(?:\.\d+)?$/u.test(trimmed)) return undefined;
 
   const fraction = trimmed.split(".")[1] ?? "";

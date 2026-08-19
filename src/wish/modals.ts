@@ -11,7 +11,7 @@ import {
   UserSelectMenuBuilder,
 } from "discord.js";
 
-import { MAX_AMOUNT_LENGTH } from "./amount.js";
+import { AMOUNT_HINT, MAX_AMOUNT_LENGTH } from "./amount.js";
 import { reasonInput } from "../ui/reason.js";
 import { customId } from "../types.js";
 import {
@@ -143,12 +143,12 @@ export function grantModal(): ModalBuilder {
         ),
       new LabelBuilder()
         .setLabel("갯수")
-        .setDescription("0보다 큰 수 · 소수점 아래 2자리까지")
+        .setDescription(AMOUNT_HINT)
         .setTextInputComponent(
           new TextInputBuilder()
             .setCustomId(FIELD.grantAmount)
             .setStyle(TextInputStyle.Short)
-            .setPlaceholder("예: 3 · 0.5 · 1.25")
+            .setPlaceholder("예: 3 · 0.5")
             .setValue("1")
             .setMaxLength(MAX_AMOUNT_LENGTH)
             .setRequired(true),
@@ -191,12 +191,12 @@ export function bloodModal(): ModalBuilder {
         ),
       new LabelBuilder()
         .setLabel("흡혈할 갯수")
-        .setDescription("0보다 큰 수 · 소수점 아래 2자리까지")
+        .setDescription(AMOUNT_HINT)
         .setTextInputComponent(
           new TextInputBuilder()
             .setCustomId(FIELD.bloodAmount)
             .setStyle(TextInputStyle.Short)
-            .setPlaceholder("예: 3 · 0.5 · 1.25")
+            .setPlaceholder("예: 3 · 0.5")
             .setValue("1")
             .setMaxLength(MAX_AMOUNT_LENGTH)
             .setRequired(true),

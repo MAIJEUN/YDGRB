@@ -113,12 +113,13 @@ assert("  └ 걷어 내면 0", (await store.getBalance(G, D)).tickets === 0);
 console.log("\n=== 1-1-3. 소수점 ===");
 //
 // 반 장도 셀 수 있어야 하지만, 부동소수점을 그대로 담으면 더할수록 어긋난다.
-// 눈금(0.01)을 정해 두고 저장 직전에 맞춘다.
+// 눈금을 정해 두고 저장 직전에 맞춘다.
 for (const [raw, expected] of [
   ["3", 3],
   ["0.5", 0.5],
-  ["1.25", 1.25],
-  [" 2.50 ", 2.5],
+  ["0.1", 0.1],
+  [" 2.5 ", 2.5],
+  ["1.25", undefined],
   ["1.005", undefined],
   ["0", undefined],
   ["-1", undefined],
@@ -130,7 +131,10 @@ for (const [raw, expected] of [
 }
 
 assert("눈금에 맞춤", amount.quantize(0.1 + 0.2) === 0.3, String(amount.quantize(0.1 + 0.2)));
-assert("  └ 이미 맞은 값은 그대로", amount.quantize(1.25) === 1.25);
+assert("  └ 눈금보다 잘면 안 받음", amount.parseAmount(String(amount.SMALLEST_AMOUNT / 10)) === undefined);
+assert("  └ 눈금 하나는 받음", amount.parseAmount(String(amount.SMALLEST_AMOUNT)) === amount.SMALLEST_AMOUNT);
+assert("입력 칸 안내가 표를 따라감", amount.AMOUNT_HINT.includes(`${DECIMALS}자리`), amount.AMOUNT_HINT);
+assert("  └ 이미 맞은 값은 그대로", amount.quantize(1.5) === 1.5);
 
 const DEC = "888888888888888880";
 for (let index = 0; index < 10; index += 1) {
@@ -138,15 +142,15 @@ for (let index = 0; index < 10; index += 1) {
 }
 assert("0.1 을 열 번 더해도 안 어긋남", (await store.getBalance(G, DEC)).tickets === 1, String((await store.getBalance(G, DEC)).tickets));
 
-await store.applyBalanceChange(G, DEC, { tickets: -0.55 }, { note: { source: "검사" } });
-assert("  └ 소수로 걷기", (await store.getBalance(G, DEC)).tickets === 0.45, String((await store.getBalance(G, DEC)).tickets));
+await store.applyBalanceChange(G, DEC, { tickets: -0.4 }, { note: { source: "검사" } });
+assert("  └ 소수로 걷기", (await store.getBalance(G, DEC)).tickets === 0.6, String((await store.getBalance(G, DEC)).tickets));
 
-const short = await store.applyBalanceChange(G, DEC, { tickets: -0.5 }, { note: { source: "검사" } });
+const short = await store.applyBalanceChange(G, DEC, { tickets: -0.7 }, { note: { source: "검사" } });
 assert("  └ 모자라면 막힘", short.ok === false, JSON.stringify(short));
 
 assert("뒤에 붙는 0 은 떼고 적음", amount.formatAmount(3) === "3", amount.formatAmount(3));
 assert("  └ 소수는 그대로", amount.formatAmount(0.5) === "0.5", amount.formatAmount(0.5));
-assert("  └ 천 단위는 콤마, 소수점 아래는 그대로", amount.formatAmount(1234.25) === "1,234.25", amount.formatAmount(1234.25));
+assert("  └ 천 단위는 콤마, 소수점 아래는 그대로", amount.formatAmount(1234.5) === "1,234.5", amount.formatAmount(1234.5));
 
 await store.applyBalanceChange(G, DEC, { tickets: -100 }, { note: { source: "검사" }, clamp: true });
 
