@@ -1,18 +1,26 @@
-// 패널티 명령의 [사유] 칸 — 규칙 검증.
+// [사유] 칸 — 규칙 검증.
 //
-// 규칙: **모든 패널티 명령에 선택 옵션 「사유」 가 있다.** 적은 사유는 세 곳으로 간다 —
-// 응답의 칸 · 디스코드 감사 로그 · 나중에 풀릴 때의 종료 안내.
+// 남에게 무언가를 하는 명령은 왜 그랬는지 적을 수 있다. 두 갈래다 —
 //
-// 명령마다 이름이나 모양이 갈라지면 쓰는 사람이 매번 다시 읽어야 하므로,
-// 여기서 두 명령을 한꺼번에 본다.
+//   패널티 (타임아웃 · 타살버)  슬래시 옵션으로 받고, 응답 · 감사 로그 · 종료 안내로 간다
+//   소원권 변동 (수수 · 흡혈)   모달 칸으로 받고, 그 자리 결과 안내로만 간다
+//
+// 이름도 길이도 모양도 같아야 한다. 명령마다 갈라지면 쓰는 사람이 매번 다시 읽어야 하므로
+// 여기서 한꺼번에 본다.
 import { DIST, PROJECT, assert, finish } from "./_harness.mjs";
 
 const { readFileSync } = await import("node:fs");
 const read = (rel) => readFileSync(`${PROJECT}/${rel}`, "utf8");
 
-const { MAX_REASON_LENGTH, REASON_OPTION, auditReason, readReason, reasonField } = await import(
-  `${DIST}/ui/reason.js`
-);
+const {
+  MAX_REASON_LENGTH,
+  REASON_OPTION,
+  auditReason,
+  readModalReason,
+  readReason,
+  reasonField,
+  reasonInput,
+} = await import(`${DIST}/ui/reason.js`);
 
 /**
  * 패널티 명령 — **사람에게 벌로 거는** 것들.
@@ -164,5 +172,92 @@ assert("사유 칸을 손으로 만드는 곳 없음", handMade.length === 0, ha
 
 const handMadeOption = PENALTIES.filter((penalty) => /setName\("사유"\)/u.test(read(penalty.file)));
 assert("  └ 옵션도 손으로 만들지 않음", handMadeOption.length === 0, handMadeOption.map((p) => p.file).join(", "));
+
+console.log("\n=== 8. 소원권 변동 (모달) ===");
+//
+// 수수와 흡혈은 남의 보유량을 바꾼다. 왜 바꿨는지가 남지 않으면 나중에 아무도 모른다.
+// 슬래시가 아니라 모달인 것은 소원권이 원래 패널·모달로 도는 시스템이기 때문이다.
+{
+  const modals = await import(`${DIST}/wish/modals.js`);
+  const { FIELD } = await import(`${DIST}/wish/ids.js`);
+
+  /** 모달 칸 하나를 이름으로 집는다. */
+  const labelOf = (modal, name) =>
+    modal.toJSON().components.find((component) => component.label === name);
+
+  for (const [label, modal, field] of [
+    ["수수", modals.grantModal(), FIELD.grantReason],
+    ["흡혈", modals.bloodModal(), FIELD.bloodReason],
+  ]) {
+    const json = modal.toJSON();
+    const found = labelOf(modal, REASON_OPTION);
+
+    assert(`${label} 모달에 사유 칸`, found !== undefined, JSON.stringify(json.components.map((c) => c.label)));
+    if (found === undefined) continue;
+
+    assert("  └ 선택 칸", found.component.required === false, String(found.component.required));
+    assert("  └ 한 줄 글자 칸", found.component.type === 4 && found.component.style === 1);
+    assert(
+      `  └ 길이는 슬래시 쪽과 같음 (${MAX_REASON_LENGTH})`,
+      found.component.max_length === MAX_REASON_LENGTH,
+      String(found.component.max_length),
+    );
+    assert("  └ 필드 id 가 맞음", found.component.custom_id === field, found.component.custom_id);
+    assert("  └ 맨 끝 칸", json.components.at(-1).label === REASON_OPTION, json.components.at(-1).label);
+
+    // 디스코드는 모달에 칸을 다섯 개까지만 받는다. 하나 더 붙이면 그 모달이 통째로 안 뜬다.
+    assert(
+      `  └ 칸이 다섯을 안 넘음 (${json.components.length}개)`,
+      json.components.length <= 5,
+      String(json.components.length),
+    );
+  }
+
+  // 제 것을 제가 쓰는 일에는 사유가 없다 — 누구에게 설명할 것도 없다.
+  for (const [label, modal] of [
+    ["낭비", modals.wasteModal()],
+    ["소원 빌기", modals.useModal()],
+    ["설정", modals.configModal({ wishChannelId: null, fragmentsPerTicket: 5 })],
+  ]) {
+    assert(`${label} 모달에는 사유 칸이 없음`, labelOf(modal, REASON_OPTION) === undefined);
+  }
+
+  assert("사유 칸을 손으로 만들지 않음", !read("src/wish/modals.ts").includes('setLabel("사유")'));
+  assert("  └ 공용 헬퍼를 씀", read("src/wish/modals.ts").includes("reasonInput("));
+}
+
+console.log("\n=== 8-1. 모달에서 읽기 ===");
+{
+  const fake = (value) => ({ fields: { getTextInputValue: () => value } });
+
+  assert("적으면 그대로", readModalReason(fake("생일 선물"), "x") === "생일 선물");
+  assert("  └ 앞뒤 공백은 떼고", readModalReason(fake("  생일 선물  "), "x") === "생일 선물");
+  assert("  └ 줄바꿈은 한 줄로", readModalReason(fake("첫 줄\n둘째 줄"), "x") === "첫 줄 둘째 줄");
+  assert("  └ 안 적었으면 null", readModalReason(fake(""), "x") === null);
+  assert("  └ 공백만 있어도 null", readModalReason(fake("   "), "x") === null);
+
+  const long = readModalReason(fake("가".repeat(500)), "x");
+  assert("  └ 슬래시 쪽과 같은 길이로 자름", long.length === MAX_REASON_LENGTH, String(long.length));
+  assert("    · 잘렸다고 표시", long.endsWith("..."));
+}
+
+console.log("\n=== 8-2. 결과 안내에 나오는가 ===");
+{
+  const source = read("src/components/wish.ts");
+
+  assert("수수가 사유를 읽음", source.includes("readModalReason(interaction, FIELD.grantReason)"));
+  assert("흡혈도", source.includes("readModalReason(interaction, FIELD.bloodReason)"));
+  assert("  └ 결과 칸으로 넘김", source.split("reasonField(reason)").length - 1 === 2);
+
+  // 결과는 채널에도 공개된다 — 사유가 거기까지 따라가야 뜻이 있다.
+  assert("결과가 채널에 공개됨", source.includes("replaceViewAndAnnounce"));
+
+  // 저장은 하지 않는다. 그 자리에서 끝나는 일이라 나중에 되짚을 안내가 없다.
+  assert("저장 형식에는 없음", !read("src/wish/types.ts").includes("reason"));
+  assert(
+    "  └ 수량 변경 통로도 안 받음",
+    !/BalanceDelta[sS]*?reason/u.test(read("src/wish/store.ts")),
+  );
+}
 
 finish();

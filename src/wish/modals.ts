@@ -11,6 +11,7 @@ import {
   UserSelectMenuBuilder,
 } from "discord.js";
 
+import { reasonInput } from "../ui/reason.js";
 import { customId } from "../types.js";
 import {
   DIRECTION,
@@ -24,6 +25,14 @@ import {
 import { MAX_FRAGMENTS_PER_TICKET, MIN_FRAGMENTS_PER_TICKET } from "./store.js";
 import type { GuildSettings } from "./types.js";
 import { speak } from "../ui/tone.js";
+
+/**
+ * 소원권 변동의 사유 칸 설명.
+ *
+ * 패널티와 달리 감사 로그로는 안 간다 — 디스코드가 남기는 것은 서버 설정 변경이지
+ * 봇이 세는 수가 아니다. 그래서 「어디에 남는가」를 여기서 분명히 적어 준다.
+ */
+const REASON_NOTE = speak("선택 · 왜 주고받는지. 결과 안내에 그대로 남습니다");
 
 /** 소원권/조각 중 하나를 고르는 셀렉트 — 낭비와 수수에서 같은 모양으로 쓴다. */
 function itemSelect(id: string, placeholder: string): StringSelectMenuBuilder {
@@ -143,6 +152,8 @@ export function grantModal(): ModalBuilder {
             .setMaxLength(MAX_AMOUNT_DIGITS)
             .setRequired(true),
         ),
+      // 모달 칸은 다섯 개가 한계다. 지급/회수 · 항목 · 유저 · 갯수 · 사유로 딱 찬다.
+      reasonInput(FIELD.grantReason, REASON_NOTE),
     );
 }
 
@@ -189,6 +200,8 @@ export function bloodModal(): ModalBuilder {
             .setMaxLength(MAX_AMOUNT_DIGITS)
             .setRequired(true),
         ),
+      // 여기도 다섯 칸이 꽉 찬다 — 항목 · 빼앗길 유저 · 가져갈 유저 · 갯수 · 사유.
+      reasonInput(FIELD.bloodReason, REASON_NOTE),
     );
 }
 

@@ -3,6 +3,7 @@ import type { ModalBuilder, ModalSubmitInteraction, User } from "discord.js";
 
 import { count } from "../info/format.js";
 import { logger } from "../logger.js";
+import { reasonField, readModalReason } from "../ui/reason.js";
 import { channelMessage, response, updateResponse, type MessageOptions } from "../ui/response.js";
 import { defineComponentHandler, type ComponentInteraction } from "../types.js";
 import {
@@ -714,6 +715,7 @@ async function submitGrant(interaction: ComponentInteraction, guildId: string): 
   const item = interaction.fields.getStringSelectValues(FIELD.grantItem)[0];
   const targets = interaction.fields.getSelectedUsers(FIELD.grantUsers);
   const rawAmount = interaction.fields.getTextInputValue(FIELD.grantAmount);
+  const reason = readModalReason(interaction, FIELD.grantReason);
 
   if (!isDirection(direction) || !isItem(item)) {
     await replaceView(
@@ -765,7 +767,11 @@ async function submitGrant(interaction: ComponentInteraction, guildId: string): 
       // 회수는 적은 만큼 다 걷히지 않을 수 있으므로 「최대」 라고 적는다.
       title: `수수 — ${label}`,
       description: `${ITEM_LABEL[item]} **${taking ? "최대 " : ""}${count(amount)}${ITEM_UNIT[item]}** · 대상 ${userIds.length}명 중 ${changed.length}명 처리`,
-      fields: rejected.length > 0 ? [{ name: "처리하지 못함", value: rejected.join("\n") }] : undefined,
+      fields: [
+        ...(rejected.length > 0 ? [{ name: "처리하지 못함", value: rejected.join("\n") }] : []),
+        // 사유는 늘 맨 끝이다 — 패널티 쪽과 같은 자리.
+        ...reasonField(reason),
+      ],
       balance: changed.length > 0 ? changed.join("\n\n") : undefined,
       user: interaction.user,
       panel: PANEL.admin,
@@ -827,6 +833,7 @@ async function submitBlood(interaction: ComponentInteraction, guildId: string): 
   const from = firstSelectedUser(interaction, FIELD.bloodFrom);
   const to = firstSelectedUser(interaction, FIELD.bloodTo);
   const rawAmount = interaction.fields.getTextInputValue(FIELD.bloodAmount);
+  const reason = readModalReason(interaction, FIELD.bloodReason);
 
   if (!isItem(item) || from === undefined || to === undefined) {
     await replaceView(
@@ -885,6 +892,7 @@ async function submitBlood(interaction: ComponentInteraction, guildId: string): 
       status: "success",
       title: "흡혈",
       description: `${ITEM_LABEL[item]} **${amount}${ITEM_UNIT[item]}** · <@${from}> → <@${to}>`,
+      fields: reasonField(reason),
       balance: [formatBalanceChangeFor(from, drained), formatBalanceChangeFor(to, gained)].join("\n\n"),
       user: interaction.user,
       panel: PANEL.admin,

@@ -1,18 +1,29 @@
-import type { ChatInputCommandInteraction, SlashCommandStringOption } from "discord.js";
+import { LabelBuilder, TextInputBuilder, TextInputStyle } from "discord.js";
+import type {
+  ChatInputCommandInteraction,
+  ModalSubmitInteraction,
+  SlashCommandStringOption,
+} from "discord.js";
 
 import type { ResponseField } from "./response.js";
 import { speak } from "./tone.js";
 
 /**
- * 패널티 명령의 **사유** 칸.
+ * **사유** 칸 — 남에게 무언가를 하는 명령이 왜 그랬는지 남기는 자리.
  *
- * 타임아웃 · 타살버 · 뚜따이 · 채팅뻥이 모두 같은 이름 · 같은 모양으로 받는다.
- * 명령마다 다르게 생기면 쓰는 사람이 매번 다시 읽어야 한다.
+ * 패널티(타임아웃 · 타살버)와 [소원권 변동](../wish/modals.ts)(수수 · 흡혈)이 모두 같은
+ * 이름 · 같은 길이 · 같은 모양으로 받는다. 명령마다 다르게 생기면 쓰는 사람이 매번 다시
+ * 읽어야 한다.
  *
- * 적은 사유는 세 곳으로 간다 —
- *   1. 응답의 「사유」 칸
- *   2. 디스코드 **감사 로그** (서버 설정에서 나중에 되짚을 수 있다)
- *   3. 나중에 풀릴 때의 **종료 안내** (그러려면 저장해 둬야 한다)
+ * 받는 방식만 두 가지다 — 슬래시 옵션(`reasonOption`)과 모달 칸(`reasonInput`).
+ * 그 명령이 이미 쓰는 쪽에 맞춘다.
+ *
+ * 적은 사유가 가는 곳은 그 명령이 정한다 —
+ *   · 어디서나  응답의 「사유」 칸 (`reasonField`)
+ *   · 패널티만  디스코드 **감사 로그** (`auditReason`)
+ *   · 패널티만  나중에 풀릴 때의 **종료 안내** (그러려면 저장해 둬야 한다)
+ *
+ * 소원권 변동은 그 자리에서 끝나는 일이라 저장하지 않는다. 나중에 되짚을 안내가 없다.
  */
 
 export const REASON_OPTION = "사유";
@@ -32,15 +43,46 @@ export function reasonOption(option: SlashCommandStringOption): SlashCommandStri
 }
 
 /**
- * 적은 사유를 읽는다. 안 적었으면 null.
+ * 적은 사유를 다듬는다. 비어 있으면 null.
  *
  * 줄바꿈은 칸 하나를 세로로 늘려 버리므로 한 줄로 눌러 담는다.
  */
-export function readReason(interaction: ChatInputCommandInteraction): string | null {
-  const raw = interaction.options.getString(REASON_OPTION)?.replaceAll(/\s+/gu, " ").trim() ?? "";
-  if (raw === "") return null;
+function normalizeReason(raw: string | null | undefined): string | null {
+  const tidy = raw?.replaceAll(/\s+/gu, " ").trim() ?? "";
+  if (tidy === "") return null;
 
-  return raw.length > MAX_REASON_LENGTH ? `${raw.slice(0, MAX_REASON_LENGTH - 3)}...` : raw;
+  return tidy.length > MAX_REASON_LENGTH ? `${tidy.slice(0, MAX_REASON_LENGTH - 3)}...` : tidy;
+}
+
+/** 슬래시 옵션에서 사유를 읽는다. */
+export function readReason(interaction: ChatInputCommandInteraction): string | null {
+  return normalizeReason(interaction.options.getString(REASON_OPTION));
+}
+
+/**
+ * 모달로 받는 사유. 슬래시 쪽과 **같은 이름 · 같은 길이**를 쓴다.
+ *
+ * 왜 적는지는 명령마다 달라서 설명만 받는다 — 패널티는 감사 로그에 남고, 소원권 변동은
+ * 그 자리 안내에만 남는다.
+ *
+ * 모달에는 칸을 다섯 개까지만 넣을 수 있다. 사유를 붙일 때 그 수를 넘지 않는지 보라.
+ */
+export function reasonInput(fieldId: string, description: string): LabelBuilder {
+  return new LabelBuilder()
+    .setLabel(REASON_OPTION)
+    .setDescription(description)
+    .setTextInputComponent(
+      new TextInputBuilder()
+        .setCustomId(fieldId)
+        .setStyle(TextInputStyle.Short)
+        .setMaxLength(MAX_REASON_LENGTH)
+        .setRequired(false),
+    );
+}
+
+/** 모달에서 사유를 읽는다. 안 적었으면 null. */
+export function readModalReason(interaction: ModalSubmitInteraction, fieldId: string): string | null {
+  return normalizeReason(interaction.fields.getTextInputValue(fieldId));
 }
 
 /** 응답의 「사유」 칸. 안 적었으면 칸 자체를 만들지 않는다. */

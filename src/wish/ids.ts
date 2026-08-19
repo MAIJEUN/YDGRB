@@ -48,11 +48,13 @@ export const FIELD = {
   grantItem: "grant_item",
   grantUsers: "grant_users",
   grantAmount: "grant_amount",
+  grantReason: "grant_reason",
   /** 흡혈 — from 이 빼앗기고 to 가 가져간다. */
   bloodItem: "blood_item",
   bloodFrom: "blood_from",
   bloodTo: "blood_to",
   bloodAmount: "blood_amount",
+  bloodReason: "blood_reason",
   configChannel: "config_channel",
   fragmentsPerTicket: "config_fragments_per_ticket",
 } as const;
