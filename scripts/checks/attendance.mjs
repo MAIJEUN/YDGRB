@@ -328,7 +328,12 @@ assert("덤은 출헉으로 세지 않음", /if \(extraId !== undefined\) \{\s*a
 assert("  └ checkIn 보다 먼저 빠져나감", componentSource.indexOf("extraSuccessView") < componentSource.indexOf("await checkIn("));
 assert("덤 올리기도 관리자만", componentSource.includes("PermissionFlagsBits.Administrator"));
 assert("  └ 정답은 customId 가 아니라 저장소에서", componentSource.includes("await getExtra(guildId, extraId)"));
-assert("4의 배수면 조각 지급", componentSource.includes("applyBalanceChange(guildId, interaction.user.id"));
+assert("4의 배수면 조각 지급", componentSource.includes("fragments: REWARD_FRAGMENTS"));
+assert(
+  "  └ 역사에 왜 늘었는지 남김",
+  componentSource.includes('note: { source: "출헉 보상"'),
+  "사람이 사유를 적을 자리가 없는 시스템이라 여기서 대신 남긴다",
+);
 assert("  └ 소원권 저장소를 그대로 씀", componentSource.includes('from "../wish/store.js"'));
 
 const { collectComponentHandlers } = await import(`${DIST}/loaders/components.js`);

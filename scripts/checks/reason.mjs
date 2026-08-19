@@ -252,11 +252,12 @@ console.log("\n=== 8-2. 결과 안내에 나오는가 ===");
   // 결과는 채널에도 공개된다 — 사유가 거기까지 따라가야 뜻이 있다.
   assert("결과가 채널에 공개됨", source.includes("replaceViewAndAnnounce"));
 
-  // 저장은 하지 않는다. 그 자리에서 끝나는 일이라 나중에 되짚을 안내가 없다.
-  assert("저장 형식에는 없음", !read("src/wish/types.ts").includes("reason"));
+  // 역사에 남는다 — 날짜별로 다시 들춰 볼 수 있어야 사유를 적는 뜻이 있다.
+  assert("역사 한 줄에 사유 자리", read("src/wish/types.ts").includes("readonly reason: string | null;"));
+  assert("  └ 수량 변경 통로가 받아 둠", read("src/wish/store.ts").includes("readonly note: ChangeNote;"));
   assert(
-    "  └ 수량 변경 통로도 안 받음",
-    !/BalanceDelta[sS]*?reason/u.test(read("src/wish/store.ts")),
+    "  └ 사람이 안 적어도 무엇이 바꿨는지는 남음",
+    read("src/wish/store.ts").includes("readonly source: string;"),
   );
 }
 

@@ -17,6 +17,15 @@ export const ACTION = {
   rankPage: "rankpage",
   /** 공개된 랭킹의 기준 드롭다운 — `wish:ranksort:<페이지>` (고른 값이 정렬 기준) */
   rankSort: "ranksort",
+  /**
+   * 확인 화면에서 **역사를 펼치고 접는** 버튼 — `wish:hist:<유저>:<0|1>`
+   *
+   * 마지막 자리는 **눌렀을 때 갈 상태**다. 지금 상태를 싣고 뒤집으면, 같은 화면을 두 사람이
+   * 동시에 볼 때 서로 반대로 열린다.
+   */
+  history: "hist",
+  /** 펼쳐진 역사의 날짜 드롭다운 — `wish:histday:<유저>` (고른 값이 날짜) */
+  historyDay: "histday",
   craft: "craft",
   use: "use",
   waste: "waste",
@@ -70,6 +79,23 @@ export type Direction = (typeof DIRECTION)[keyof typeof DIRECTION];
 
 /** 랭킹 한 페이지에 보여줄 인원. */
 export const RANK_PAGE_SIZE = 10;
+
+/** 드롭다운 하나가 받는 최대 항목 수 — 디스코드가 정한 값이다. */
+export const MAX_SELECT_OPTIONS = 25;
+
+/**
+ * 역사 화면 한 장에 늘어놓는 최대 줄 수.
+ *
+ * 컨테이너 글자 수에는 한계가 있고, 스무 줄이 넘어가면 어차피 눈으로 훑지 못한다.
+ * 넘치면 **이른 것부터** 자른다 — 하루를 위에서 아래로 읽으므로 끝이 남아야 한다.
+ */
+export const MAX_HISTORY_LINES = 20;
+
+/** 역사처럼 한 줄에 여러 항목이 늘어설 때 이름 대신 쓴다. */
+export const ITEM_EMOJI: Record<Item, string> = {
+  ticket: "🎫",
+  fragment: "🧩",
+};
 
 export const ITEM_LABEL: Record<Item, string> = {
   ticket: "소원권",

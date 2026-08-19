@@ -1,10 +1,24 @@
 import type { User } from "discord.js";
 
 import type { MessageOptions, ResponseField, Status } from "../ui/response.js";
-import { formatBalance, formatBalanceBy } from "./format.js";
-import { PANEL, RANK_PAGE_SIZE, type PanelKind } from "./ids.js";
-import { checkRows, panelRows, panelSwitchButton, rankRows } from "./panels.js";
-import { getBalance, getRanking, getSettings, type RankSort } from "./store.js";
+import { day } from "../time.js";
+import {
+  formatBalance,
+  formatBalanceBy,
+  formatHistorySummary,
+  formatLedgerEntry,
+  historyDayStamp,
+} from "./format.js";
+import { MAX_HISTORY_LINES, PANEL, RANK_PAGE_SIZE, type PanelKind } from "./ids.js";
+import { checkRows, historyRows, panelRows, panelSwitchButton, rankRows } from "./panels.js";
+import {
+  getBalance,
+  getHistoryDays,
+  getHistoryOf,
+  getRanking,
+  getSettings,
+  type RankSort,
+} from "./store.js";
 import { speak } from "../ui/tone.js";
 
 /**
@@ -72,14 +86,23 @@ export async function panelView(
   };
 }
 
+/**
+ * 확인 — 한 사람의 보유 현황.
+ *
+ * `showHistory` 를 켜면 아래에 **날짜 드롭다운**이 하나 더 붙는다. 무엇을 보는지는
+ * 그대로고, 고를 것이 하나 늘어날 뿐이다.
+ */
 export async function checkView(
   guildId: string,
   targetId: string,
   user: User,
+  showHistory = false,
 ): Promise<MessageOptions> {
   const balance = await getBalance(guildId, targetId);
   const { fragmentsPerTicket } = await getSettings(guildId);
   const craftable = Math.floor(balance.fragments / fragmentsPerTicket);
+
+  const days = showHistory ? await getHistoryDays(guildId) : [];
 
   return {
     status: "info",
@@ -91,9 +114,52 @@ export async function checkView(
         name: "제작 가능",
         value: `${craftable}장 _(조각 ${fragmentsPerTicket}개당 소원권 1장)_`,
       },
+      // 펼쳤는데 아무것도 없으면 그 말을 해 준다. 빈 드롭다운을 눌러 보게 두지 않는다.
+      ...(showHistory && days.length === 0
+        ? [{ name: "역사", value: speak("_아직 소원권이 오간 적이 없습니다._") }]
+        : []),
     ],
     user,
-    rows: checkRows(),
+    rows: checkRows(targetId, showHistory, days),
+  };
+}
+
+/**
+ * 역사 — 하루치 변동 전부.
+ *
+ * **서버 전체**를 본다. 확인 화면이 한 사람을 보는 것과 달리, 소원권이 어떻게 돌았는지는
+ * 주고받은 양쪽이 다 보여야 뜻이 있다 (흡혈은 두 사람이 한 일이다).
+ *
+ * 사람이 사유를 적는 것(수수 · 흡혈)만 남기면 반쪽이 되므로, 출헉 보상도 제작도 소원 환불도
+ * **무엇이 바꿨는지**가 함께 나온다. [저장할 때 받아 둔 것](store.ts)을 그대로 쓴다.
+ */
+export async function historyView(
+  guildId: string,
+  targetId: string,
+  date: string,
+  user: User,
+): Promise<MessageOptions> {
+  const days = await getHistoryDays(guildId);
+  const entries = await getHistoryOf(guildId, date);
+  const summary = days.find((candidate) => candidate.date === date);
+
+  // 넘치면 이른 것부터 자른다 — 하루를 위에서 아래로 읽으므로 끝이 남아야 한다.
+  const shown = entries.slice(-MAX_HISTORY_LINES);
+  const hidden = entries.length - shown.length;
+
+  const lines = shown.map((entry) => formatLedgerEntry(entry));
+  if (hidden > 0) lines.unshift(speak(`_앞의 ${hidden}건은 접었습니다._`));
+
+  return {
+    status: "info",
+    title: "소원권 역사",
+    description:
+      entries.length === 0
+        ? speak("_그날은 오간 것이 없습니다._")
+        : [`**${day(historyDayStamp(date))}**`, "", ...lines].join("\n"),
+    fields: summary === undefined ? [] : [{ name: "집계", value: formatHistorySummary(summary) }],
+    user,
+    rows: historyRows(targetId, days, date),
   };
 }
 

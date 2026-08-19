@@ -39,10 +39,37 @@ export interface GuildSettings {
   fragmentsPerTicket: number;
 }
 
+/**
+ * 수량이 바뀐 기록 한 줄 — **역사**.
+ *
+ * 「누가 · 언제 · 무엇이 얼마나 · 왜」 넷이 전부다. 바뀐 뒤의 잔액은 남기지 않는다 —
+ * 중간에 하나만 어긋나도 그 뒤가 전부 거짓이 되고, 어차피 지금 잔액은 `balances` 가 안다.
+ */
+export interface LedgerEntry {
+  /** 바뀐 시각. 날짜별로 묶을 때도 여기서 뽑는다. */
+  readonly at: number;
+  readonly userId: string;
+  /** 소원권 변동. 안 바뀌었으면 0. */
+  readonly tickets: number;
+  /** 조각 변동. 안 바뀌었으면 0. */
+  readonly fragments: number;
+  /**
+   * 무엇이 바꿨는지 — 「수수 — 지급」 · 「출헉 보상」 · 「제작」.
+   *
+   * 사람이 사유를 안 적는 시스템(출헉 · 소원 · 제작 · 낭비)도 **왜 바뀌었는지는 남아야**
+   * 하므로, 사유와 따로 언제나 채운다.
+   */
+  readonly source: string;
+  /** 사람이 적은 사유. 안 적었으면 null. */
+  readonly reason: string | null;
+}
+
 export interface GuildData {
   balances: Record<string, Balance>;
   settings: GuildSettings;
   wishes: Record<string, WishRecord>;
+  /** 수량이 바뀐 기록. 오래된 것이 앞이다. 예전 파일에는 없다. */
+  history: LedgerEntry[];
 }
 
 export interface WishData {

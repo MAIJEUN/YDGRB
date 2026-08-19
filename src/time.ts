@@ -157,6 +157,38 @@ export function previousDateKey(today: string): string {
   return date.toISOString().slice(0, 10);
 }
 
+/**
+ * 날짜 하나를 글자로 — `2026년 8월 17일 (월)`
+ *
+ * **여기만 날짜를 글자로 낸다.** 드롭다운 항목에는 마크다운이 먹지 않아 타임스탬프를 쓸
+ * 수 없다. 화면 본문에서는 여전히 `at()` 을 쓴다.
+ *
+ * 기준은 이 봇의 하루와 같은 한국 날짜다 — `dateKey` 가 준 것을 그대로 읽는다.
+ */
+export function dayLabel(date: string): string {
+  const [year = 0, month = 1, day = 1] = date.split("-").map(Number);
+
+  // UTC 로 만들어 요일만 뽑는다. 한국 날짜를 그대로 옮긴 것이라 시간대를 다시 태우면 밀린다.
+  const weekday = new Date(Date.UTC(year, month - 1, day)).toLocaleDateString("ko-KR", {
+    weekday: "short",
+    timeZone: "UTC",
+  });
+
+  return `${year}년 ${month}월 ${day}일 (${weekday})`;
+}
+
+/**
+ * 그 날짜를 가리키는 시각 — **한국 낮 열두 시.**
+ *
+ * 화면 안에서는 날짜도 타임스탬프 마크다운으로 낸다. 자정을 고르면 시간대가 조금만 밀려도
+ * 보는 사람에게 하루 전으로 나오므로, 어느 시간대에서 봐도 같은 날이 되는 한낮을 고른다.
+ */
+export function dayStamp(date: string): Date {
+  const [year = 0, month = 1, day = 1] = date.split("-").map(Number);
+  // 한국은 UTC+9 이므로 낮 열두 시는 UTC 세 시다.
+  return new Date(Date.UTC(year, month - 1, day, 3));
+}
+
 /** 두 시각이 같은 날인지. */
 function sameDay(a: Date, b: Date): boolean {
   return dateKey(a) === dateKey(b);
@@ -169,6 +201,15 @@ function sameDay(a: Date, b: Date): boolean {
 /** `2026년 7월 25일 오후 6시 12분` 처럼 보는 사람의 시간대로 표시된다. */
 export function at(date: Date): string {
   return time(date, TimestampStyles.LongDateTime);
+}
+
+/**
+ * `2026년 7월 25일` — **날짜만.**
+ *
+ * 하루를 통째로 가리킬 때 쓴다 (역사의 날짜 머리). `at()` 을 쓰면 뜻 없는 시각이 따라붙는다.
+ */
+export function day(date: Date): string {
+  return time(date, TimestampStyles.LongDate);
 }
 
 /** `3시간 후` / `5분 전` — 디스코드가 알아서 계속 갱신해 준다. */

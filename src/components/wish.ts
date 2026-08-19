@@ -49,7 +49,7 @@ import {
   type RankSort,
 } from "../wish/store.js";
 import type { WishAttachment, WishRecord } from "../wish/types.js";
-import { checkView, noticeView, panelView, rankView } from "../wish/views.js";
+import { checkView, historyView, noticeView, panelView, rankView } from "../wish/views.js";
 import { speak } from "../ui/tone.js";
 
 /**
@@ -91,6 +91,32 @@ export default defineComponentHandler({
         if (!interaction.isUserSelectMenu()) return;
         const targetId = interaction.values[0] ?? interaction.user.id;
         await replaceView(interaction, await checkView(guildId, targetId, interaction.user));
+        return;
+      }
+
+      /**
+       * 역사 펼치기·접기. customId 에 **눌렀을 때 갈 상태**가 실려 있다.
+       *
+       * 「확인으로」 도 같은 자리를 쓴다 — 접힌 확인 화면으로 돌아가는 것이 곧 접기다.
+       */
+      case ACTION.history: {
+        const [targetId = interaction.user.id, open] = rest;
+        await replaceView(
+          interaction,
+          await checkView(guildId, targetId, interaction.user, open === "1"),
+        );
+        return;
+      }
+
+      /** 날짜를 골랐다 — 그날 하루를 통째로 보여 준다. */
+      case ACTION.historyDay: {
+        if (!interaction.isStringSelectMenu()) return;
+
+        const targetId = rest[0] ?? interaction.user.id;
+        const date = interaction.values[0];
+        if (date === undefined) return;
+
+        await replaceView(interaction, await historyView(guildId, targetId, date, interaction.user));
         return;
       }
 
@@ -322,7 +348,9 @@ async function craft(interaction: ComponentInteraction, guildId: string): Promis
   const { fragmentsPerTicket } = await getSettings(guildId);
 
   const delta: BalanceDelta = { fragments: -fragmentsPerTicket, tickets: 1 };
-  const result = await applyBalanceChange(guildId, interaction.user.id, delta);
+  const result = await applyBalanceChange(guildId, interaction.user.id, delta, {
+    note: { source: `제작 (조각 ${fragmentsPerTicket}개)` },
+  });
 
   if (!result.ok) {
     await replaceViewAndAnnounce(
@@ -377,7 +405,9 @@ async function submitWaste(interaction: ComponentInteraction, guildId: string): 
     return;
   }
 
-  const result = await applyBalanceChange(guildId, interaction.user.id, deltaFor(picked, -1));
+  const result = await applyBalanceChange(guildId, interaction.user.id, deltaFor(picked, -1), {
+    note: { source: `낭비 (${ITEM_LABEL[picked]})` },
+  });
 
   if (!result.ok) {
     await replaceViewAndAnnounce(
@@ -478,7 +508,9 @@ async function submitWish(interaction: ComponentInteraction, guildId: string): P
   }
 
   // 소원권을 먼저 차감한다. 전달에 실패하면 아래에서 되돌린다.
-  const spent = await applyBalanceChange(guildId, interaction.user.id, { tickets: -1 });
+  const spent = await applyBalanceChange(guildId, interaction.user.id, { tickets: -1 }, {
+    note: { source: "소원 빌기" },
+  });
   if (!spent.ok) {
     await replaceView(
       interaction,
@@ -535,7 +567,9 @@ async function submitWish(interaction: ComponentInteraction, guildId: string): P
     logger.error("소원 전달 실패 — 소원권을 되돌립니다", error);
 
     // 전달에 실패했으므로 차감을 취소한다.
-    const refund = await applyBalanceChange(guildId, interaction.user.id, { tickets: 1 });
+    const refund = await applyBalanceChange(guildId, interaction.user.id, { tickets: 1 }, {
+      note: { source: "소원 전달 실패 — 환불" },
+    });
     await deleteWish(guildId, wish.id);
 
     await replaceView(
@@ -613,7 +647,11 @@ async function decideWish(
   const { wish } = resolved;
 
   // 거절하면 소원권 1장을 돌려준다.
-  const refund = accepted ? null : await applyBalanceChange(guildId, wish.userId, { tickets: 1 });
+  const refund = accepted
+    ? null
+    : await applyBalanceChange(guildId, wish.userId, { tickets: 1 }, {
+        note: { source: "소원 거절 — 환불", reason: `<@${interaction.user.id}> 님이 거절` },
+      });
   const refundText = refund !== null && refund.ok ? formatBalanceChange(refund) : undefined;
 
   const status = accepted ? "success" : "failure";
@@ -746,6 +784,7 @@ async function submitGrant(interaction: ComponentInteraction, guildId: string): 
   // 회수는 **있는 만큼만** 걷는다. 5장 가진 사람에게 100장을 회수하면 0장이 된다 —
   // 「가진 걸 다 걷는다」 가 회수의 뜻이라, 모자라다고 아무것도 안 하는 게 더 이상하다.
   const results = await applyBalanceChanges(guildId, userIds, deltaFor(item, sign * amount), {
+    note: { source: `수수 — ${taking ? "회수" : "지급"}`, reason },
     clamp: taking,
   });
 
@@ -858,7 +897,9 @@ async function submitBlood(interaction: ComponentInteraction, guildId: string): 
   }
 
   // 먼저 뺀다. 부족하면 applyBalanceChange 가 아무것도 바꾸지 않고 ok:false 를 돌려준다.
-  const drained = await applyBalanceChange(guildId, from, deltaFor(item, -amount));
+  const drained = await applyBalanceChange(guildId, from, deltaFor(item, -amount), {
+    note: { source: `흡혈 — <@${to}> 님에게`, reason },
+  });
   if (!drained.ok) {
     await replaceViewAndAnnounce(
       interaction,
@@ -875,10 +916,14 @@ async function submitBlood(interaction: ComponentInteraction, guildId: string): 
     return;
   }
 
-  const gained = await applyBalanceChange(guildId, to, deltaFor(item, amount));
+  const gained = await applyBalanceChange(guildId, to, deltaFor(item, amount), {
+    note: { source: `흡혈 — <@${from}> 님에게서`, reason },
+  });
   if (!gained.ok) {
     // 더하는 변경은 음수가 될 수 없어 실패하지 않지만, 만에 하나 실패하면 뺀 것을 되돌린다.
-    await applyBalanceChange(guildId, from, deltaFor(item, amount));
+    await applyBalanceChange(guildId, from, deltaFor(item, amount), {
+      note: { source: "흡혈 되돌림" },
+    });
     await replaceView(
       interaction,
       adminFailure(interaction, "흡혈 실패", speak("옮기는 중 문제가 생겨 되돌렸습니다.")),

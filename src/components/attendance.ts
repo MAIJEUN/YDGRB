@@ -171,9 +171,13 @@ async function submitAnswer(
   // 출헉일수가 4의 배수면 소원권 조각을 준다.
   let rewarded: string | undefined;
   if (result.rewarded) {
-    const change = await applyBalanceChange(guildId, interaction.user.id, {
-      fragments: REWARD_FRAGMENTS,
-    });
+    const change = await applyBalanceChange(
+      guildId,
+      interaction.user.id,
+      { fragments: REWARD_FRAGMENTS },
+      // 사람이 사유를 적을 자리가 없는 시스템이라 여기서 대신 남긴다 — 역사에 그대로 나온다.
+      { note: { source: "출헉 보상", reason: `누적 ${result.record.total}일` } },
+    );
     if (change.ok) rewarded = formatBalanceChange(change);
     else logger.warn(`출헉: 조각을 주지 못했습니다 (${interaction.user.id})`);
   }

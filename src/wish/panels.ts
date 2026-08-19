@@ -9,8 +9,10 @@ import {
 import type { MessageActionRowComponentBuilder } from "discord.js";
 
 import { customId } from "../types.js";
-import { ACTION, PANEL, WISH, type PanelKind } from "./ids.js";
-import type { RankSort } from "./store.js";
+import { speak } from "../ui/tone.js";
+import { formatHistoryDate, formatHistorySummary } from "./format.js";
+import { ACTION, MAX_SELECT_OPTIONS, PANEL, WISH, type PanelKind } from "./ids.js";
+import type { HistoryDay, RankSort } from "./store.js";
 
 type Row = ActionRowBuilder<MessageActionRowComponentBuilder>;
 
@@ -90,19 +92,83 @@ export function panelSwitchButton(panel: PanelKind, isAdmin: boolean): ButtonBui
 }
 
 /**
- * 확인 화면 — 다른 유저를 골라서 볼 수 있다.
+ * 확인 화면 — 유저 드롭다운 · 역사 펼치기.
  *
- * 이 화면은 채널에 **공개로** 올라간다. 누구나 드롭다운으로 다른 사람을 조회할 수 있고,
- * 고르면 그 공개 메시지가 갱신된다 (읽기 전용이라 남이 눌러도 문제없다).
+ * **역사는 접어 둔다.** 확인은 「지금 얼마 있나」를 보는 화면이고, 날짜 드롭다운을 늘
+ * 펼쳐 두면 그 한 줄이 먼저 눈에 들어온다. 보고 싶은 사람만 편다.
+ *
+ * 편 상태에서 날짜가 하나도 없으면 드롭다운을 만들지 않는다 — 고를 것이 없는 드롭다운은
+ * 눌러 보고 나서야 빈 것을 안다. 그 말은 화면 본문이 한다.
  */
-export function checkRows(): Row[] {
-  return [
+export function checkRows(targetId: string, open: boolean, days: readonly HistoryDay[] = []): Row[] {
+  const rows: Row[] = [
     row(
       new UserSelectMenuBuilder()
         .setCustomId(customId(WISH, ACTION.checkSelect))
         .setPlaceholder("다른 유저의 소원권 보기")
         .setMinValues(1)
         .setMaxValues(1),
+    ),
+  ];
+
+  if (open && days.length > 0) rows.push(row(historySelect(targetId, days)));
+
+  rows.push(
+    row(
+      new ButtonBuilder()
+        // 지금 상태가 아니라 **눌렀을 때 갈 상태**를 싣는다.
+        .setCustomId(customId(WISH, ACTION.history, targetId, open ? "0" : "1"))
+        .setLabel(open ? "역사 접기" : "역사")
+        .setStyle(ButtonStyle.Secondary),
+    ),
+  );
+
+  return rows;
+}
+
+/**
+ * 변동이 있었던 날짜 드롭다운. **최근 날짜가 위**다.
+ *
+ * 디스코드가 받는 항목이 스물다섯 개뿐이라 그 앞부분만 싣는다. 오래된 쪽을 잘라야
+ * 방금 무슨 일이 있었는지를 못 보는 일이 없다.
+ */
+export function historySelect(
+  targetId: string,
+  days: readonly HistoryDay[],
+  picked?: string,
+): StringSelectMenuBuilder {
+  const select = new StringSelectMenuBuilder()
+    .setCustomId(customId(WISH, ACTION.historyDay, targetId))
+    .setPlaceholder(speak("날짜를 고르면 그날의 변동을 봅니다"))
+    .setMinValues(1)
+    .setMaxValues(1);
+
+  for (const day of days.slice(0, MAX_SELECT_OPTIONS)) {
+    const option = new StringSelectMenuOptionBuilder()
+      .setLabel(formatHistoryDate(day.date))
+      .setDescription(formatHistorySummary(day))
+      .setValue(day.date);
+
+    if (day.date === picked) option.setDefault(true);
+    select.addOptions(option);
+  }
+
+  return select;
+}
+
+/** 역사 화면 — 날짜 드롭다운은 그대로 두고, 확인으로 돌아가는 길만 붙인다. */
+export function historyRows(
+  targetId: string,
+  days: readonly HistoryDay[],
+  picked: string,
+): Row[] {
+  return [
+    row(historySelect(targetId, days, picked)),
+    row(
+      new ButtonBuilder()
+        .setCustomId(customId(WISH, ACTION.history, targetId, "0"))
+        .setLabel("확인으로")
+        .setStyle(ButtonStyle.Secondary),
     ),
   ];
 }

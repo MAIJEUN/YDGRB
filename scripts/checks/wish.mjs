@@ -35,7 +35,7 @@ const D = "888888888888888882";
 
 console.log("\n=== 1. 수량 변경 (지급 · 회수 · 제작 · 낭비) ===");
 
-const given = await store.applyBalanceChanges(G, [A, B], { fragments: 5 });
+const given = await store.applyBalanceChanges(G, [A, B], { fragments: 5 }, { note: { source: "검사" } });
 assert("두 명에게 조각 5개 지급", given.get(A)?.ok === true && given.get(B)?.ok === true);
 assert(
   "0 → 5 로 반영",
@@ -43,14 +43,14 @@ assert(
   JSON.stringify(given.get(A)),
 );
 
-const crafted = await store.applyBalanceChange(G, A, { fragments: -5, tickets: 1 });
+const crafted = await store.applyBalanceChange(G, A, { fragments: -5, tickets: 1 }, { note: { source: "검사" } });
 assert(
   "제작: 조각 -5, 소원권 +1 이 한 번에",
   crafted.ok && crafted.after.fragments === 0 && crafted.after.tickets === 1,
   JSON.stringify(crafted),
 );
 
-const tooMuch = await store.applyBalanceChange(G, A, { tickets: -5 });
+const tooMuch = await store.applyBalanceChange(G, A, { tickets: -5 }, { note: { source: "검사" } });
 assert("부족하면 ok:false", tooMuch.ok === false && tooMuch.reason === "insufficient");
 const afterFail = await store.getBalance(G, A);
 assert(
@@ -59,7 +59,7 @@ assert(
   JSON.stringify(afterFail),
 );
 
-const partial = await store.applyBalanceChanges(G, [A, B], { tickets: -1 });
+const partial = await store.applyBalanceChanges(G, [A, B], { tickets: -1 }, { note: { source: "검사" } });
 assert(
   "여러 명 중 일부만 실패해도 나머지는 처리됨",
   partial.get(A)?.ok === true && partial.get(B)?.ok === false,
@@ -69,19 +69,19 @@ console.log("\n=== 1-1. 회수는 있는 만큼만 걷는다 ===");
 //
 // 「가진 걸 다 걷는다」 가 회수의 뜻이라, 모자라다고 아무것도 안 하는 게 더 이상하다.
 // 다만 제작처럼 값을 정확히 치러야 하는 곳에는 켜면 안 된다.
-await store.applyBalanceChange(G, C, { tickets: 5 });
+await store.applyBalanceChange(G, C, { tickets: 5 }, { note: { source: "검사" } });
 
-const clamped = await store.applyBalanceChange(G, C, { tickets: -100 }, { clamp: true });
+const clamped = await store.applyBalanceChange(G, C, { tickets: -100 }, { note: { source: "검사" }, clamp: true });
 assert("보유보다 많이 회수해도 처리됨", clamped.ok === true, JSON.stringify(clamped));
 assert("  └ 있는 만큼만 (5장 → 0장)", clamped.ok && clamped.after.tickets === 0, JSON.stringify(clamped));
 assert("  └ 걷기 전 보유량을 그대로 알려 줌", clamped.ok && clamped.before.tickets === 5);
 assert("  └ 음수로 내려가지 않음", (await store.getBalance(G, C)).tickets === 0);
 
-const already = await store.applyBalanceChange(G, C, { tickets: -100 }, { clamp: true });
+const already = await store.applyBalanceChange(G, C, { tickets: -100 }, { note: { source: "검사" }, clamp: true });
 assert("이미 0이어도 실패하지 않음", already.ok === true && already.after.tickets === 0);
 
 // 켜지 않으면 예전 그대로다.
-const strict = await store.applyBalanceChange(G, C, { tickets: -1 });
+const strict = await store.applyBalanceChange(G, C, { tickets: -1 }, { note: { source: "검사" } });
 assert("켜지 않으면 모자랄 때 그대로 거절", strict.ok === false && strict.reason === "insufficient");
 
 console.log("\n=== 1-1-2. 갯수 한계 ===");
@@ -92,8 +92,8 @@ assert("  └ 자릿수는 그 수의 길이", MAX_AMOUNT_DIGITS === String(MAX_
 assert("  └ 예전 4자리 한계가 아님", MAX_AMOUNT_DIGITS > 4, String(MAX_AMOUNT_DIGITS));
 
 // 그 위로는 저장하지 않는다 — 넘기면 더한 값이 어긋난다.
-await store.applyBalanceChange(G, D, { tickets: MAX_AMOUNT });
-const piled = await store.applyBalanceChange(G, D, { tickets: MAX_AMOUNT });
+await store.applyBalanceChange(G, D, { tickets: MAX_AMOUNT }, { note: { source: "검사" } });
+const piled = await store.applyBalanceChange(G, D, { tickets: MAX_AMOUNT }, { note: { source: "검사" } });
 assert(
   "한계 위로는 올라가지 않음",
   piled.ok && piled.after.tickets === Number.MAX_SAFE_INTEGER,
@@ -102,25 +102,25 @@ assert(
 assert("  └ 정수로 정확한 범위 안", Number.isSafeInteger((await store.getBalance(G, D)).tickets));
 
 // 아래 랭킹 검사에 끼어들지 않게 걷어 낸다 (회수가 있는 만큼만 걷는다는 것도 한 번 더 쓴다).
-await store.applyBalanceChange(G, D, { tickets: -MAX_AMOUNT }, { clamp: true });
+await store.applyBalanceChange(G, D, { tickets: -MAX_AMOUNT }, { note: { source: "검사" }, clamp: true });
 assert("  └ 걷어 내면 0", (await store.getBalance(G, D)).tickets === 0);
 
 console.log("\n=== 1-2. 흡혈 (빼고 → 더하기) ===");
 const V = "666666666666666666"; // 흡혈될 유저
 const T = "777777777777777777"; // 흡혈할 유저
 
-await store.applyBalanceChanges(G, [V], { fragments: 4 });
+await store.applyBalanceChanges(G, [V], { fragments: 4 }, { note: { source: "검사" } });
 
 // 부족하면 빼는 단계에서 멈추고 아무것도 바뀌지 않아야 한다.
-const bloodFail = await store.applyBalanceChange(G, V, { fragments: -10 });
+const bloodFail = await store.applyBalanceChange(G, V, { fragments: -10 }, { note: { source: "검사" } });
 assert("부족하면 흡혈 실패", bloodFail.ok === false);
 assert(
   "  └ 양쪽 모두 그대로",
   (await store.getBalance(G, V)).fragments === 4 && (await store.getBalance(G, T)).fragments === 0,
 );
 
-const drained = await store.applyBalanceChange(G, V, { fragments: -3 });
-const gained = await store.applyBalanceChange(G, T, { fragments: 3 });
+const drained = await store.applyBalanceChange(G, V, { fragments: -3 }, { note: { source: "검사" } });
+const gained = await store.applyBalanceChange(G, T, { fragments: 3 }, { note: { source: "검사" } });
 assert("흡혈될 유저에게서 차감", drained.ok && drained.after.fragments === 1, JSON.stringify(drained));
 assert("흡혈할 유저에게 지급", gained.ok && gained.after.fragments === 3, JSON.stringify(gained));
 assert(
@@ -158,7 +158,7 @@ const changeNone = formatBalanceChange({
 assert("변동 없으면 undefined", changeNone === undefined, JSON.stringify(changeNone));
 
 console.log("\n=== 3. 랭킹 · 설정 · 소원 ===");
-await store.applyBalanceChanges(G, [B], { tickets: 9 });
+await store.applyBalanceChanges(G, [B], { tickets: 9 }, { note: { source: "검사" } });
 const byTickets = await store.getRanking(G, "tickets");
 assert("소원권 기준 정렬", byTickets[0].userId === B, JSON.stringify(byTickets));
 assert(
@@ -250,7 +250,9 @@ const before = await restartedAgain.getBalance(G, A);
 const decided = await restartedAgain.resolveWish(G, pending.id, "rejected", B);
 assert("재시작 후 수락/거절 처리 성공", decided.ok === true, JSON.stringify(decided));
 
-const refund = await restartedAgain.applyBalanceChange(G, A, { tickets: 1 });
+const refund = await restartedAgain.applyBalanceChange(G, A, { tickets: 1 }, {
+  note: { source: "검사" },
+});
 assert(
   "재시작 후 거절 환불도 정상",
   refund.ok && refund.after.tickets === before.tickets + 1,
@@ -409,7 +411,7 @@ assert(
 
 check("userPanelRows()", () => panels.userPanelRows().map((r) => r.toJSON()));
 check("adminPanelRows()", () => panels.adminPanelRows().map((r) => r.toJSON()));
-check("checkRows()", () => panels.checkRows().map((r) => r.toJSON()));
+check("checkRows()", () => panels.checkRows(A, false).map((r) => r.toJSON()));
 check("rankRows(tickets, 0, 3)", () => panels.rankRows("tickets", 0, 3).map((r) => r.toJSON()));
 check("rankRows(fragments, 2, 3)", () => panels.rankRows("fragments", 2, 3).map((r) => r.toJSON()));
 const decisionRows = check("wishDecisionRows()", () =>
@@ -493,15 +495,19 @@ const publicView = response({
   status: "info",
   title: "소원권 확인",
   user: fakeUser,
-  rows: panels.checkRows(),
+  rows: panels.checkRows(A, false),
   ephemeral: false,
 });
 assert("확인 공개본은 컨테이너 + 모두에게", publicView.flags.length === 1 && publicView.components.length === 1);
 const checkIds = panels
-  .checkRows()
+  .checkRows(A, false)
   .flatMap((r) => r.toJSON().components)
   .map((c) => c.custom_id);
-assert("  └ 유저 드롭다운이 실려 있음", checkIds.join(",") === "wish:checksel", checkIds.join(","));
+assert(
+  "  └ 유저 드롭다운과 역사 버튼이 실려 있음",
+  checkIds.join(",") === `wish:checksel,wish:hist:${A}:1`,
+  checkIds.join(","),
+);
 assert("  └ 「패널로」 버튼은 없음", !checkIds.some((id) => id.startsWith("wish:home")));
 
 const rankIds = panels
@@ -706,7 +712,7 @@ assert("wishDecidedRows(거절)은 빨강(Danger=4)", decidedReject[0].component
 assertUnique("wishDecidedRows()", panels.wishDecidedRows(true));
 assertUnique("userPanelRows()", panels.userPanelRows());
 assertUnique("adminPanelRows()", panels.adminPanelRows());
-assertUnique("checkRows()", panels.checkRows());
+assertUnique("checkRows()", panels.checkRows(A, false));
 assertUnique("wishDecisionRows()", panels.wishDecisionRows("abcd1234"));
 
 // 컨테이너 전체(여러 줄을 합친 상태)에서도 겹치면 안 된다.
