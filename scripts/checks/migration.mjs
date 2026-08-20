@@ -140,11 +140,11 @@ assert("기록이 아예 없으면 0 으로 시작", fresh.tickets === 0 && fres
 
 // 역사는 나중에 붙은 칸이다. 없던 파일도 읽히고, 한 번 쓰면 생겨야 한다.
 console.log("\n=== 6-1. 소원권 — 역사가 없던 파일 ===");
-assert("역사 없이도 날짜가 안 터짐", (await wish.getHistoryDays(G)).length === 0);
-assert("  └ 그날 목록도 비어 있음", (await wish.getHistoryOf(G, "2026-01-01")).length === 0);
+assert("역사 없이도 날짜가 안 터짐", (await wish.getHistoryDays(G, U)).length === 0);
+assert("  └ 그날 목록도 비어 있음", (await wish.getHistoryOf(G, U, "2026-01-01")).length === 0);
 
 await wish.applyBalanceChange(G, U, { tickets: 1 }, { note: { source: "옮겨 온 뒤 첫 변동" } });
-const moved = await wish.getHistoryDays(G);
+const moved = await wish.getHistoryDays(G, U);
 assert("한 번 쓰면 생김", moved.length === 1 && moved[0].count === 1, JSON.stringify(moved));
 
 // ── 타살버 ──────────────────────────────────────────────────

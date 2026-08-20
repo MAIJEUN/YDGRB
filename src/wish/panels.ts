@@ -104,7 +104,8 @@ export function checkRows(targetId: string, open: boolean, days: readonly Histor
   const rows: Row[] = [
     row(
       new UserSelectMenuBuilder()
-        .setCustomId(customId(WISH, ACTION.checkSelect))
+        // 펼친 상태를 함께 싣는다 — 역사를 펴 둔 채 사람을 바꾸면 그 사람 역사가 이어서 보인다.
+        .setCustomId(customId(WISH, ACTION.checkSelect, open ? "1" : "0"))
         .setPlaceholder("다른 유저의 소원권 보기")
         .setMinValues(1)
         .setMaxValues(1),

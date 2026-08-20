@@ -555,7 +555,7 @@ const checkIds = panels
   .map((c) => c.custom_id);
 assert(
   "  └ 유저 드롭다운과 역사 버튼이 실려 있음",
-  checkIds.join(",") === `wish:checksel,wish:hist:${A}:1`,
+  checkIds.join(",") === `wish:checksel:0,wish:hist:${A}:1`,
   checkIds.join(","),
 );
 assert("  └ 「패널로」 버튼은 없음", !checkIds.some((id) => id.startsWith("wish:home")));

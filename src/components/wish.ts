@@ -88,8 +88,13 @@ export default defineComponentHandler({
 
       case ACTION.checkSelect: {
         if (!interaction.isUserSelectMenu()) return;
+
         const targetId = interaction.values[0] ?? interaction.user.id;
-        await replaceView(interaction, await checkView(guildId, targetId, interaction.user));
+        // 역사를 펴 둔 채 사람을 바꿨으면 그 사람 역사를 이어서 보여 준다.
+        await replaceView(
+          interaction,
+          await checkView(guildId, targetId, interaction.user, rest[0] === "1"),
+        );
         return;
       }
 

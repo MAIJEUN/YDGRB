@@ -55,7 +55,10 @@ function moved(amount: number, item: Item): string {
 /**
  * 역사 한 줄.
  *
- *   `오후 8:25` @마이즌 · 🎫 **+1장** · 소원 거절 — 환불
+ *   `오후 8:25` · 🎫 **+1장** · 소원 거절 — 환불
+ *
+ * **누구 것인지는 적지 않는다.** 한 화면이 한 사람의 것이라 줄마다 같은 이름을 붙이면
+ * 정작 무엇이 얼마나 움직였는지가 뒤로 밀린다 — 화면이 맨 위에 한 번 말한다.
  *
  * 시각은 [타임스탬프 마크다운](../time.ts)이라 보는 사람의 시간대로 나온다.
  * 한 번에 둘이 움직인 것(제작)은 한 줄에 둘 다 적는다 — 같은 일이기 때문이다.
@@ -71,7 +74,7 @@ export function formatLedgerEntry(entry: LedgerEntry): string {
   // (감사 로그도 같은 꼴이다).
   const why = entry.reason === null ? entry.source : `${entry.source}: ${entry.reason}`;
 
-  return `${clock(new Date(entry.at))} <@${entry.userId}> · ${items.join(" ")} · ${why}`;
+  return `${clock(new Date(entry.at))} · ${items.join(" ")} · ${why}`;
 }
 
 /** `12건 · 🎫 +5 −2 · 🧩 +8` — 그날 얼마나 움직였는지 한 줄로. */

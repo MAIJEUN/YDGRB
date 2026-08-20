@@ -226,15 +226,20 @@ function addMove(into: { gained: number; lost: number }, amount: number): void {
 }
 
 /**
- * 변동이 있었던 날들. **최근 날짜가 앞**이다.
+ * **그 사람의** 변동이 있었던 날들. **최근 날짜가 앞**이다.
+ *
+ * 역사는 확인 화면에 붙어 있고, 확인 화면은 한 사람을 보는 자리다. 서버 전체를 늘어놓으면
+ * 「이 사람 것을 보고 있었다」는 맥락이 끊긴다.
  *
  * 드롭다운은 스물다섯 줄까지만 받는데, 오래된 쪽을 먼저 보여 줄 이유가 없다.
  */
-export async function getHistoryDays(guildId: string): Promise<HistoryDay[]> {
+export async function getHistoryDays(guildId: string, userId: string): Promise<HistoryDay[]> {
   const history = (await file.read()).guilds[guildId]?.history ?? [];
   const days = new Map<string, { count: number; tickets: ReturnType<typeof emptyMoves>; fragments: ReturnType<typeof emptyMoves> }>();
 
   for (const entry of history) {
+    if (entry.userId !== userId) continue;
+
     const key = dateKey(new Date(entry.at));
     const day = days.get(key) ?? { count: 0, tickets: emptyMoves(), fragments: emptyMoves() };
 
@@ -250,16 +255,20 @@ export async function getHistoryDays(guildId: string): Promise<HistoryDay[]> {
 }
 
 /**
- * 그날 있었던 변동. **이른 것이 앞**이다 — 하루를 위에서 아래로 읽는다.
+ * 그날 **그 사람에게** 있었던 변동. **이른 것이 앞**이다 — 하루를 위에서 아래로 읽는다.
  *
  * 날짜는 저장할 때가 아니라 읽을 때 뽑는다. 한 줄에 날짜와 시각을 둘 다 들고 있으면
  * 언젠가 둘이 어긋나고, 그때 어느 쪽이 맞는지 알 방법이 없다.
  */
-export async function getHistoryOf(guildId: string, date: string): Promise<LedgerEntry[]> {
+export async function getHistoryOf(
+  guildId: string,
+  userId: string,
+  date: string,
+): Promise<LedgerEntry[]> {
   const history = (await file.read()).guilds[guildId]?.history ?? [];
 
   return history
-    .filter((entry) => dateKey(new Date(entry.at)) === date)
+    .filter((entry) => entry.userId === userId && dateKey(new Date(entry.at)) === date)
     .sort((a, b) => a.at - b.at);
 }
 

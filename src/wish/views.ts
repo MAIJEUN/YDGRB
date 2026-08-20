@@ -104,7 +104,7 @@ export async function checkView(
   // 반 조각이 남아 있어도 소원권은 장 단위로만 나온다.
   const craftable = Math.floor(balance.fragments / fragmentsPerTicket);
 
-  const days = showHistory ? await getHistoryDays(guildId) : [];
+  const days = showHistory ? await getHistoryDays(guildId, targetId) : [];
 
   return {
     status: "info",
@@ -118,7 +118,7 @@ export async function checkView(
       },
       // 펼쳤는데 아무것도 없으면 그 말을 해 준다. 빈 드롭다운을 눌러 보게 두지 않는다.
       ...(showHistory && days.length === 0
-        ? [{ name: "역사", value: speak("_아직 소원권이 오간 적이 없습니다._") }]
+        ? [{ name: "역사", value: speak(`<@${targetId}> 님은 아직 소원권이 오간 적이 없습니다.`) }]
         : []),
     ],
     user,
@@ -127,10 +127,13 @@ export async function checkView(
 }
 
 /**
- * 역사 — 하루치 변동 전부.
+ * 역사 — **보고 있던 그 사람**의 하루치 변동.
  *
- * **서버 전체**를 본다. 확인 화면이 한 사람을 보는 것과 달리, 소원권이 어떻게 돌았는지는
- * 주고받은 양쪽이 다 보여야 뜻이 있다 (흡혈은 두 사람이 한 일이다).
+ * 확인 화면에 붙어 있는 것이라 보는 대상도 확인 화면과 같다. 서버 전체를 늘어놓으면
+ * 「이 사람 것을 보고 있었다」는 맥락이 끊긴다.
+ *
+ * 누구 것인지는 맨 위에 한 번만 적는다 — 줄마다 같은 이름을 붙이면 정작 무엇이 얼마나
+ * 움직였는지가 뒤로 밀린다. 흡혈처럼 **상대가 있는 것**은 그 상대를 사유가 말해 준다.
  *
  * 사람이 사유를 적는 것(수수 · 흡혈)만 남기면 반쪽이 되므로, 출헉 보상도 제작도 소원 환불도
  * **무엇이 바꿨는지**가 함께 나온다. [저장할 때 받아 둔 것](store.ts)을 그대로 쓴다.
@@ -141,8 +144,8 @@ export async function historyView(
   date: string,
   user: User,
 ): Promise<MessageOptions> {
-  const days = await getHistoryDays(guildId);
-  const entries = await getHistoryOf(guildId, date);
+  const days = await getHistoryDays(guildId, targetId);
+  const entries = await getHistoryOf(guildId, targetId, date);
   const summary = days.find((candidate) => candidate.date === date);
 
   // 넘치면 이른 것부터 자른다 — 하루를 위에서 아래로 읽으므로 끝이 남아야 한다.
@@ -157,8 +160,8 @@ export async function historyView(
     title: "소원권 역사",
     description:
       entries.length === 0
-        ? speak("_그날은 오간 것이 없습니다._")
-        : [`**${day(historyDayStamp(date))}**`, "", ...lines].join("\n"),
+        ? speak(`<@${targetId}> 님은 그날 오간 것이 없습니다.`)
+        : [`**${day(historyDayStamp(date))}** · <@${targetId}>`, "", ...lines].join("\n"),
     fields: summary === undefined ? [] : [{ name: "집계", value: formatHistorySummary(summary) }],
     user,
     rows: historyRows(targetId, days, date),

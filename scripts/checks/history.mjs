@@ -34,7 +34,7 @@ const bodyOf = async (view) => {
   return head.type === 9 ? head.components[0].content : head.content;
 };
 const idsOf = (rows) => rows.flatMap((r) => r.toJSON().components).map((c) => c.custom_id);
-const today = () => store.getHistoryOf(G, dateKey());
+const today = (who = A) => store.getHistoryOf(G, who, dateKey());
 
 // ── 1. 무엇이 남는가 ───────────────────────────────────────
 console.log("\n=== 1. 무엇이 남는가 ===");
@@ -88,20 +88,26 @@ await store.applyBalanceChanges(
   { tickets: -100 },
   { note: { source: "수수 — 회수" }, clamp: true },
 );
-assert("걷힌 만큼만 남김", (await today()).at(-1).tickets === -2, String((await today()).at(-1).tickets));
+assert("걷힌 만큼만 남김", (await today(B)).at(-1).tickets === -2, String((await today(B)).at(-1).tickets));
 
 // ── 2. 날짜별로 묶이는가 ───────────────────────────────────
 console.log("\n=== 2. 날짜별로 묶이는가 ===");
 {
-  const days = await store.getHistoryDays(G);
+  const days = await store.getHistoryDays(G, A);
   const day = days.find((candidate) => candidate.date === dateKey());
 
   assert("오늘 날짜가 잡힘", day !== undefined, days.map((d) => d.date).join(" "));
   assert("  └ 건수를 셈", day.count === (await today()).length, String(day.count));
+  // 이 사람 것만 센다 — B 가 받고 뺏긴 것은 여기 안 들어온다.
   assert(
-    "  └ 늘어난 것과 줄어든 것을 따로",
-    day.tickets.gained === 3 && day.tickets.lost === 2,
+    "  └ 그 사람 것만 셈",
+    day.tickets.gained === 1 && day.tickets.lost === 0,
     JSON.stringify(day.tickets),
+  );
+  assert(
+    "  └ 다른 사람은 따로",
+    (await store.getHistoryDays(G, B))[0].tickets.lost === 2,
+    JSON.stringify((await store.getHistoryDays(G, B))[0]),
   );
   assert(
     "  └ 조각도",
@@ -124,10 +130,10 @@ console.log("\n=== 2. 날짜별로 묶이는가 ===");
   writeFileSync(RAW, JSON.stringify(data));
 
   const fresh = await import(`${DIST}/wish/store.js?t=sorted`);
-  const sorted = await fresh.getHistoryDays(G);
+  const sorted = await fresh.getHistoryDays(G, A);
 
   assert("최근 날짜가 앞", sorted[0].date > sorted.at(-1).date, sorted.map((d) => d.date).join(" "));
-  assert("  └ 그날 것만 골라 냄", (await fresh.getHistoryOf(G, dateKey(new Date(old)))).length === 1);
+  assert("  └ 그날 것만 골라 냄", (await fresh.getHistoryOf(G, A, dateKey(new Date(old)))).length === 1);
 }
 
 // ── 3. 넘치면 오래된 것부터 ────────────────────────────────
@@ -166,12 +172,14 @@ console.log("\n=== 4. 확인 화면의 역사 버튼 ===");
   );
   assert("  └ 여는 버튼은 있음", closedIds.includes(`wish:hist:${A}:1`), closedIds.join(","));
 
-  const days = await store.getHistoryDays(G);
+  const days = await store.getHistoryDays(G, A);
   const openIds = idsOf(panels.checkRows(A, true, days));
 
   assert("펴면 드롭다운이 하나 늘어남", openIds.includes(`wish:histday:${A}`), openIds.join(","));
   assert("  └ 버튼은 접는 쪽으로 뒤집힘", openIds.includes(`wish:hist:${A}:0`), openIds.join(","));
-  assert("  └ 유저 드롭다운은 그대로", openIds[0] === "wish:checksel", openIds[0]);
+  // 유저 드롭다운도 펼친 상태를 싣는다 — 펴 둔 채 사람을 바꾸면 그 사람 역사가 이어진다.
+  assert("  └ 유저 드롭다운도 상태를 실음", openIds[0] === "wish:checksel:1", openIds[0]);
+  assert("    · 접혀 있으면 0", closedIds[0] === "wish:checksel:0", closedIds[0]);
 
   // 지금 상태가 아니라 눌렀을 때 갈 상태를 싣는다 — 두 사람이 같은 화면을 봐도 어긋나지 않게.
   assert("customId 에 갈 상태를 실음", read("src/wish/panels.ts").includes('open ? "0" : "1"'));
@@ -188,7 +196,7 @@ console.log("\n=== 4. 확인 화면의 역사 버튼 ===");
 // ── 5. 날짜 드롭다운 ───────────────────────────────────────
 console.log("\n=== 5. 날짜 드롭다운 ===");
 {
-  const days = await store.getHistoryDays(G);
+  const days = await store.getHistoryDays(G, A);
   const options = panels.historySelect(A, days).toJSON().options;
 
   assert("날짜마다 한 줄", options.length === Math.min(days.length, ids.MAX_SELECT_OPTIONS));
@@ -216,7 +224,7 @@ console.log("\n=== 5. 날짜 드롭다운 ===");
 // ── 6. 역사 화면 ───────────────────────────────────────────
 console.log("\n=== 6. 역사 화면 ===");
 {
-  const days = await store.getHistoryDays(G);
+  const days = await store.getHistoryDays(G, A);
   const text = await bodyOf(views.historyView(G, A, dateKey(), user));
 
   assert("제목", text.startsWith("### 소원권 역사"), text.split("\n")[0]);
