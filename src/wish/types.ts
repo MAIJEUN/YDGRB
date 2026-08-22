@@ -37,6 +37,13 @@ export interface GuildSettings {
   wishChannelId: string | null;
   /** 소원권 1장을 만드는 데 필요한 조각 수. 서버마다 다르게 정할 수 있다. */
   fragmentsPerTicket: number;
+  /**
+   * 수량의 소수점 자릿수 (0~10).
+   *
+   * 이 서버의 소원권이 **얼마나 잘게 쪼개지는가**. 0이면 정수만, 1이면 반 장까지.
+   * 자릿수를 늘리면 다룰 수 있는 최대 수량이 그만큼 내려간다 ([amount.ts](amount.ts)).
+   */
+  decimals: number;
 }
 
 /**

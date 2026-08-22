@@ -66,6 +66,7 @@ export const FIELD = {
   bloodReason: "blood_reason",
   configChannel: "config_channel",
   fragmentsPerTicket: "config_fragments_per_ticket",
+  decimals: "config_decimals",
 } as const;
 
 export const PANEL = { user: "user", admin: "admin" } as const;

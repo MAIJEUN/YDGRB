@@ -13,8 +13,10 @@ import type { Guild } from "discord.js";
  *
  * 숫자 서식이라 날짜와 달리 로케일 API 를 쓰지 않는다.
  * **소수점 아래는 건드리지 않는다** — 콤마는 정수 자리를 세는 것이지 자릿수를 세는 것이 아니다.
+ *
+ * 글자도 받는다. 아주 작은 수를 지수 꼴(`1e-10`) 없이 적어 둔 것을 그대로 묶어 줘야 한다.
  */
-export function count(value: number): string {
+export function count(value: number | string): string {
   const [whole = "", fraction] = value.toString().split(".");
   const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/gu, ",");
 

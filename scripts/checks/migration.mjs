@@ -130,6 +130,22 @@ assert(
   String(settings.fragmentsPerTicket),
 );
 
+// 소수점 자릿수도 나중에 붙은 칸이다.
+const { DEFAULT_DECIMALS } = await import(`${DIST}/wish/amount.js`);
+assert("  └ 없던 소수점 자릿수도 기본값으로", settings.decimals === DEFAULT_DECIMALS, String(settings.decimals));
+// 아래 절들이 U 와 OTHER 를 손대지 않은 채로 봐야 하므로 새 사람으로 써 본다.
+assert(
+  "  └ 그 눈금으로 저장됨",
+  (
+    await wish.applyBalanceChange(
+      G,
+      "123123123123123123",
+      { tickets: 0.5 },
+      { note: { source: "옮겨 온 뒤" } },
+    )
+  ).after.tickets === 0.5,
+);
+
 console.log("\n=== 6. 소원권 — 반쪽짜리 잔고 ===");
 const half = await wish.getBalance(G, OTHER);
 assert("있는 값은 그대로", half.tickets === 5, JSON.stringify(half));

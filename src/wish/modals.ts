@@ -11,7 +11,13 @@ import {
   UserSelectMenuBuilder,
 } from "discord.js";
 
-import { AMOUNT_HINT, MAX_AMOUNT_LENGTH } from "./amount.js";
+import {
+  MAX_DECIMALS,
+  MIN_DECIMALS,
+  amountHint,
+  amountLength,
+  amountPlaceholder,
+} from "./amount.js";
 import { reasonInput } from "../ui/reason.js";
 import { customId } from "../types.js";
 import {
@@ -100,7 +106,7 @@ export function useModal(): ModalBuilder {
 }
 
 /** 수수 — 지급/회수 · 항목 · 대상 유저(여러 명) · 갯수. */
-export function grantModal(): ModalBuilder {
+export function grantModal(decimals: number): ModalBuilder {
   return new ModalBuilder()
     .setCustomId(customId(WISH, MODAL_ID.grant))
     .setTitle("수수 — 지급과 회수")
@@ -143,14 +149,14 @@ export function grantModal(): ModalBuilder {
         ),
       new LabelBuilder()
         .setLabel("갯수")
-        .setDescription(AMOUNT_HINT)
+        .setDescription(amountHint(decimals))
         .setTextInputComponent(
           new TextInputBuilder()
             .setCustomId(FIELD.grantAmount)
             .setStyle(TextInputStyle.Short)
-            .setPlaceholder("예: 3 · 0.5")
+            .setPlaceholder(amountPlaceholder(decimals))
             .setValue("1")
-            .setMaxLength(MAX_AMOUNT_LENGTH)
+            .setMaxLength(amountLength(decimals))
             .setRequired(true),
         ),
       // 모달 칸은 다섯 개가 한계다. 지급/회수 · 항목 · 유저 · 갯수 · 사유로 딱 찬다.
@@ -159,7 +165,7 @@ export function grantModal(): ModalBuilder {
 }
 
 /** 흡혈 — 한 유저에게서 빼앗아 다른 유저에게 옮긴다. */
-export function bloodModal(): ModalBuilder {
+export function bloodModal(decimals: number): ModalBuilder {
   return new ModalBuilder()
     .setCustomId(customId(WISH, MODAL_ID.blood))
     .setTitle("흡혈")
@@ -191,14 +197,14 @@ export function bloodModal(): ModalBuilder {
         ),
       new LabelBuilder()
         .setLabel("흡혈할 갯수")
-        .setDescription(AMOUNT_HINT)
+        .setDescription(amountHint(decimals))
         .setTextInputComponent(
           new TextInputBuilder()
             .setCustomId(FIELD.bloodAmount)
             .setStyle(TextInputStyle.Short)
-            .setPlaceholder("예: 3 · 0.5")
+            .setPlaceholder(amountPlaceholder(decimals))
             .setValue("1")
-            .setMaxLength(MAX_AMOUNT_LENGTH)
+            .setMaxLength(amountLength(decimals))
             .setRequired(true),
         ),
       // 여기도 다섯 칸이 꽉 찬다 — 항목 · 빼앗길 유저 · 가져갈 유저 · 갯수 · 사유.
@@ -207,10 +213,14 @@ export function bloodModal(): ModalBuilder {
 }
 
 /**
- * 설정 — 소원 전달 채널과 제작 비용.
+ * 설정 — 소원 전달 채널 · 제작 비용 · 소수점 자릿수.
  *
- * 현재 값을 미리 채워 두고 채널은 선택 항목으로 둔다.
- * 그래야 제작 비용만 바꾸고 싶을 때 채널을 다시 고르지 않아도 된다.
+ * 현재 값을 미리 채워 두고 채널은 선택 항목으로 둔다. 그래야 하나만 바꾸고 싶을 때
+ * 나머지를 다시 고르거나 적지 않아도 된다.
+ *
+ * 자릿수를 바꾸면 **가지고 있던 수량도 새 눈금에 맞춰진다** ([store.ts](store.ts) 의
+ * `setDecimals`). 그래서 칸 설명에 「늘리면 최대 수량이 내려간다」까지 적어 둔다 —
+ * 눌러 보고 나서 알면 늦다.
  */
 export function configModal(current: GuildSettings): ModalBuilder {
   const channelSelect = new ChannelSelectMenuBuilder()
@@ -241,6 +251,20 @@ export function configModal(current: GuildSettings): ModalBuilder {
             .setPlaceholder("예: 5")
             .setValue(String(current.fragmentsPerTicket))
             .setMaxLength(3)
+            .setRequired(true),
+        ),
+      new LabelBuilder()
+        .setLabel("소수점 자릿수")
+        .setDescription(
+          speak(`${MIN_DECIMALS} ~ ${MAX_DECIMALS} · 0이면 정수만, 1이면 반 장까지. 늘리면 최대 수량이 내려갑니다`),
+        )
+        .setTextInputComponent(
+          new TextInputBuilder()
+            .setCustomId(FIELD.decimals)
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder("예: 1")
+            .setValue(String(current.decimals))
+            .setMaxLength(2)
             .setRequired(true),
         ),
     );

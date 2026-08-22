@@ -2,6 +2,7 @@ import type { User } from "discord.js";
 
 import type { MessageOptions, ResponseField, Status } from "../ui/response.js";
 import { count } from "../info/format.js";
+import { formatAmount, smallestAmount } from "./amount.js";
 import { day } from "../time.js";
 import {
   formatBalance,
@@ -10,7 +11,7 @@ import {
   formatLedgerEntry,
   historyDayStamp,
 } from "./format.js";
-import { MAX_HISTORY_LINES, PANEL, RANK_PAGE_SIZE, type PanelKind } from "./ids.js";
+import { ITEM_UNIT, MAX_HISTORY_LINES, PANEL, RANK_PAGE_SIZE, type PanelKind } from "./ids.js";
 import { checkRows, historyRows, panelRows, panelSwitchButton, rankRows } from "./panels.js";
 import {
   getBalance,
@@ -45,7 +46,7 @@ export async function panelView(
       description: [
         speak("**수수** — 소원권/조각을 지급하거나 회수합니다."),
         speak("**흡혈** — 한 유저의 소원권/조각을 다른 유저에게 옮깁니다."),
-        speak("**설정** — 소원 전달 채널과 제작 비용을 정합니다."),
+        speak("**설정** — 소원 전달 채널 · 제작 비용 · 소수점 자릿수를 정합니다."),
       ].join("\n"),
       fields: [
         {
@@ -59,6 +60,11 @@ export async function panelView(
         {
           name: "제작 비용",
           value: `조각 **${settings.fragmentsPerTicket}개** = 소원권 1장`,
+          inline: true,
+        },
+        {
+          name: "소수점 자릿수",
+          value: `**${settings.decimals}자리** _(최소 ${formatAmount(smallestAmount(settings.decimals))}${ITEM_UNIT.ticket})_`,
           inline: true,
         },
       ],

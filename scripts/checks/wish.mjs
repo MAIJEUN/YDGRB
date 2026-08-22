@@ -84,75 +84,145 @@ assert("이미 0이어도 실패하지 않음", already.ok === true && already.a
 const strict = await store.applyBalanceChange(G, C, { tickets: -1 }, { note: { source: "검사" } });
 assert("켜지 않으면 모자랄 때 그대로 거절", strict.ok === false && strict.reason === "insufficient");
 
-console.log("\n=== 1-1-2. 갯수 한계 ===");
+console.log("\n=== 1-1-2. 갯수 눈금 (서버가 정한다) ===");
 const amount = await import(`${DIST}/wish/amount.js`);
-const { MAX_AMOUNT, MAX_AMOUNT_LENGTH, DECIMALS } = amount;
 
-// 눈금 단위로 세어도 정수로 정확해야 한다. 그 위로는 더한 값이 슬금슬금 어긋난다.
-assert(
-  "눈금까지 정확한 최대값",
-  MAX_AMOUNT === Math.floor(Number.MAX_SAFE_INTEGER / 10 ** DECIMALS),
-  String(MAX_AMOUNT),
-);
-assert("  └ 입력 칸은 소수점 자리까지 열림", MAX_AMOUNT_LENGTH === String(MAX_AMOUNT).length + 1 + DECIMALS);
-assert("  └ 예전 4자리 한계가 아님", MAX_AMOUNT_LENGTH > 4, String(MAX_AMOUNT_LENGTH));
+assert("고를 수 있는 자릿수는 0~10", amount.MIN_DECIMALS === 0 && amount.MAX_DECIMALS === 10);
+assert("  └ 안 정하면 1자리", amount.DEFAULT_DECIMALS === 1, String(amount.DEFAULT_DECIMALS));
 
-// 그 위로는 저장하지 않는다.
-await store.applyBalanceChange(G, D, { tickets: MAX_AMOUNT }, { note: { source: "검사" } });
-const piled = await store.applyBalanceChange(G, D, { tickets: MAX_AMOUNT }, { note: { source: "검사" } });
-assert("한계 위로는 올라가지 않음", piled.ok && piled.after.tickets === MAX_AMOUNT, JSON.stringify(piled));
+// 범위 밖이나 이상한 값은 기본값·범위 안으로 밀어 넣는다 (손으로 고친 파일도 견뎌야 한다).
+for (const [given, expected] of [
+  [0, 0],
+  [10, 10],
+  [-3, 0],
+  [99, 10],
+  [1.5, amount.DEFAULT_DECIMALS],
+  [undefined, amount.DEFAULT_DECIMALS],
+  [null, amount.DEFAULT_DECIMALS],
+  ["2", amount.DEFAULT_DECIMALS],
+]) {
+  assert(`자릿수 ${JSON.stringify(given)} → ${expected}`, amount.clampDecimals(given) === expected);
+}
+
+// 눈금 단위로 세어도 정수로 정확해야 한다. 자릿수를 늘리면 그만큼 한계가 내려간다.
+for (const places of [0, 1, 2, 10]) {
+  assert(
+    `${places}자리 최대값`,
+    amount.maxAmount(places) === Math.floor(Number.MAX_SAFE_INTEGER / 10 ** places),
+    String(amount.maxAmount(places)),
+  );
+}
+assert("자릿수를 늘리면 최대값이 내려감", amount.maxAmount(10) < amount.maxAmount(0));
+assert("  └ 0자리면 가장 작은 값이 1", amount.smallestAmount(0) === 1);
+assert("  └ 1자리면 0.1", amount.smallestAmount(1) === 0.1);
+
+// 화면에 지수 꼴(1e-10)이 나오면 사람이 읽을 수도, 그대로 다시 적을 수도 없다.
+assert("아주 작은 수도 펴서 적음", amount.formatAmount(1e-10) === "0.0000000001", amount.formatAmount(1e-10));
+assert("  └ 예시도 그렇게", amount.amountPlaceholder(10).includes("0.0000000001"), amount.amountPlaceholder(10));
+assert("  └ 정수는 그대로", amount.formatAmount(3) === "3", amount.formatAmount(3));
+assert("  └ 천 단위는 콤마", amount.formatAmount(1234.25) === "1,234.25", amount.formatAmount(1234.25));
+
+// 그 위로는 저장하지 않는다 (기본 1자리 기준).
+const CEILING = amount.maxAmount(amount.DEFAULT_DECIMALS);
+await store.applyBalanceChange(G, D, { tickets: CEILING }, { note: { source: "검사" } });
+const piled = await store.applyBalanceChange(G, D, { tickets: CEILING }, { note: { source: "검사" } });
+assert("한계 위로는 올라가지 않음", piled.ok && piled.after.tickets === CEILING, JSON.stringify(piled));
 assert(
   "  └ 눈금 단위로도 정수",
-  Number.isSafeInteger((await store.getBalance(G, D)).tickets * 10 ** DECIMALS),
+  Number.isSafeInteger((await store.getBalance(G, D)).tickets * 10 ** amount.DEFAULT_DECIMALS),
 );
 
 // 아래 랭킹 검사에 끼어들지 않게 걷어 낸다 (회수가 있는 만큼만 걷는다는 것도 한 번 더 쓴다).
-await store.applyBalanceChange(G, D, { tickets: -MAX_AMOUNT }, { note: { source: "검사" }, clamp: true });
+await store.applyBalanceChange(G, D, { tickets: -CEILING }, { note: { source: "검사" }, clamp: true });
 assert("  └ 걷어 내면 0", (await store.getBalance(G, D)).tickets === 0);
 
 console.log("\n=== 1-1-3. 소수점 ===");
 //
-// 반 장도 셀 수 있어야 하지만, 부동소수점을 그대로 담으면 더할수록 어긋난다.
-// 눈금을 정해 두고 저장 직전에 맞춘다.
-for (const [raw, expected] of [
-  ["3", 3],
-  ["0.5", 0.5],
-  ["0.1", 0.1],
-  [" 2.5 ", 2.5],
-  ["1.25", undefined],
-  ["1.005", undefined],
-  ["0", undefined],
-  ["-1", undefined],
-  ["1e3", undefined],
-  ["abc", undefined],
-  [String(MAX_AMOUNT + 1), undefined],
+// 부동소수점을 그대로 담으면 더할수록 어긋난다. 눈금을 정해 두고 저장 직전에 맞춘다.
+for (const [raw, places, expected] of [
+  ["3", 1, 3],
+  ["0.5", 1, 0.5],
+  [" 2.5 ", 1, 2.5],
+  ["1.25", 1, undefined],
+  ["1.25", 2, 1.25],
+  ["0.5", 0, undefined],
+  ["3", 0, 3],
+  ["0", 1, undefined],
+  ["-1", 1, undefined],
+  ["1e3", 1, undefined],
+  ["abc", 1, undefined],
 ]) {
-  assert(`읽기: ${JSON.stringify(raw)} → ${expected}`, amount.parseAmount(raw) === expected, String(amount.parseAmount(raw)));
+  assert(
+    `읽기(${places}자리): ${JSON.stringify(raw)} → ${expected}`,
+    amount.parseAmount(raw, places) === expected,
+    String(amount.parseAmount(raw, places)),
+  );
 }
 
-assert("눈금에 맞춤", amount.quantize(0.1 + 0.2) === 0.3, String(amount.quantize(0.1 + 0.2)));
-assert("  └ 눈금보다 잘면 안 받음", amount.parseAmount(String(amount.SMALLEST_AMOUNT / 10)) === undefined);
-assert("  └ 눈금 하나는 받음", amount.parseAmount(String(amount.SMALLEST_AMOUNT)) === amount.SMALLEST_AMOUNT);
-assert("입력 칸 안내가 표를 따라감", amount.AMOUNT_HINT.includes(`${DECIMALS}자리`), amount.AMOUNT_HINT);
-assert("  └ 이미 맞은 값은 그대로", amount.quantize(1.5) === 1.5);
+assert("눈금에 맞춤", amount.quantize(0.1 + 0.2, 1) === 0.3, String(amount.quantize(0.1 + 0.2, 1)));
+assert("  └ 0자리면 정수로", amount.quantize(2.5, 0) === 3, String(amount.quantize(2.5, 0)));
+assert("  └ 이미 맞은 값은 그대로", amount.quantize(1.5, 1) === 1.5);
+assert(
+  "입력 칸 안내가 설정을 따라감",
+  amount.amountHint(3).includes("3자리") && amount.amountHint(0) === "0보다 큰 정수",
+  amount.amountHint(0),
+);
 
 const DEC = "888888888888888880";
 for (let index = 0; index < 10; index += 1) {
   await store.applyBalanceChange(G, DEC, { tickets: 0.1 }, { note: { source: "검사" } });
 }
-assert("0.1 을 열 번 더해도 안 어긋남", (await store.getBalance(G, DEC)).tickets === 1, String((await store.getBalance(G, DEC)).tickets));
+assert(
+  "0.1 을 열 번 더해도 안 어긋남",
+  (await store.getBalance(G, DEC)).tickets === 1,
+  String((await store.getBalance(G, DEC)).tickets),
+);
 
 await store.applyBalanceChange(G, DEC, { tickets: -0.4 }, { note: { source: "검사" } });
-assert("  └ 소수로 걷기", (await store.getBalance(G, DEC)).tickets === 0.6, String((await store.getBalance(G, DEC)).tickets));
+assert(
+  "  └ 소수로 걷기",
+  (await store.getBalance(G, DEC)).tickets === 0.6,
+  String((await store.getBalance(G, DEC)).tickets),
+);
 
 const short = await store.applyBalanceChange(G, DEC, { tickets: -0.7 }, { note: { source: "검사" } });
 assert("  └ 모자라면 막힘", short.ok === false, JSON.stringify(short));
 
-assert("뒤에 붙는 0 은 떼고 적음", amount.formatAmount(3) === "3", amount.formatAmount(3));
-assert("  └ 소수는 그대로", amount.formatAmount(0.5) === "0.5", amount.formatAmount(0.5));
-assert("  └ 천 단위는 콤마, 소수점 아래는 그대로", amount.formatAmount(1234.5) === "1,234.5", amount.formatAmount(1234.5));
+console.log("\n=== 1-1-4. 자릿수를 바꾸면 ===");
+//
+// 자릿수만 바꾸고 잔고를 두면 「정수만 쓰는 서버」인데 화면에 2.5장이 떠 있는 꼴이 된다.
+{
+  const DG = "555555555555555550";
+  const P1 = "555555555555555551";
+  const P2 = "555555555555555552";
 
-await store.applyBalanceChange(G, DEC, { tickets: -100 }, { note: { source: "검사" }, clamp: true });
+  await store.applyBalanceChange(DG, P1, { tickets: 2.5 }, { note: { source: "밑작업" } });
+  await store.applyBalanceChange(DG, P2, { tickets: 1.4 }, { note: { source: "밑작업" } });
+
+  const dropped = await store.setDecimals(DG, 0);
+  assert("설정이 바뀜", dropped.settings.decimals === 0, String(dropped.settings.decimals));
+  assert("  └ 가진 것도 새 눈금으로", (await store.getBalance(DG, P1)).tickets === 3);
+  assert("  └ 내려가기도 함", (await store.getBalance(DG, P2)).tickets === 1);
+  assert("  └ 움직인 사람 수를 알려 줌", dropped.adjusted === 2, String(dropped.adjusted));
+
+  // 관리자가 설정을 만졌을 뿐인데 남의 수량이 조용히 바뀌면 안 된다.
+  const { dateKey } = await import(`${DIST}/time.js`);
+  const trail = await store.getHistoryOf(DG, P1, dateKey());
+  assert("  └ 역사에 남김", trail.at(-1).source.includes("소수점 자릿수 변경"), trail.at(-1).source);
+  assert("    · 얼마나 움직였는지도", trail.at(-1).tickets === 0.5, String(trail.at(-1).tickets));
+
+  // 바뀐 눈금이 곧바로 먹는다.
+  const rounded = await store.applyBalanceChange(DG, P1, { tickets: 0.5 }, { note: { source: "검사" } });
+  assert("바뀐 눈금이 곧바로 먹음", rounded.ok && rounded.after.tickets === 4, JSON.stringify(rounded));
+
+  // 같은 값으로 다시 부르면 아무것도 안 건드린다.
+  assert("같은 자릿수면 아무 일 없음", (await store.setDecimals(DG, 0)).adjusted === 0);
+
+  // 자릿수를 늘리는 것은 잃는 것이 없다.
+  const raised = await store.setDecimals(DG, 3);
+  assert("자릿수를 늘리면 값은 그대로", raised.adjusted === 0 && (await store.getBalance(DG, P1)).tickets === 4);
+  assert("  └ 더 잘게 넣을 수 있음", amount.parseAmount("0.125", 3) === 0.125);
+}
 
 
 console.log("\n=== 1-2. 흡혈 (빼고 → 더하기) ===");

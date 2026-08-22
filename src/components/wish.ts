@@ -13,7 +13,14 @@ import {
   retained,
   toUploadFiles,
 } from "../wish/attachments.js";
-import { amountError, formatAmount, parseAmount } from "../wish/amount.js";
+import {
+  MAX_DECIMALS,
+  MIN_DECIMALS,
+  amountError,
+  formatAmount,
+  maxAmount,
+  parseAmount,
+} from "../wish/amount.js";
 import { formatBalance, formatBalanceChange, formatBalanceChangeFor } from "../wish/format.js";
 import {
   ACTION,
@@ -43,6 +50,7 @@ import {
   getBalance,
   getSettings,
   resolveWish,
+  setDecimals,
   updateSettings,
   type BalanceDelta,
   type RankSort,
@@ -161,7 +169,7 @@ export default defineComponentHandler({
 
       case ACTION.grant:
         if (await denyNonAdmin(interaction)) return;
-        await showModal(interaction, grantModal());
+        await showModal(interaction, grantModal((await getSettings(guildId)).decimals));
         return;
 
       case ACTION.config:
@@ -172,7 +180,7 @@ export default defineComponentHandler({
 
       case ACTION.blood:
         if (await denyNonAdmin(interaction)) return;
-        await showModal(interaction, bloodModal());
+        await showModal(interaction, bloodModal((await getSettings(guildId)).decimals));
         return;
 
       case ACTION.accept:
@@ -767,9 +775,14 @@ async function submitGrant(interaction: ComponentInteraction, guildId: string): 
     return;
   }
 
-  const amount = parseAmount(rawAmount);
+  const { decimals } = await getSettings(guildId);
+
+  const amount = parseAmount(rawAmount, decimals);
   if (amount === undefined) {
-    await replaceView(interaction, adminFailure(interaction, "수수 실패", amountError(rawAmount)));
+    await replaceView(
+      interaction,
+      adminFailure(interaction, "수수 실패", amountError(rawAmount, decimals)),
+    );
     return;
   }
 
@@ -876,9 +889,14 @@ async function submitBlood(interaction: ComponentInteraction, guildId: string): 
     return;
   }
 
-  const amount = parseAmount(rawAmount);
+  const { decimals } = await getSettings(guildId);
+
+  const amount = parseAmount(rawAmount, decimals);
   if (amount === undefined) {
-    await replaceView(interaction, adminFailure(interaction, "흡혈 실패", amountError(rawAmount)));
+    await replaceView(
+      interaction,
+      adminFailure(interaction, "흡혈 실패", amountError(rawAmount, decimals)),
+    );
     return;
   }
 
@@ -959,14 +977,32 @@ async function submitConfig(interaction: ComponentInteraction, guildId: string):
     return;
   }
 
+  const rawDecimals = interaction.fields.getTextInputValue(FIELD.decimals).trim();
+  const decimals = Number.parseInt(rawDecimals, 10);
+
+  if (!/^\d+$/.test(rawDecimals) || decimals < MIN_DECIMALS || decimals > MAX_DECIMALS) {
+    await replaceView(
+      interaction,
+      adminFailure(
+        interaction,
+        "설정 실패",
+        speak(`소수점 자릿수는 ${MIN_DECIMALS} 이상 ${MAX_DECIMALS} 이하의 정수여야 해요. (입력: \`${rawDecimals}\`)`),
+      ),
+    );
+    return;
+  }
+
   // 채널은 선택 항목이다. 고르지 않았으면 기존 값을 그대로 둔다.
   const channels = interaction.fields.getSelectedChannels(FIELD.configChannel);
-  const channelId = channels === null ? undefined : [...channels.keys()][0];
+  const channelId = channels === undefined || channels === null ? undefined : [...channels.keys()][0];
 
-  const settings = await updateSettings(guildId, {
+  await updateSettings(guildId, {
     fragmentsPerTicket: cost,
     ...(channelId === undefined ? {} : { wishChannelId: channelId }),
   });
+
+  // 자릿수는 따로 간다 — 가지고 있던 수량도 새 눈금에 맞춰야 하기 때문이다.
+  const { settings, adjusted } = await setDecimals(guildId, decimals);
 
   await replaceView(
     interaction,
@@ -982,6 +1018,19 @@ async function submitConfig(interaction: ComponentInteraction, guildId: string):
           name: "제작 비용",
           value: `조각 **${settings.fragmentsPerTicket}개** = 소원권 1장`,
         },
+        {
+          name: "소수점 자릿수",
+          value: `**${settings.decimals}자리** _(최대 ${formatAmount(maxAmount(settings.decimals))}${ITEM_UNIT.ticket})_`,
+        },
+        // 설정을 만졌을 뿐인데 남의 수량이 조용히 바뀌면 안 된다. 몇 명이 움직였는지 알린다.
+        ...(adjusted === 0
+          ? []
+          : [
+              {
+                name: "새 눈금에 맞춤",
+                value: speak(`${adjusted}명의 보유량을 새 자릿수로 맞췄습니다. 역사에 남아 있어요.`),
+              },
+            ]),
       ],
       user: interaction.user,
       panel: PANEL.admin,

@@ -3,7 +3,7 @@ import path from "node:path";
 
 import { JsonFile } from "../storage/json-file.js";
 import { dateKey } from "../time.js";
-import { MAX_AMOUNT, quantize } from "./amount.js";
+import { DEFAULT_DECIMALS, MAX_DECIMALS, clampDecimals, maxAmount, quantize } from "./amount.js";
 import type {
   Balance,
   GuildData,
@@ -29,7 +29,11 @@ function emptyBalance(): Balance {
 }
 
 function defaultSettings(): GuildSettings {
-  return { wishChannelId: null, fragmentsPerTicket: DEFAULT_FRAGMENTS_PER_TICKET };
+  return {
+    wishChannelId: null,
+    fragmentsPerTicket: DEFAULT_FRAGMENTS_PER_TICKET,
+    decimals: DEFAULT_DECIMALS,
+  };
 }
 
 function guildOf(data: WishData, guildId: string): GuildData {
@@ -113,9 +117,6 @@ export interface ChangeOptions {
   readonly clamp?: boolean;
 }
 
-/** 다룰 수 있는 한계. [수량](amount.ts)이 정한 것을 그대로 쓴다. */
-const MAX_BALANCE = MAX_AMOUNT;
-
 /**
  * 역사에 남겨 두는 최대 줄 수.
  *
@@ -135,6 +136,10 @@ export async function applyBalanceChanges(
     const guild = guildOf(data, guildId);
     const results = new Map<string, ChangeResult>();
 
+    // 눈금은 서버마다 다르다. 저장 직전에 이 서버의 자릿수로 맞춘다.
+    const decimals = clampDecimals(guild.settings?.decimals);
+    const ceiling = maxAmount(decimals);
+
     for (const userId of userIds) {
       const before = balanceOf(guild, userId);
       const wanted: Balance = {
@@ -153,16 +158,16 @@ export async function applyBalanceChanges(
       // 어긋나는데, 한 번 저장된 어긋난 값은 아무도 되돌리지 못한다. 수량이 바뀌는 곳이
       // 여기 하나뿐이라, 여기만 지키면 저장된 값은 언제나 눈금 위에 있다.
       const after: Balance = {
-        tickets: quantize(Math.min(Math.max(wanted.tickets, 0), MAX_BALANCE)),
-        fragments: quantize(Math.min(Math.max(wanted.fragments, 0), MAX_BALANCE)),
+        tickets: quantize(Math.min(Math.max(wanted.tickets, 0), ceiling), decimals),
+        fragments: quantize(Math.min(Math.max(wanted.fragments, 0), ceiling), decimals),
       };
 
       guild.balances[userId] = after;
       results.set(userId, { ok: true, before, after });
 
       // 아무것도 안 바뀐 변동은 역사가 아니다 (0을 더하거나, 이미 0인 데서 걷었거나).
-      const tickets = quantize(after.tickets - before.tickets);
-      const fragments = quantize(after.fragments - before.fragments);
+      const tickets = quantize(after.tickets - before.tickets, decimals);
+      const fragments = quantize(after.fragments - before.fragments, decimals);
       if (tickets === 0 && fragments === 0) continue;
 
       guild.history.push({
@@ -220,9 +225,10 @@ function emptyMoves(): { gained: number; lost: number } {
 }
 
 function addMove(into: { gained: number; lost: number }, amount: number): void {
-  // 여러 줄을 더하는 동안 어긋난 끝자리는 마지막에 털어 낸다.
-  if (amount > 0) into.gained = quantize(into.gained + amount);
-  else into.lost = quantize(into.lost - amount);
+  // 여러 줄을 더하는 동안 어긋난 끝자리는 그때그때 털어 낸다. 지난 줄은 그때의 눈금으로
+  // 저장된 것이라, 여기서는 **가장 잘게** 잡아 두고 어느 눈금의 값이 와도 견디게 한다.
+  if (amount > 0) into.gained = quantize(into.gained + amount, MAX_DECIMALS);
+  else into.lost = quantize(into.lost - amount, MAX_DECIMALS);
 }
 
 /**
@@ -310,7 +316,8 @@ export async function getRanking(guildId: string, sort: RankSort): Promise<RankE
 
 /** 저장된 값이 없거나 예전 형식이어도 빠진 항목은 기본값으로 채워서 돌려준다. */
 export async function getSettings(guildId: string): Promise<GuildSettings> {
-  return { ...defaultSettings(), ...(await file.read()).guilds[guildId]?.settings };
+  const stored = { ...defaultSettings(), ...(await file.read()).guilds[guildId]?.settings };
+  return { ...stored, decimals: clampDecimals(stored.decimals) };
 }
 
 /** 넘긴 항목만 바꾼다. 설정 모달에서 일부만 고쳐도 나머지가 지워지지 않게. */
@@ -322,6 +329,55 @@ export async function updateSettings(
     const guild = guildOf(data, guildId);
     guild.settings = { ...defaultSettings(), ...guild.settings, ...patch };
     return guild.settings;
+  });
+}
+
+/**
+ * 소수점 자릿수를 바꾼다 — **가지고 있던 수량도 함께 새 눈금에 맞춘다.**
+ *
+ * 자릿수만 바꾸고 잔고를 두면 「정수만 쓰는 서버」인데 화면에는 2.5장이 떠 있는 꼴이 된다.
+ * 다음에 그 사람의 수량이 바뀔 때까지 그 상태로 남으므로, 바꾸는 그 자리에서 맞춘다.
+ *
+ * 맞추면서 **누구의 수량이 얼마나 움직였는지 역사에 남긴다.** 관리자가 설정을 만졌을 뿐인데
+ * 남의 소원권이 조용히 늘거나 줄면, 나중에 아무도 이유를 못 찾는다.
+ */
+export async function setDecimals(
+  guildId: string,
+  decimals: number,
+): Promise<{ readonly settings: GuildSettings; readonly adjusted: number }> {
+  return file.update((data) => {
+    const guild = guildOf(data, guildId);
+
+    const before = clampDecimals(guild.settings?.decimals);
+    const after = clampDecimals(decimals);
+
+    guild.settings = { ...defaultSettings(), ...guild.settings, decimals: after };
+    if (before === after) return { settings: guild.settings, adjusted: 0 };
+
+    const ceiling = maxAmount(after);
+    const source = `소수점 자릿수 변경 (${before} → ${after})`;
+    let adjusted = 0;
+
+    for (const [userId, balance] of Object.entries(guild.balances)) {
+      const next: Balance = {
+        tickets: quantize(Math.min(balance.tickets, ceiling), after),
+        fragments: quantize(Math.min(balance.fragments, ceiling), after),
+      };
+
+      const tickets = quantize(next.tickets - balance.tickets, MAX_DECIMALS);
+      const fragments = quantize(next.fragments - balance.fragments, MAX_DECIMALS);
+      if (tickets === 0 && fragments === 0) continue;
+
+      guild.balances[userId] = next;
+      guild.history.push({ at: Date.now(), userId, tickets, fragments, source, reason: null });
+      adjusted += 1;
+    }
+
+    if (guild.history.length > MAX_HISTORY_ENTRIES) {
+      guild.history.splice(0, guild.history.length - MAX_HISTORY_ENTRIES);
+    }
+
+    return { settings: guild.settings, adjusted };
   });
 }
 
