@@ -83,9 +83,10 @@ export async function openGame(
     maxPlayers: options.maxPlayers ?? null,
     messageId: null,
     hostId: host.id,
-    // 모집 게임은 연 사람도 참가한 것으로 본다 — 자기 판에 따로 참가 버튼을 누를 이유가 없다.
-    // 즉시 시작은 아니다. 열어만 놓고 안 할 수도 있으니, 참가는 게임을 하면서 세어진다.
-    players: recruiting ? [host.id] : [],
+    // **아무도 자동으로 들어가지 않는다.** 판을 연 것과 그 판을 하겠다는 것은 다른 일이라,
+    // 남을 위해 열어 주는 경우(관리자가 판만 깔아 두는 것)에 연 사람이 참가자로 세어지면
+    // 인원도 결과도 어긋난다. 연 사람도 하려면 「참가」를 누른다.
+    players: [],
     phase: recruiting ? "recruiting" : "playing",
     openedAt: Date.now(),
     closesAt: recruiting

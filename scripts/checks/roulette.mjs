@@ -266,10 +266,14 @@ console.log("\n=== 6. 판마다 정원 ===");
 
   assert("정원이 판에 실림", session.maxPlayers === 3, String(session.maxPlayers));
   assert("  └ 정원을 보는 곳도 같은 값", seatsOf(roulette, session) === 3);
-  assert("  └ 연 사람이 첫 자리", session.players.join() === HOST);
+  // 연 것과 하겠다는 것은 다른 일이다 — 연 사람도 참가하려면 눌러야 한다.
+  assert("  └ 아무도 자동 참가하지 않음", session.players.length === 0, JSON.stringify(session.players));
 
   const panel = bodyOf((await client.messages.get(session.messageId)).payload);
   assert("화면에도 그 정원", panel.includes("최대 **3명**"), panel.slice(0, 300));
+
+  const first = await runner.join(G, session.id, HOST);
+  assert("연 사람도 눌러서 참가", first.ok === true && first.full === false);
 
   const second = await runner.join(G, session.id, P(1));
   assert("둘째 참가", second.ok === true && second.full === false);
@@ -293,6 +297,7 @@ console.log("\n=== 7. 돌려서 뽑기 ===");
   const client = makeClient();
   const { session } = await open(client, { seats: 3, title: "보상은 소원권 1개" });
 
+  await runner.join(G, session.id, HOST);
   await runner.join(G, session.id, P(1));
   const full = await runner.join(G, session.id, P(2));
   assert("다 모이면 시작 신호", full.full === true);
@@ -354,6 +359,7 @@ console.log("\n=== 8. 도는 중에 종료 ===");
   const client = makeClient();
   const { session } = await open(client, { seats: 2 });
 
+  await runner.join(G, session.id, HOST);
   await runner.join(G, session.id, P(1));
   const spin = runner.startNow(client, G, session.id, host);
 

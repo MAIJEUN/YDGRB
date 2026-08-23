@@ -194,7 +194,14 @@ console.log("\n=== 2. 모집 ===");
   const { session } = await open(client, "duo");
 
   assert("모집 단계로 열림", session.phase === "recruiting", session.phase);
-  assert("  └ 연 사람은 이미 참가", session.players.length === 1 && session.players[0] === HOST);
+  // 연 것과 하겠다는 것은 다른 일이다 — 아무도 자동으로 들어가지 않는다.
+  assert("  └ 아무도 자동 참가하지 않음", session.players.length === 0, JSON.stringify(session.players));
+  assert(
+    "    · 연 사람도 눌러야 들어감",
+    (await runner.join(G, session.id, HOST)).ok === true,
+    "판을 연 것과 그 판을 하겠다는 것은 다른 일이다",
+  );
+  await runner.leave(G, session.id, HOST);
   assert(
     "  └ 마감이 5분 뒤",
     Math.abs(session.closesAt - Date.now() - 5 * 60 * 1000) < 2000,
@@ -203,14 +210,14 @@ console.log("\n=== 2. 모집 ===");
   assert("  └ 마감이 예약됨", scheduler.reservations().some((r) => r.sessionId === session.id));
 
   const joined = await runner.join(G, session.id, P2);
-  assert("참가하면 늘어남", joined.ok && joined.session.players.length === 2, JSON.stringify(joined));
+  assert("참가하면 늘어남", joined.ok && joined.session.players.length === 1, JSON.stringify(joined));
   assert("  └ 아직 정원은 안 참", joined.ok && joined.full === false);
 
   const again = await runner.join(G, session.id, P2);
   assert("두 번 참가는 막힘", !again.ok && again.reason === "already", JSON.stringify(again));
 
   const left = await runner.leave(G, session.id, P2);
-  assert("나가면 줄어듦", left.ok && left.session.players.length === 1, JSON.stringify(left));
+  assert("나가면 줄어듦", left.ok && left.session.players.length === 0, JSON.stringify(left));
 
   const leaveAgain = await runner.leave(G, session.id, P2);
   assert("  └ 없는 사람은 막힘", !leaveAgain.ok && leaveAgain.reason === "notJoined");
@@ -227,6 +234,7 @@ console.log("\n=== 3. 정원 ===");
   const client = makeClient();
   const { session } = await open(client, "duo"); // 최대 3
 
+  await runner.join(G, session.id, HOST);
   await runner.join(G, session.id, P2);
   const third = await runner.join(G, session.id, P3);
   assert("정원이 차면 알려 줌 (full)", third.ok && third.full === true, JSON.stringify(third));
