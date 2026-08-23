@@ -3,13 +3,15 @@ import type { ButtonInteraction } from "discord.js";
 
 import { ACTION, GAME } from "../games/ids.js";
 import { getGame } from "../games/registry.js";
+import { openPending } from "../games/command.js";
+import { takePending } from "../games/pending.js";
 import { cancel, join, leave, refreshPanel, startNow, stopGame } from "../games/runner.js";
-import { getSession } from "../games/store.js";
+import { activeInChannel, getSession } from "../games/store.js";
 import { minPlayersOf } from "../games/types.js";
 import { noticeView, refusedView } from "../games/views.js";
 import { logger } from "../logger.js";
 import { defineComponentHandler } from "../types.js";
-import { response } from "../ui/response.js";
+import { response, updateResponse } from "../ui/response.js";
 import { speak } from "../ui/tone.js";
 
 /**
@@ -46,6 +48,13 @@ export default defineComponentHandler({
     if (!interaction.inCachedGuild()) return;
 
     const [action, sessionId = ""] = args;
+
+    // 넘겨받기만은 **판 id 가 아니라 맡긴 id** 를 싣는다. 판을 찾기 전에 가른다.
+    if (action === ACTION.takeover) {
+      await takeover(interaction, sessionId);
+      return;
+    }
+
     const session = await getSession(interaction.guildId, sessionId);
 
     if (session === undefined) {
@@ -58,7 +67,9 @@ export default defineComponentHandler({
     const game = getGame(session.gameId);
     if (game === undefined) {
       await interaction.reply(
-        response(refusedView("없는 게임", speak("이 판의 게임을 찾지 못했습니다."), interaction.user)),
+        response(
+          refusedView("없는 게임", speak("이 판의 게임을 찾지 못했습니다."), interaction.user),
+        ),
       );
       return;
     }
@@ -74,14 +85,20 @@ export default defineComponentHandler({
         if (!result.ok) {
           await interaction.reply(
             response(
-              refusedView(speak("참가하지 못했어요"), JOIN_PROBLEM[result.reason] ?? "", interaction.user),
+              refusedView(
+                speak("참가하지 못했어요"),
+                JOIN_PROBLEM[result.reason] ?? "",
+                interaction.user,
+              ),
             ),
           );
           return;
         }
 
         await interaction.reply(
-          response(noticeView(`${game.name} — 참가`, speak("판에 들어왔습니다."), interaction.user)),
+          response(
+            noticeView(`${game.name} — 참가`, speak("판에 들어왔습니다."), interaction.user),
+          ),
         );
         if (host !== null) await refreshPanel(interaction.client, result.session, host);
 
@@ -98,14 +115,20 @@ export default defineComponentHandler({
         if (!result.ok) {
           await interaction.reply(
             response(
-              refusedView(speak("나가지 못했어요"), JOIN_PROBLEM[result.reason] ?? "", interaction.user),
+              refusedView(
+                speak("나가지 못했어요"),
+                JOIN_PROBLEM[result.reason] ?? "",
+                interaction.user,
+              ),
             ),
           );
           return;
         }
 
         await interaction.reply(
-          response(noticeView(`${game.name} — 나가기`, speak("판에서 빠졌습니다."), interaction.user)),
+          response(
+            noticeView(`${game.name} — 나가기`, speak("판에서 빠졌습니다."), interaction.user),
+          ),
         );
         if (host !== null) await refreshPanel(interaction.client, result.session, host);
         return;
@@ -115,7 +138,11 @@ export default defineComponentHandler({
         if (!mayControl(interaction, session.hostId)) {
           await interaction.reply(
             response(
-              refusedView(speak("시작하지 못했어요"), speak("판을 연 사람과 관리자만 시작할 수 있습니다."), interaction.user),
+              refusedView(
+                speak("시작하지 못했어요"),
+                speak("판을 연 사람과 관리자만 시작할 수 있습니다."),
+                interaction.user,
+              ),
             ),
           );
           return;
@@ -144,7 +171,11 @@ export default defineComponentHandler({
         if (!mayControl(interaction, session.hostId)) {
           await interaction.reply(
             response(
-              refusedView(speak("종료하지 못했어요"), speak("판을 연 사람과 관리자만 종료할 수 있습니다."), interaction.user),
+              refusedView(
+                speak("종료하지 못했어요"),
+                speak("판을 연 사람과 관리자만 종료할 수 있습니다."),
+                interaction.user,
+              ),
             ),
           );
           return;
@@ -169,7 +200,11 @@ export default defineComponentHandler({
         if (!mayControl(interaction, session.hostId)) {
           await interaction.reply(
             response(
-              refusedView(speak("접지 못했어요"), speak("판을 연 사람과 관리자만 접을 수 있습니다."), interaction.user),
+              refusedView(
+                speak("접지 못했어요"),
+                speak("판을 연 사람과 관리자만 접을 수 있습니다."),
+                interaction.user,
+              ),
             ),
           );
           return;
@@ -186,3 +221,81 @@ export default defineComponentHandler({
     }
   },
 });
+
+/**
+ * 도는 판을 접고 **막혔던 판을 대신 연다.**
+ *
+ * 이 버튼은 그 판을 끝낼 수 있는 사람에게만 붙지만, 붙은 것을 그대로 믿지 않는다 —
+ * customId 는 누구나 흉내 낼 수 있다.
+ */
+async function takeover(
+  interaction: ButtonInteraction<"cached">,
+  pendingId: string,
+): Promise<void> {
+  const pending = takePending(pendingId);
+  if (pending === undefined) {
+    await interaction.reply(
+      response(
+        refusedView(
+          speak("지난 요청입니다"),
+          speak("열려던 것을 잊었습니다. 명령을 다시 써 주세요."),
+          interaction.user,
+        ),
+      ),
+    );
+    return;
+  }
+
+  const running = await activeInChannel(interaction.guildId, pending.channelId);
+
+  if (running !== undefined && !mayControl(interaction, running.hostId)) {
+    await interaction.reply(
+      response(
+        refusedView(
+          speak("접지 못했어요"),
+          speak("판을 연 사람과 관리자만 접을 수 있습니다."),
+          interaction.user,
+        ),
+      ),
+    );
+    return;
+  }
+
+  await interaction.deferUpdate();
+
+  // 돌던 판을 먼저 끝낸다. 그 사이에 저절로 끝났으면 그냥 새로 연다.
+  if (running !== undefined) {
+    const runningHost = await interaction.client.users
+      .fetch(running.hostId)
+      .catch(() => interaction.client.user);
+
+    if (runningHost !== null) {
+      await stopGame(
+        interaction.client,
+        interaction.guildId,
+        running.id,
+        runningHost,
+        interaction.user.id,
+      );
+    }
+  }
+
+  const opened = await openPending(interaction.client, pending);
+
+  await interaction.editReply(
+    updateResponse(
+      opened.ok
+        ? noticeView(
+            speak("새 판을 열었습니다"),
+            speak(`<#${pending.channelId}> 에 올렸어요.`),
+            interaction.user,
+          )
+        : refusedView(
+            speak("열지 못했어요"),
+            speak("접는 사이에 다른 판이 열렸습니다. 다시 시도해 주세요."),
+            interaction.user,
+          ),
+    ),
+  );
+  return;
+}

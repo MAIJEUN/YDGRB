@@ -3,6 +3,7 @@ import type { Client } from "discord.js";
 import { PRIVILEGED_INTENTS, createClient } from "./client.js";
 import { loadConfig } from "./config.js";
 import { loadGames } from "./games/registry.js";
+import { cancelAllPending } from "./games/pending.js";
 import { cancelAllCloses } from "./games/scheduler.js";
 // 부팅 시각을 정확히 잡으려면 로그인보다 먼저 불러야 한다.
 import "./debug/runtime.js";
@@ -97,6 +98,7 @@ function installProcessHandlers(client: Client): void {
       // 타이머가 남아 있으면 프로세스가 안 끝난다 — 타살버 반복과 게임 모집 마감.
       stopAllLoops();
       cancelAllCloses();
+      cancelAllPending();
 
       void Promise.resolve(client.destroy()).finally(() => {
         process.exit(0);

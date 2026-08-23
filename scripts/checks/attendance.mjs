@@ -300,12 +300,10 @@ const commandSource = read("src/commands/attendance.ts");
 const componentSource = read("src/components/attendance.ts");
 
 assert("하루에 한 번", commandSource.includes("const already = await getToday(interaction.guildId)"));
-assert(
-  "  └ 「오늘의 출헉」 자체가 링크",
-  commandSource.includes("`[오늘의 출헉](https://discord.com/channels/"),
-  commandSource,
-);
-assert("  └ 링크를 못 만들면 글자만", commandSource.includes('? "오늘의 출헉"'));
+// 링크를 만드는 곳은 한 군데다 — 게임의 「바로 가기」도 같은 함수를 지난다.
+assert("  └ 「오늘의 출헉」 자체가 링크", commandSource.includes("`[오늘의 출헉](${link})`"), commandSource);
+assert("  └ 링크는 공용 helper 로", commandSource.includes("messageLink(interaction.guildId"));
+assert("  └ 링크를 못 만들면 글자만", commandSource.includes('link === null ? "오늘의 출헉"'));
 assert("  └ 「보러 가기」 를 따로 붙이지 않음", !commandSource.includes("보러 가기"));
 assert("  └ 그림 그리기 전에 자리를 잡음", commandSource.indexOf("setToday(") < commandSource.indexOf("renderText("));
 assert("  └ 실패하면 자리를 비움", commandSource.includes("clearToday(interaction.guildId)"));

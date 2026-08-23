@@ -90,6 +90,19 @@ import { describeError } from "../errors.js";
  *      로그와 개발자 오류도 사람이 읽는 화면이 아니니 그대로 둔다.
  */
 
+/**
+ * 그 메시지로 바로 가는 링크. 아직 보내지지 않았으면 null.
+ *
+ * 「저기서 도는 판을 보라」 고 말할 때 id 를 적어 봐야 아무도 못 찾아간다.
+ */
+export function messageLink(
+  guildId: string,
+  channelId: string,
+  messageId: string | null,
+): string | null {
+  return messageId === null ? null : `https://discord.com/channels/${guildId}/${channelId}/${messageId}`;
+}
+
 export type Status = "success" | "failure" | "progress" | "info";
 
 /** 디스코드 공식 팔레트. 다른 색은 쓰지 않는다. */

@@ -1,6 +1,7 @@
-import { ActionRowBuilder, TextInputBuilder, TextInputStyle } from "discord.js";
+import { ActionRowBuilder, PermissionFlagsBits, TextInputBuilder, TextInputStyle } from "discord.js";
 import type {
   ChatInputCommandInteraction,
+  Client,
   ModalSubmitInteraction,
   SlashCommandStringOption,
   User,
@@ -12,13 +13,15 @@ import {
   formatDuration,
   parseDuration,
 } from "../time.js";
-import { response } from "../ui/response.js";
+import { channelMessage, messageLink, response } from "../ui/response.js";
 import type { MessageOptions } from "../ui/response.js";
 import { MAX_TITLE_LENGTH, TITLE_OPTION } from "./ids.js";
+import { keepPending, type PendingOpen } from "./pending.js";
+import { getGame } from "./registry.js";
 import { attach, openGame } from "./runner.js";
-import type { OpenOptions } from "./runner.js";
-import type { GameDefinition } from "./types.js";
-import { refusedView } from "./views.js";
+import type { OpenOptions, OpenResult } from "./runner.js";
+import type { GameDefinition, GameSession } from "./types.js";
+import { busyView, refusedView } from "./views.js";
 import { speak } from "../ui/tone.js";
 
 /**
@@ -141,15 +144,7 @@ export async function openGameHere(
   const opened = await openGame(game, interaction.guildId, interaction.channel.id, interaction.user, options);
 
   if (!opened.ok) {
-    await interaction.reply(
-      response(
-        refusedView(
-          speak("이미 판이 돌고 있어요"),
-          speak("이 채널에서 도는 판이 끝나야 새로 열 수 있습니다."),
-          interaction.user,
-        ),
-      ),
-    );
+    await interaction.reply(response(busyNotice(interaction, opened.running, game, options)));
     return false;
   }
 
@@ -158,4 +153,58 @@ export async function openGameHere(
 
   await attach(interaction.client, game, opened.session, message, interaction.user);
   return true;
+}
+
+/**
+ * 막혔다는 안내를 만든다 — 도는 판으로 가는 **링크**와, 접고 대신 여는 **버튼**.
+ *
+ * 버튼은 **그 판을 끝낼 수 있는 사람에게만** 준다 (그 판을 연 사람과 관리자).
+ * 지나가던 사람이 명령 한 번으로 남의 판을 밀어낼 수는 없다. 못 누르는 버튼을 보여 주고
+ * 눌렀을 때 막는 것보다, 아예 안 보이는 편이 낫다.
+ *
+ * 열려던 것은 [잠깐 맡겨 둔다](pending.ts) — 문제와 정답, 인원, 제목은 그 명령 한 번에만
+ * 실려 오고 응답한 순간 사라지기 때문이다.
+ */
+function busyNotice(
+  interaction: GameOpener & { guildId: string },
+  running: GameSession,
+  game: GameDefinition,
+  options: OpenOptions,
+): MessageOptions {
+  const link = messageLink(interaction.guildId, running.channelId, running.messageId);
+
+  const mayStop =
+    interaction.user.id === running.hostId ||
+    interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) === true;
+
+  const takeoverId = mayStop
+    ? keepPending({
+        game,
+        options,
+        guildId: interaction.guildId,
+        channelId: running.channelId,
+        host: interaction.user,
+      })
+    : null;
+
+  return busyView(running, getGame(running.gameId), interaction.user, { link, takeoverId });
+}
+
+/**
+ * 맡겨 둔 판을 **채널에 연다.** 도는 판을 접은 직후에 부른다.
+ *
+ * 커맨드로 열 때와 달리 인터랙션 응답을 판으로 쓸 수 없다 — 막혔다는 안내가 이미 그 자리를
+ * 차지했고, 그 안내는 **누른 사람에게만** 보이는 것이라 판이 될 수 없다.
+ */
+export async function openPending(client: Client, open: PendingOpen): Promise<OpenResult> {
+  const opened = await openGame(open.game, open.guildId, open.channelId, open.host, open.options);
+  if (!opened.ok) return opened;
+
+  const channel = await client.channels.fetch(open.channelId).catch(() => null);
+  if (channel === null || !channel.isTextBased() || !channel.isSendable()) return opened;
+
+  const message = await channel.send(channelMessage(opened.view));
+  await attach(client, open.game, opened.session, message, open.host);
+
+  return opened;
 }

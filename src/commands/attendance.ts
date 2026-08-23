@@ -18,7 +18,7 @@ import {
 } from "../attendance/store.js";
 import { IMAGE_NAME, alreadyView, todayView } from "../attendance/views.js";
 import { logger } from "../logger.js";
-import { channelMessage, editResponse, response } from "../ui/response.js";
+import { channelMessage, editResponse, messageLink, response } from "../ui/response.js";
 import { defineCommand } from "../types.js";
 import { speak } from "../ui/tone.js";
 
@@ -90,10 +90,8 @@ export default defineCommand({
     const already = await getToday(interaction.guildId);
     if (already !== null) {
       // 「오늘의 출헉」 자체를 링크로 건다. 링크를 못 만들면 글자만 남는다.
-      const label =
-        already.messageId === null
-          ? "오늘의 출헉"
-          : `[오늘의 출헉](https://discord.com/channels/${interaction.guildId}/${already.channelId}/${already.messageId})`;
+      const link = messageLink(interaction.guildId, already.channelId, already.messageId);
+      const label = link === null ? "오늘의 출헉" : `[오늘의 출헉](${link})`;
 
       // 방금 적은 글자를 덤 자리에 담아 둔다 — 버튼을 누르면 그대로 올라간다.
       // customId 에 글자를 실을 수는 없다. 그게 곧 정답이다.

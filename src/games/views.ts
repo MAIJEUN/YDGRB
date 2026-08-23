@@ -8,6 +8,7 @@ import { customId } from "../types.js";
 import { ACTION, GAME, MAX_SHOWN_PLAYERS } from "./ids.js";
 import type { GameDefinition, GameResult, GameSession } from "./types.js";
 import { minPlayersOf, seatsOf, sessionTitle } from "./types.js";
+import { speak } from "../ui/tone.js";
 
 /**
  * 미니게임 화면.
@@ -202,6 +203,70 @@ export function cancelledView(
     user: host,
     ephemeral: false,
   };
+}
+
+/**
+ * 이 채널에 이미 판이 돌고 있어서 열지 못했다.
+ *
+ * **막혔다고만 말하면 막힌 사람이 할 수 있는 일이 없다.** 그래서 둘을 준다 —
+ *
+ *   · 도는 판으로 **바로 가는 링크** (거기서 무슨 판인지 보고 기다리든 끝내든 한다)
+ *   · **접고 대신 시작**하는 버튼 (그 판을 끝낼 수 있는 사람에게만)
+ *
+ * 끝낼 수 있는 사람은 [종료 버튼](../components/game.ts)과 같다 — 그 판을 연 사람과
+ * 관리자. 지나가던 사람이 남의 판을 명령 한 번으로 밀어낼 수는 없다.
+ */
+export function busyView(
+  running: GameSession,
+  runningGame: GameDefinition | undefined,
+  user: User,
+  options: { readonly link: string | null; readonly takeoverId: string | null },
+): MessageOptions {
+  const name = runningGame === undefined ? "판" : sessionTitle(runningGame, running);
+
+  return {
+    status: "failure",
+    title: speak("이미 판이 돌고 있어요"),
+    description: speak(`이 채널에서는 **${name}** 이(가) 돌고 있습니다.`),
+    fields: [
+      { name: "연 사람", value: `<@${running.hostId}>` },
+      ...(running.closesAt === null
+        ? []
+        : [{ name: running.phase === "recruiting" ? "모집 마감" : "종료", value: atWithCountdown(new Date(running.closesAt)) }]),
+    ],
+    rows: busyRows(options.link, options.takeoverId),
+    user,
+  };
+}
+
+/**
+ * 막힌 안내에 붙는 줄 — [바로 가기] [접고 시작]
+ *
+ * 링크 버튼은 customId 를 갖지 않는다 (디스코드가 그렇게 정했다). 그래서 눌러도
+ * 인터랙션이 오지 않고, 봇이 꺼져 있어도 열린다.
+ */
+function busyRows(
+  link: string | null,
+  takeoverId: string | null,
+): ActionRowBuilder<MessageActionRowComponentBuilder>[] {
+  const buttons: ButtonBuilder[] = [];
+
+  if (link !== null) {
+    buttons.push(new ButtonBuilder().setURL(link).setLabel("바로 가기").setStyle(ButtonStyle.Link));
+  }
+
+  if (takeoverId !== null) {
+    buttons.push(
+      new ButtonBuilder()
+        .setCustomId(customId(GAME, ACTION.takeover, takeoverId))
+        .setLabel("접고 시작")
+        .setStyle(ButtonStyle.Danger),
+    );
+  }
+
+  return buttons.length === 0
+    ? []
+    : [new ActionRowBuilder<MessageActionRowComponentBuilder>().addComponents(...buttons)];
 }
 
 /** 판을 열지 못했을 때. 참가·시작이 막혔을 때도 같은 모양을 쓴다. */
