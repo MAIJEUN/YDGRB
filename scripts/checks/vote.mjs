@@ -146,8 +146,9 @@ console.log("\n=== 4. 공약 ===");
   assert("  └ 적은 공약 그대로", board.includes("소원권을 나눠 드리겠습니다"), board);
   assert("  └ 안 적었으면 그렇게", board.includes(speak("_공약 없이 나왔습니다._")), board);
   // 한 사람이 두 줄을 쓴다 — 이름 한 줄, 공약 한 줄(글머리표). 사이를 띄운다.
-  assert("이름과 공약을 줄로 나눔", board.includes(`<@${P(1)}>\n\n* `), JSON.stringify(board));
-  assert("  └ 사람 사이는 더 띄움", board.includes(`\n\n\n<@${P(2)}>`), JSON.stringify(board));
+  assert("이름과 공약을 줄로 나눔", board.includes(`<@${P(1)}>\n- `), JSON.stringify(board));
+  assert("  └ 사람 사이만 한 줄 띄움", board.includes(`\n\n<@${P(2)}>`), JSON.stringify(board));
+  assert("    · 그보다 더 띄우지 않음", !board.includes(`\n\n\n`), JSON.stringify(board));
   assert(
     "  └ 한 줄에 이름과 공약을 붙이지 않음",
     !board.includes(`<@${P(1)}> — `),
@@ -162,6 +163,17 @@ console.log("\n=== 4. 공약 ===");
   // 도는 동안에는 표를 안 보여 준다 — 보이면 이기는 쪽으로 쏠린다.
   poll.castVote(S, "999", P(1));
   assert("도는 동안 표는 안 보임", !poll.pledgeBoard(S).includes("표"), poll.pledgeBoard(S));
+
+  // 모으는 동안에는 형식이 정한 모집 패널 그대로다 — 그때 볼 것은 누가 들어왔나와
+  // 몇 명 남았나이고, 그건 골격이 이미 적는다.
+  const recruiting = bodyOf(views.recruitView(vote, makeSession({ id: S, players: [P(1), P(2)] }), host));
+  assert("모집 중에는 기본 형식 그대로", recruiting.includes(vote.description), recruiting);
+  assert("  └ 공약 목록은 아직 안 나옴", !recruiting.includes(`<@${P(1)}>\n- `), recruiting);
+  assert("  └ 참가한 사람 칸은 있음", recruiting.includes("참가한 사람"), recruiting);
+
+  const playing = bodyOf(views.startedView(vote, makeSession({ id: S, phase: "playing", players: [P(1), P(2)] }), host));
+  assert("시작하면 후보 목록으로 바뀜", playing.includes(`<@${P(1)}>\n- `), playing);
+  assert("  └ 게임 설명은 사라짐", !playing.includes(vote.description), playing);
 
   poll.dropPoll(S);
 }
