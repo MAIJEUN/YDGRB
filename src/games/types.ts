@@ -5,6 +5,7 @@ import type {
   GuildTextBasedChannel,
   Message,
   MessageActionRowComponentBuilder,
+  ModalBuilder,
   User,
 } from "discord.js";
 
@@ -68,6 +69,13 @@ export interface GameSession {
   players: string[];
   phase: Phase;
   readonly openedAt: number;
+  /**
+   * 모집이 끝나고 **판이 도는 시간**. 없으면 시계 없이 돈다.
+   *
+   * 즉시 시작 게임은 열자마자 도므로 이것이 곧 `closesAt` 이지만, 모집 게임은 언제 시작될지
+   * 모른다. 그래서 기간을 들고 있다가 **시작하는 순간** 시계를 건다.
+   */
+  readonly playSeconds: number | null;
   /**
    * 시계가 멎는 시각.
    *
@@ -147,6 +155,22 @@ export interface GameDefinition {
    * 판이 그려질 때마다 불리므로, 끝난 판에는 빈 배열을 돌려주면 버튼이 사라진다.
    */
   buttons?(session: GameSession): ActionRowBuilder<MessageActionRowComponentBuilder>[];
+
+  /**
+   * 판 화면의 **내용을 그때그때 만든다.** 없으면 판을 열 때 준 것(`session.body`)을 쓴다.
+   *
+   * 판이 도는 동안 내용이 바뀌는 게임이 쓴다 — 국민투표의 공약 목록처럼. 화면을 다시 그릴
+   * 때마다 불리므로, 게임이 들고 있는 지금 상태를 그대로 적으면 된다.
+   */
+  body?(session: GameSession): string | null;
+
+  /**
+   * 「참가」를 누르면 이 **모달**을 띄운다. 없으면 곧바로 참가시킨다.
+   *
+   * 참가하면서 무언가를 적어야 하는 게임이 쓴다 — 국민투표의 공약처럼. 모달을 낸 뒤
+   * 실제로 참가시키는 것은 **그 게임의 모달 핸들러**가 한다 (적다 만 사람은 참가가 아니다).
+   */
+  joinModal?(session: GameSession): ModalBuilder;
 
   /**
    * 판이 도는 동안 그 채널에 올라온 메시지. 퀴즈처럼 **채팅으로 겨루는** 게임이 쓴다.

@@ -80,6 +80,13 @@ export default defineComponentHandler({
 
     switch (action) {
       case ACTION.join: {
+        // 참가하면서 적을 것이 있는 게임(국민투표의 공약)은 모달을 먼저 띄운다.
+        // 실제 참가는 그 게임의 모달 핸들러가 시킨다 — 적다 만 사람은 참가가 아니다.
+        if (game.joinModal !== undefined) {
+          await interaction.showModal(game.joinModal(session));
+          return;
+        }
+
         const result = await join(interaction.guildId, sessionId, interaction.user.id);
 
         if (!result.ok) {

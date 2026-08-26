@@ -148,13 +148,15 @@ export async function advance(
   sessionId: string,
   from: Phase,
   to: Phase,
+  /** 다음 단계의 마감. 안 주면 시계를 푼다 (모집 마감은 여기서 끝나기 때문이다). */
+  closesAt: number | null = null,
 ): Promise<GameSession | undefined> {
   return file.update((data) => {
     const session = guildOf(data, guildId).sessions[sessionId];
     if (session === undefined || session.phase !== from) return undefined;
 
     session.phase = to;
-    if (to !== "recruiting") session.closesAt = null;
+    if (to !== "recruiting") session.closesAt = closesAt;
 
     return { ...session, players: [...session.players] };
   });

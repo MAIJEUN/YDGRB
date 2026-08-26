@@ -49,9 +49,14 @@ function headcount(game: GameDefinition, session: GameSession): string {
   return `**${count(session.players.length)}명** _(${limits.join(" · ")})_`;
 }
 
-/** 게임이 판마다 다른 내용을 줬으면 그것, 아니면 게임 설명. */
+/**
+ * 화면에 적을 내용.
+ *
+ * 게임이 **지금 만들어 주는 것**이 가장 앞이다 (국민투표의 공약 목록처럼 도는 동안 바뀌는 것).
+ * 없으면 판을 열 때 준 것, 그것도 없으면 게임 설명.
+ */
 function body(game: GameDefinition, session: GameSession): string {
-  return session.body ?? game.description;
+  return game.body?.(session) ?? session.body ?? game.description;
 }
 
 /** 마감·종료 시각. 없으면 칸을 만들지 않는다. */

@@ -89,6 +89,8 @@ export async function openGame(
     players: [],
     phase: recruiting ? "recruiting" : "playing",
     openedAt: Date.now(),
+    // 모집 게임은 언제 시작될지 모른다. 기간을 들고 있다가 **시작하는 순간** 시계를 건다.
+    playSeconds: duration,
     closesAt: recruiting
       ? Date.now() + RECRUIT_TIMEOUT_SECONDS * 1000
       : duration === null
@@ -225,7 +227,10 @@ export async function startNow(
 
   cancelClose(guildId, sessionId);
 
-  const playing = await advance(guildId, sessionId, "recruiting", "playing");
+  // 모집이 끝났으니 이제부터가 판이 도는 시간이다.
+  const closesAt = session.playSeconds === null ? null : Date.now() + session.playSeconds * 1000;
+
+  const playing = await advance(guildId, sessionId, "recruiting", "playing", closesAt);
   if (playing === undefined) return false;
 
   await replaceMessage(client, playing, startedView(game, playing, host));
