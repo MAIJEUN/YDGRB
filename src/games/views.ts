@@ -126,8 +126,9 @@ export function recruitView(
 /**
  * 판이 시작됐다. 모집 패널을 이걸로 갈아 끼우고, 즉시 시작 게임은 이게 첫 화면이다.
  *
- * 참가자 칸은 **모집 게임만** 둔다 — 즉시 시작은 하면서 들어오는 것이라, 시작하는 순간에
- * 늘어놓아 봐야 연 사람 하나뿐이다.
+ * **참가자는 적지 않는다.** 모으는 동안에는 누가 들어왔는지가 곧 정보지만, 시작하고 나면
+ * 볼 것은 판 자체다 — 룰렛은 회전판이, 국민투표는 후보 버튼이 이미 그 사람들을 보여 준다.
+ * 같은 이름을 위에 한 번 더 늘어놓으면 정작 봐야 할 것이 아래로 밀린다.
  */
 export function startedView(
   game: GameDefinition,
@@ -138,17 +139,7 @@ export function startedView(
     status: "progress",
     title: `${sessionTitle(game, session)} — 시작`,
     description: body(game, session),
-    fields: [
-      ...deadline(session, "종료"),
-      ...(game.mode === "recruit"
-        ? [
-            {
-              name: `참가한 사람 (${count(session.players.length)}명)`,
-              value: playerList(session.players),
-            },
-          ]
-        : []),
-    ],
+    fields: deadline(session, "종료"),
     accessoryButton: stopButton(session),
     // 버튼으로 겨루는 게임(선착순 같은)은 여기에 자기 버튼을 싣는다.
     rows: game.buttons?.(session) ?? [],

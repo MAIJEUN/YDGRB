@@ -145,7 +145,14 @@ console.log("\n=== 4. 공약 ===");
   assert("후보를 멘션으로", board.includes(`<@${P(1)}>`) && board.includes(`<@${P(2)}>`), board);
   assert("  └ 적은 공약 그대로", board.includes("소원권을 나눠 드리겠습니다"), board);
   assert("  └ 안 적었으면 그렇게", board.includes(speak("_공약 없이 나왔습니다._")), board);
-  assert("  └ 한 사람 한 줄", board.split("\n").length === 2, board);
+  // 한 사람이 두 줄을 쓴다 — 이름 한 줄, 공약 한 줄(글머리표). 사이를 띄운다.
+  assert("이름과 공약을 줄로 나눔", board.includes(`<@${P(1)}>\n\n* `), JSON.stringify(board));
+  assert("  └ 사람 사이는 더 띄움", board.includes(`\n\n\n<@${P(2)}>`), JSON.stringify(board));
+  assert(
+    "  └ 한 줄에 이름과 공약을 붙이지 않음",
+    !board.includes(`<@${P(1)}> — `),
+    "공약이 길면 어디까지가 누구 것인지 눈이 못 따라간다",
+  );
 
   // 다시 내면 공약만 바뀐다 — 후보가 둘로 늘지 않는다.
   poll.addCandidate(S, { userId: P(1), name: "가", pledge: "바꾼 공약" });

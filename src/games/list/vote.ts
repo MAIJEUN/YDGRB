@@ -142,6 +142,21 @@ const NO_PLEDGE = speak("_공약 없이 나왔습니다._");
 /**
  * 공약 목록 — 판이 도는 동안 화면에 나가는 내용.
  *
+ * 한 사람이 **두 줄**을 쓴다 — 이름 한 줄, 공약 한 줄(글머리표). 사이를 띄우고 사람과
+ * 사람 사이는 더 띄운다.
+ *
+ *   <@마이즌>
+ *
+ *   * 소원권을 나눠 드리겠ㅅ-
+ *
+ *
+ *   <@LAO_2>
+ *
+ *   * _공약 없이 나왔ㅅ-_
+ *
+ * 한 줄에 이름과 공약을 나란히 붙이면 공약이 길 때 어디까지가 누구 것인지 눈이 못 따라간다.
+ * 열 명까지 늘어설 수 있으므로 덩어리로 끊어 두는 편이 읽힌다.
+ *
  * 도는 동안에는 **표를 보여 주지 않는다.** 몇 표인지 보이면 이기고 있는 쪽으로 쏠린다.
  * 표는 끝난 뒤 결과에서 한 번에 편다.
  */
@@ -150,8 +165,8 @@ export function pledgeBoard(sessionId: string): string | null {
   if (poll === undefined || poll.candidates.length === 0) return null;
 
   return poll.candidates
-    .map((candidate) => `<@${candidate.userId}> — ${candidate.pledge ?? NO_PLEDGE}`)
-    .join("\n");
+    .map((candidate) => `<@${candidate.userId}>\n\n* ${candidate.pledge ?? NO_PLEDGE}`)
+    .join("\n\n\n");
 }
 
 /** 끝난 판의 개표 — 많이 받은 순. */

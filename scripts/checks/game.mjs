@@ -314,7 +314,7 @@ console.log("\n=== 6. 즉시 시작 ===");
 
   const view = bodyOf(views.startedView(registry.getGame("chat"), session, host));
   assert("  └ 게임이 준 내용을 보여 줌", view.includes("문제입니다"), view);
-  assert("  └ 참가자 칸은 없음 (즉시 시작)", !view.includes("참가한 사람"), view);
+  assert("  └ 참가자 칸은 없음", !view.includes("참가한 사람"), view);
 
   // 채널 메시지가 게임으로 넘어간다.
   const say = async (content, authorId = P2) =>
@@ -483,6 +483,23 @@ assert(
   "  └ 끝낸 사람은 그대로 남음",
   bodyOf(views.endedView(duo, sample, host, undefined, HOST)).includes("끝낸 사람"),
 );
+
+// 모으는 동안에는 누가 들어왔는지가 곧 정보지만, 시작하고 나면 볼 것은 판 자체다.
+// 룰렛은 회전판이, 국민투표는 후보 버튼이 이미 그 사람들을 보여 준다.
+assert(
+  "모집 패널에는 참가자 칸이 있음",
+  bodyOf(views.recruitView(duo, sample, host)).includes("참가한 사람"),
+);
+for (const [label, game] of [
+  ["모집", duo],
+  ["즉시 시작", registry.getGame("chat")],
+]) {
+  assert(
+    `시작 화면에는 없음 (${label})`,
+    !bodyOf(views.startedView(game, { ...sample, phase: "playing" }, host)).includes("참가한 사람"),
+    bodyOf(views.startedView(game, { ...sample, phase: "playing" }, host)),
+  );
+}
 
 const crowd = { ...sample, players: Array.from({ length: 40 }, (_, i) => String(100000000000000000 + i)) };
 const crowdText = bodyOf(views.recruitView(registry.getGame("many"), crowd, host));

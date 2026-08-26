@@ -325,9 +325,10 @@ console.log("\n=== 7. 돌려서 뽑기 ===");
     drawn.every((frame) => !inFence(frame).includes("<@")),
     inFence(drawn.at(-1)),
   );
+  // 시작 화면에는 참가자 칸이 없다 (형식 규칙) — 회전판 밖에 멘션이 남을 자리도 없다.
   assert(
-    "  └ 칸 밖 참가자는 멘션 그대로",
-    drawn.every((frame) => frame.split("```")[2]?.includes("<@") === true),
+    "  └ 칸 밖에는 참가자 명단도 없음",
+    drawn.every((frame) => !frame.includes("참가한 사람")),
     drawn.at(-1),
   );
 
