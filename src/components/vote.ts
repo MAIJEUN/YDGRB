@@ -132,8 +132,8 @@ async function submitPledge(interaction: ComponentInteraction, sessionId: string
 /**
  * 한 표를 던진다.
  *
- * 누른 사람에게만 답한다 — 누가 누구를 찍었는지 채널에 뜨면 투표가 아니다.
- * 판 화면도 건드리지 않는다. 표는 끝난 뒤 결과에서 한 번에 편다.
+ * 누른 사람에게만 답한다 — **누가** 누구를 찍었는지 채널에 뜨면 투표가 아니다.
+ * 채널에 나가는 것은 후보마다 **몇 명**이 찍었나뿐이고, 그건 판 화면에서 바로 바뀐다.
  */
 async function pick(
   interaction: ComponentInteraction,
@@ -171,4 +171,9 @@ async function pick(
       ),
     ),
   );
+
+  // 표가 옮겨 갔을 때만 다시 그린다. 같은 사람을 다시 눌렀으면 숫자가 그대로다.
+  if (result.changed) {
+    await refreshPanel(interaction.client, running.context.session, running.context.host);
+  }
 }

@@ -25,8 +25,9 @@ import type { GameSession } from "../types.js";
  * 시작하면 후보마다 버튼이 하나씩 생기고, 기간 동안 누구나 누른다. 기간이 끝나면 가장 많이
  * 받은 사람이 이긴다.
  *
- * **자기 자신은 못 찍는다.** 후보가 스스로를 찍기 시작하면 표가 아니라 참가 여부를 세는
- * 셈이 된다. 후보가 아닌 사람은 얼마든지 찍을 수 있다.
+ * **자기 자신은 기본적으로 못 찍는다.** 후보가 스스로를 찍기 시작하면 표가 아니라 참가
+ * 여부를 세는 셈이 된다. 판을 열 때 「자기투표」 를 켜면 풀린다. 후보가 아닌 사람은
+ * 언제든 얼마든지 찍을 수 있다.
  *
  * 판이 도는 동안의 상태(후보 · 공약 · 표)는 **메모리에만** 둔다. 진행 중인 판은 어차피
  * 재시작을 견디지 않고, 표는 그 판이 끝나면 쓸 일이 없다.
@@ -59,13 +60,24 @@ interface Poll {
   readonly candidates: Candidate[];
   /** 누가 누구를 찍었는지. 한 사람은 한 표, 바꿔 찍을 수 있다. */
   readonly votes: Map<string, string>;
+  /** 자기 자신을 찍을 수 있는가. 판을 열 때 정하고 도중에 바뀌지 않는다. */
+  readonly selfVote: boolean;
+}
+
+export interface PollOptions {
+  /** 자기 표를 허용할지. 안 주면 **막는다** — 그게 기본이다. */
+  readonly selfVote?: boolean;
 }
 
 const polls = new Map<string, Poll>();
 
 /** 판을 열 때 빈 투표함을 놓는다. */
-export function keepPoll(sessionId: string): void {
-  polls.set(sessionId, { candidates: [], votes: new Map() });
+export function keepPoll(sessionId: string, options: PollOptions = {}): void {
+  polls.set(sessionId, {
+    candidates: [],
+    votes: new Map(),
+    selfVote: options.selfVote ?? false,
+  });
 }
 
 export function pollOf(sessionId: string): Poll | undefined {
@@ -117,7 +129,7 @@ export function castVote(sessionId: string, voterId: string, candidateId: string
   const poll = polls.get(sessionId);
   if (poll === undefined) return { ok: false, reason: "gone" };
 
-  if (voterId === candidateId) return { ok: false, reason: "self" };
+  if (voterId === candidateId && !poll.selfVote) return { ok: false, reason: "self" };
   if (!poll.candidates.some((found) => found.userId === candidateId)) {
     return { ok: false, reason: "unknown" };
   }
@@ -140,37 +152,39 @@ export function tally(poll: Poll): { readonly candidate: Candidate; readonly vot
 const NO_PLEDGE = speak("_공약 없이 나왔습니다._");
 
 /**
- * 후보와 공약 — **투표하는 동안** 화면에 나가는 내용.
+ * 한 사람 몫. 이름과 받은 수가 한 줄, 공약이 그 아래 인용으로 붙는다.
  *
- * 한 사람이 두 줄을 쓰고, 사람 사이만 한 줄 띄운다.
- *
- *   <@마이즌>
- *   - 소원권을 나눠 드리겠ㅅ-
- *
- *   <@LAO_2>
- *   - _공약 없이 나왔ㅅ-_
+ *   <@마이즌> - `3명`
+ *   > 소원권을 나눠 드리겠ㅅ-
  *
  * 한 줄에 이름과 공약을 나란히 붙이면 공약이 길 때 어디까지가 누구 것인지 눈이 못 따라간다.
- * 열 명까지 늘어설 수 있으므로 사람마다 끊어 두는 편이 읽힌다.
+ * 인용은 그 경계를 눈에 그어 준다.
+ */
+function stand(candidate: Candidate, votes: number, unit: string): string {
+  return `<@${candidate.userId}> - \`${count(votes)}${unit}\`\n> ${candidate.pledge ?? NO_PLEDGE}`;
+}
+
+/**
+ * 후보와 공약 — **투표하는 동안** 화면에 나가는 내용. 사람 사이만 한 줄 띄운다.
  *
- * 도는 동안에는 **표를 보여 주지 않는다.** 몇 표인지 보이면 이기고 있는 쪽으로 쏠린다.
- * 표는 끝난 뒤 결과에서 한 번에 편다.
+ * 몇 명이 찍었는지는 **누르는 즉시** 이 자리에서 바뀐다. 누가 누구를 찍었는지는 끝까지
+ * 안 나온다 — 표를 던진 사람에게만 조용히 답한다.
  */
 export function pledgeBoard(sessionId: string): string | null {
   const poll = polls.get(sessionId);
   if (poll === undefined || poll.candidates.length === 0) return null;
 
-  return poll.candidates
-    .map((candidate) => `<@${candidate.userId}>\n- ${candidate.pledge ?? NO_PLEDGE}`)
+  return tally(poll)
+    .map(({ candidate, votes }) => stand(candidate, votes, "명"))
     .join("\n\n");
 }
 
-/** 끝난 판의 개표 — 많이 받은 순. */
+/** 끝난 판의 개표 — 많이 받은 순. 무엇을 걸고 나왔는지 함께 편다. */
 export function resultBoard(poll: Poll): string {
   return [...tally(poll)]
     .sort((a, b) => b.votes - a.votes)
-    .map(({ candidate, votes }) => `\`${count(votes)}표\` <@${candidate.userId}>`)
-    .join("\n");
+    .map(({ candidate, votes }) => stand(candidate, votes, "표"))
+    .join("\n\n");
 }
 
 /** 가장 많이 받은 사람들. 같으면 여럿이다. 아무도 안 찍었으면 빈 배열. */

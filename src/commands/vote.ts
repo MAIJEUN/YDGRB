@@ -7,7 +7,7 @@ import { defineCommand } from "../types.js";
 import { speak } from "../ui/tone.js";
 
 /**
- * `/국민투표 [참가인원] [기간] [제목]`
+ * `/국민투표 [참가인원] [기간] [제목] [자기투표]`
  *
  * 참가 형식이라 판을 열면 모집 패널이 뜬다. 「참가」를 누르면 **공약 모달**이 뜨고,
  * 제출해야 후보가 된다.
@@ -18,7 +18,7 @@ import { speak } from "../ui/tone.js";
  * 감출 것이 없어 옵션으로 받는다. 남에게 보이면 안 되는 것은 공약뿐이고, 그건 모달로 받는다.
  */
 
-const OPTION = { seats: "참가인원", time: "기간" } as const;
+const OPTION = { seats: "참가인원", time: "기간", selfVote: "자기투표" } as const;
 
 export default defineCommand({
   data: new SlashCommandBuilder()
@@ -40,10 +40,16 @@ export default defineCommand({
         .setRequired(true)
         .setMaxLength(30),
     )
-    .addStringOption(titleOption),
+    .addStringOption(titleOption)
+    .addBooleanOption((option) =>
+      option
+        .setName(OPTION.selfVote)
+        .setDescription(speak("선택 · 켜면 후보가 자기 자신에게도 투표할 수 있습니다.")),
+    ),
 
   async execute(interaction) {
     const rawTime = interaction.options.getString(OPTION.time, true);
+    const selfVote = interaction.options.getBoolean(OPTION.selfVote) ?? false;
 
     const duration = checkDuration(rawTime, interaction.user);
     if (!duration.ok) {
@@ -57,7 +63,7 @@ export default defineCommand({
       // 모집 게임의 기간은 **시작한 뒤**에 흐른다. 골격이 시작하는 순간 시계를 건다.
       durationSeconds: duration.seconds,
       // 화면을 만들기 전에 놓는다 — 첫 화면부터 공약 목록을 그릴 수 있어야 한다.
-      prepare: keepPoll,
+      prepare: (sessionId) => keepPoll(sessionId, { selfVote }),
     });
   },
 });

@@ -292,16 +292,29 @@ export async function stopGame(
   return true;
 }
 
-/** 모집 패널을 다시 그린다 — 사람이 들고 날 때마다. */
+/**
+ * 판 화면을 지금 상태로 다시 그린다.
+ *
+ * 모집 중이면 모집 패널 — 사람이 들고 날 때마다. 도는 중이면 진행 패널 — 화면에 실린
+ * 것이 바뀔 때마다(국민투표의 표 같은).
+ *
+ * 끝난 판은 건드리지 않는다. 그 자리에는 이미 결과가 붙어 있다.
+ */
 export async function refreshPanel(
   client: Client,
   session: GameSession,
   host: User,
 ): Promise<void> {
   const game = getGame(session.gameId);
-  if (game === undefined || session.phase !== "recruiting") return;
+  if (game === undefined) return;
 
-  await replaceMessage(client, session, recruitView(game, session, host));
+  if (session.phase === "recruiting") {
+    await replaceMessage(client, session, recruitView(game, session, host));
+    return;
+  }
+  if (session.phase === "playing") {
+    await replaceMessage(client, session, startedView(game, session, host));
+  }
 }
 
 // ─────────────────────────────────────────────────────────────
