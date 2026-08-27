@@ -146,6 +146,16 @@ export function reveal(sessionId: string, answer: number): string[] {
   return [...round.picks].filter(([, picked]) => picked === answer).map(([userId]) => userId);
 }
 
+/**
+ * 도는 동안 화면에 나가는 **참가한 사람** — 찍은 순서대로.
+ *
+ * 무엇을 찍었는지는 여기 없다. 들어와 있는 사람은 판만 봐서는 알 수가 없어서 적는 것이고
+ * (버튼이 사람이 아니라 숫자다), 무엇을 찍었나는 끝나야 나온다.
+ */
+export function joinedList(round: Round): string {
+  return round.picks.size === 0 ? "아직 없음" : pickerList([...round.picks.keys()]);
+}
+
 /** 찍은 사람 멘션. 많으면 앞에서부터 몇 명만 적고 나머지는 수로. */
 function pickerList(users: readonly string[]): string {
   const shown = users.slice(0, MAX_SHOWN_PLAYERS).map((userId) => `<@${userId}>`);
@@ -244,6 +254,21 @@ export default defineGame({
     if (!rounds.has(context.session.id)) {
       void context.end({ status: "failure", description: speak("판을 잃어버렸습니다.") });
     }
+  },
+
+  /**
+   * 「참가한 사람」 칸.
+   *
+   * 참가 형식이 아니라 모집 패널이 없고, 버튼은 사람이 아니라 숫자다 — 판만 보고는 누가
+   * 들어와 있는지 알 길이 없다. 그래서 골격이 시작 화면에서 뺀 칸을 여기서 도로 붙인다.
+   *
+   * **무엇을 찍었는지는 적지 않는다.** 그건 끝나야 나온다.
+   */
+  fields(session: GameSession): ResponseField[] {
+    const round = rounds.get(session.id);
+    if (round === undefined) return [];
+
+    return [{ name: "참가한 사람", value: joinedList(round) }];
   },
 
   /** 숫자마다 버튼 하나. 다섯씩 나눠 담는다 (디스코드가 정한 값). */

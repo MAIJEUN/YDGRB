@@ -501,6 +501,24 @@ for (const [label, game] of [
   );
 }
 
+// 판만 보고는 누가 들어와 있는지 알 수 없는 게임(찍기대작전처럼 버튼이 숫자인 것)은
+// 스스로 칸을 붙인다. 골격이 적는 칸 **뒤**에 붙어야 한다 — 언제 끝나는지가 먼저다.
+{
+  const withFields = { ...duo, fields: () => [{ name: "참가한 사람", value: "@마이즌" }] };
+  const started = bodyOf(views.startedView(withFields, { ...sample, phase: "playing" }, host));
+
+  assert("게임이 칸을 덧붙일 수 있음", started.includes("참가한 사람"), started);
+  assert(
+    "  └ 골격이 적는 칸 뒤에",
+    started.indexOf("종료") < started.indexOf("참가한 사람"),
+    started,
+  );
+  assert(
+    "  └ 안 붙이는 게임은 그대로",
+    !bodyOf(views.startedView(duo, { ...sample, phase: "playing" }, host)).includes("참가한 사람"),
+  );
+}
+
 const crowd = { ...sample, players: Array.from({ length: 40 }, (_, i) => String(100000000000000000 + i)) };
 const crowdText = bodyOf(views.recruitView(registry.getGame("many"), crowd, host));
 assert("사람이 많으면 잘라서 적음", crowdText.includes("외 25명"), crowdText.slice(0, 200));

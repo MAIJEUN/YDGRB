@@ -115,6 +115,7 @@ export function recruitView(
       { name: "인원", value: headcount(game, session) },
       ...deadline(session, "마감"),
       { name: "참가한 사람", value: playerList(session.players) },
+      ...(game.fields?.(session) ?? []),
     ],
     accessoryButton: stopButton(session),
     rows: recruitRows(session),
@@ -126,9 +127,12 @@ export function recruitView(
 /**
  * 판이 시작됐다. 모집 패널을 이걸로 갈아 끼우고, 즉시 시작 게임은 이게 첫 화면이다.
  *
- * **참가자는 적지 않는다.** 모으는 동안에는 누가 들어왔는지가 곧 정보지만, 시작하고 나면
- * 볼 것은 판 자체다 — 룰렛은 회전판이, 국민투표는 후보 버튼이 이미 그 사람들을 보여 준다.
- * 같은 이름을 위에 한 번 더 늘어놓으면 정작 봐야 할 것이 아래로 밀린다.
+ * **골격은 참가자를 적지 않는다.** 모으는 동안에는 누가 들어왔는지가 곧 정보지만, 시작하고
+ * 나면 볼 것은 판 자체다 — 룰렛은 회전판이, 국민투표는 후보 버튼이 이미 그 사람들을 보여
+ * 준다. 같은 이름을 위에 한 번 더 늘어놓으면 정작 봐야 할 것이 아래로 밀린다.
+ *
+ * 판만 보고는 누가 들어와 있는지 알 수 없는 게임은 **스스로 적는다** (`fields`) —
+ * 찍기대작전처럼 버튼이 사람이 아니라 숫자인 것.
  */
 export function startedView(
   game: GameDefinition,
@@ -139,7 +143,8 @@ export function startedView(
     status: "progress",
     title: `${sessionTitle(game, session)} — 시작`,
     description: body(game, session),
-    fields: deadline(session, "종료"),
+    // 게임이 덧붙이는 칸은 골격이 적는 것 뒤다 — 언제 끝나는지가 먼저다.
+    fields: [...deadline(session, "종료"), ...(game.fields?.(session) ?? [])],
     accessoryButton: stopButton(session),
     // 버튼으로 겨루는 게임(선착순 같은)은 여기에 자기 버튼을 싣는다.
     rows: game.buttons?.(session) ?? [],

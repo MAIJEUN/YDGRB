@@ -178,8 +178,8 @@ console.log("\n=== 5. 선택 방식은 연 사람이 고른다 ===");
   );
 
   assert(
-    "찍은 것은 누른 사람에게만",
-    source.includes("판 화면은 건드리지 않는다"),
+    "무엇을 찍었는지는 누른 사람에게만",
+    source.includes("**무엇을** 찍었는지는 누른 사람에게만 알린다"),
     "도는 동안 보이면 고르는 사람이 그걸 보고 고른다",
   );
   assert("찍은 것은 메모리에만", !read("src/games/list/pick.ts").includes("JsonFile"));
@@ -260,6 +260,31 @@ console.log("\n=== 8. 화면 ===");
     views.startedView(pick, makeSession({ id: S, body: game.pickBody(game.MODE.random, HOST) }), host),
   );
   assert("랜덤이면 봇이 고른다고", random.includes("봇") && !random.includes(`<@${HOST}>`), random);
+
+  // 참가 형식이 아니라 모집 패널이 없고, 버튼은 사람이 아니라 숫자다 — 판만 보고는
+  // 누가 들어와 있는지 알 길이 없어서 게임이 스스로 칸을 붙인다.
+  assert("아직 아무도 없으면 그렇게 적음", body.includes("**참가한 사람**\n아직 없음"), body);
+
+  game.choose(S, P(1), 3);
+  game.choose(S, P(2), 3);
+  const joined = bodyOf(views.startedView(pick, makeSession({ id: S }), host));
+
+  assert("찍은 사람이 명단에 붙음", joined.includes(`<@${P(1)}> <@${P(2)}>`), joined);
+  assert("  └ 무엇을 찍었는지는 안 적음", !joined.includes("3번"), joined);
+  assert("  └ 종료 시각 뒤에", joined.indexOf("종료") < joined.indexOf("참가한 사람"), joined);
+  assert(
+    "  └ 바꿔 찍어도 명단은 그대로",
+    (game.choose(S, P(1), 5), bodyOf(views.startedView(pick, makeSession({ id: S }), host)).includes(`<@${P(1)}> <@${P(2)}>`)),
+  );
+  assert(
+    "많으면 잘라서 적음",
+    game.joinedList({ picks: new Map(Array.from({ length: 40 }, (_, i) => [P(i), 1])) }).includes("외 25명"),
+  );
+
+  // 판 화면은 **새 사람이 붙을 때만** 고친다. 누를 때마다 고치면 편집 제한에 걸린다.
+  const source = read("src/components/pick.ts");
+  assert("새 사람이 들어오면 화면을 고침", source.includes("await refreshPanel(interaction.client, context.session, context.host)"));
+  assert("  └ 바꿔 찍은 것으로는 안 고침", source.includes("if (result.before === undefined) {"));
 
   game.dropPick(S);
 }

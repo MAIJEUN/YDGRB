@@ -13,7 +13,7 @@ import pick, {
   reveal,
   roundName,
 } from "../games/list/pick.js";
-import { liveGame } from "../games/runner.js";
+import { liveGame, refreshPanel } from "../games/runner.js";
 import { noticeView, refusedView, startedView } from "../games/views.js";
 import { defineComponentHandler, type ComponentInteraction } from "../types.js";
 import { response, updateResponse } from "../ui/response.js";
@@ -24,10 +24,11 @@ import { speak } from "../ui/tone.js";
  *
  * customId 규칙: `pick:open:<선택지 수>:<제목>` · `pick:choose:<판 id>:<숫자>`
  *
- * 찍은 것은 누른 사람에게만 알린다 — 판 화면은 건드리지 않는다. 도는 동안 누가 몇 번을
- * 찍었는지가 보이면 선택 방식의 연 사람이 그걸 보고 고르게 된다.
+ * **무엇을** 찍었는지는 누른 사람에게만 알린다. 도는 동안 그게 보이면 선택 방식의 연
+ * 사람이 그걸 보고 고르게 된다 — 아무도 안 찍은 숫자를 고르면 그만이다.
  *
- * 화면을 갈아 끼우는 것은 **정답이 나오는 순간** 한 번뿐이고, 버튼을 떼기 위해서다.
+ * 판 화면이 바뀌는 것은 **명단에 새 사람이 붙을 때**와, **정답이 나오는 순간**(버튼을
+ * 떼기 위해)뿐이다. 바꿔 찍은 것으로는 그리지 않는다.
  */
 
 const PROBLEM: Record<string, string> = {
@@ -153,6 +154,12 @@ async function press(
   );
 
   await context.join(interaction.user.id);
+
+  // **새 사람이 들어왔을 때만** 판 화면을 고친다. 바꿔 찍은 것은 명단을 바꾸지 않고,
+  // 누를 때마다 채널 메시지를 고치면 여럿이 몰릴 때 편집 제한에 걸린다.
+  if (result.before === undefined) {
+    await refreshPanel(interaction.client, context.session, context.host);
+  }
 }
 
 /**
