@@ -27,6 +27,10 @@ import type { GameSession } from "../types.js";
  *   선택 — **판을 연 사람**이 고른다. 고르는 순간 판이 끝난다.
  *   랜덤 — **봇**이 고른다. 얼마 뒤에 고를지는 판을 열 때 정한다.
  *
+ * **선택 방식에는 시계가 없다.** 기다리는 것이 시간이 아니라 사람이라, 몇 분을 걸어 두든
+ * 그 숫자에 뜻이 없다. 그만두려면 오른쪽 위 「종료」를 누른다 — 그 길이 이미 있는데
+ * 시계를 하나 더 두면, 아직 다 안 모였는데 판이 저 혼자 접히는 일만 생긴다.
+ *
  * 선택 방식에서 연 사람은 **찍을 수 없다.** 그 사람이 누르는 숫자는 곧 정답이라,
  * 찍는 것과 고르는 것을 같은 버튼으로 할 수 없다.
  *
@@ -66,16 +70,6 @@ export function isPickMode(value: string | undefined): value is PickMode {
  */
 export const MIN_CHOICES = 2;
 export const MAX_CHOICES = 20;
-
-/**
- * 선택 방식이 기다리는 시간 — **10분.**
- *
- * 방치된 판이 채널을 묶지 않게 두는 시계다. 선착순의 5분보다 넉넉한 이유는, 거기는
- * 아무나 눌러도 끝나지만 여기는 **연 사람 한 명**이 눌러야 끝나기 때문이다.
- *
- * 랜덤 방식은 이걸 쓰지 않는다 — 얼마 뒤에 고를지를 판마다 적는다.
- */
-export const CHOICE_SECONDS = 10 * 60;
 
 interface Round {
   readonly mode: PickMode;
@@ -300,10 +294,10 @@ export default defineGame({
   },
 
   /**
-   * 기간이 다 됐다.
+   * 판이 마무리되는 자리 — 기간이 다 됐거나, 「종료」가 눌렸거나.
    *
    * 랜덤이면 **여기가 개봉**이다 — 봇이 하나를 고르고 맞힌 사람을 센다.
-   * 선택이면 연 사람이 끝내 고르지 않은 것이라, 정답 없이 접는다.
+   * 선택은 시계가 없으니 「종료」로만 들어온다. 연 사람이 고르지 않은 것이라 정답이 없다.
    */
   async onTimeout(context) {
     const round = rounds.get(context.session.id);
@@ -319,7 +313,7 @@ export default defineGame({
 
       await context.end({
         status: "progress",
-        description: speak(`<@${context.session.hostId}> 님이 끝내 고르지 않았습니다.`),
+        description: speak(`<@${context.session.hostId}> 님이 고르지 않았습니다.`),
         fields: field,
       });
       return;

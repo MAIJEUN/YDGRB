@@ -2,7 +2,6 @@ import { InteractionContextType, SlashCommandBuilder } from "discord.js";
 
 import { openGameHere, readTitle, titleOption } from "../games/command.js";
 import pick, {
-  CHOICE_SECONDS,
   MAX_CHOICES,
   MIN_CHOICES,
   MODE,
@@ -21,7 +20,7 @@ import { speak } from "../ui/tone.js";
  *
  * 형식이 두 갈래라 여는 길도 둘이다.
  *
- *   선택 — 여기서 곧바로 판이 선다. 연 사람이 고를 때까지 돈다.
+ *   선택 — 여기서 곧바로 판이 선다. 연 사람이 고를 때까지 시계 없이 돈다.
  *   랜덤 — **기간 모달**을 띄우고, 제출하는 순간 판이 선다
  *          ([모달 핸들러](../components/pick.ts)).
  *
@@ -71,8 +70,9 @@ export default defineCommand({
       // 몇 중에 하나였는지를 제목에 싣는다 — 버튼은 끝나면서 사라진다.
       name: roundName(choices),
       body: pickBody(MODE.choice, interaction.user.id),
-      // 연 사람이 고를 때까지 기다린다. 방치된 판이 채널을 묶지 않게 두는 시계다.
-      durationSeconds: CHOICE_SECONDS,
+      // **시계를 걸지 않는다.** 기다리는 것이 시간이 아니라 사람이다. 그만두려면
+      // 오른쪽 위 「종료」를 누른다.
+      durationSeconds: null,
       // 화면을 만들기 전에 맡긴다 — 여는 순간이 곧 시작이라 첫 화면에 버튼이 붙어야 한다.
       prepare: (sessionId) => {
         keepPick(sessionId, MODE.choice, choices);

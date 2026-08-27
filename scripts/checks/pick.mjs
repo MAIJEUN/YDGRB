@@ -56,8 +56,8 @@ function makeSession(over = {}) {
     players: [],
     phase: "playing",
     openedAt: Date.now(),
-    playSeconds: game.CHOICE_SECONDS,
-    closesAt: Date.now() + game.CHOICE_SECONDS * 1000,
+    playSeconds: null,
+    closesAt: null,
     ...over,
   };
 }
@@ -291,17 +291,19 @@ console.log("\n=== 8. 화면 ===");
 
 // ── 9. 시계 ────────────────────────────────────────────────
 //
-// 즉시 시작이라 여는 순간부터 시계가 돈다. 선택은 방치 방지용 10분, 랜덤은 적은 기간.
+// 즉시 시작이라 여는 순간부터 돈다. 랜덤은 적은 기간만큼, **선택은 시계 없이**.
+// 기다리는 것이 시간이 아니라 사람이라, 몇 분을 걸어 두든 그 숫자에 뜻이 없다.
 console.log("\n=== 9. 시계 ===");
 {
   const client = makeClient();
 
-  assert("선택은 10분을 기다림", game.CHOICE_SECONDS === 10 * 60, String(game.CHOICE_SECONDS));
+  assert("선택 방식에는 기간을 걸지 않음", read("src/commands/pick.ts").includes("durationSeconds: null"));
+  assert("  └ 시계를 거는 상수도 없음", game.CHOICE_SECONDS === undefined, String(game.CHOICE_SECONDS));
 
   const opened = await runner.openGame(pick, G, CH, host, {
     name: game.roundName(4),
     body: game.pickBody(game.MODE.choice, HOST),
-    durationSeconds: game.CHOICE_SECONDS,
+    durationSeconds: null,
     prepare: (sessionId) => {
       game.keepPick(sessionId, game.MODE.choice, 4);
     },
@@ -311,15 +313,21 @@ console.log("\n=== 9. 시계 ===");
 
   const playing = await store.getSession(G, opened.session.id);
   assert("열자마자 도는 중", playing.phase === "playing", playing.phase);
-  assert(
-    "  └ 그때부터 시계가 돎",
-    Math.abs(playing.closesAt - Date.now() - game.CHOICE_SECONDS * 1000) < 2000,
-    String(playing.closesAt - Date.now()),
-  );
+  assert("  └ 멎는 시각이 없음", playing.closesAt === null, String(playing.closesAt));
+  assert("  └ 화면에도 종료 칸이 없음", !bodyOf(opened.view).includes("종료"), bodyOf(opened.view));
   assert("  └ 여는 순간 버튼이 붙음", labelsOf(opened.view).length === 4, String(labelsOf(opened.view).length));
   assert("  └ 아무도 자동으로 참가하지 않음", playing.players.length === 0, JSON.stringify(playing.players));
 
+  // 그만두는 길은 오른쪽 위 「종료」다. 그 길도 게임의 마무리를 지나간다 —
+  // 연 사람이 고르지 않았다고 말하고, 찍은 것을 편다.
+  game.choose(opened.session.id, P(1), 2);
   await runner.stopGame(client, G, opened.session.id, host, HOST);
+
+  const notice = JSON.stringify(client.sent.at(-1)?.payload ?? {});
+  assert("「종료」로 끝냄", (await store.getSession(G, opened.session.id)) === undefined);
+  assert("  └ 고르지 않았다고 말함", notice.includes("고르지 않았"), notice.slice(0, 300));
+  assert("  └ 찍은 것은 그대로 폄", notice.includes("찍은 것"), notice.slice(0, 300));
+
   game.dropPick(opened.session.id);
 }
 
