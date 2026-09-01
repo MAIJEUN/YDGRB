@@ -2,7 +2,7 @@
 //   1) 저장소/도메인 로직 (실제 파일에 쓰고 다시 읽음)
 //   2) 변동 문구 형식이 요구사항과 정확히 일치하는지
 //   3) 모든 디스코드 페이로드의 toJSON() — 스키마 검증이 여기서 돈다
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -231,13 +231,48 @@ const T = "777777777777777777"; // 흡혈할 유저
 
 await store.applyBalanceChanges(G, [V], { fragments: 4 }, { note: { source: "검사" } });
 
-// 부족하면 빼는 단계에서 멈추고 아무것도 바뀌지 않아야 한다.
+// clamp 없이 빼면 부족할 때 멈추고 아무것도 바뀌지 않는다 — 저장소의 기본 동작.
 const bloodFail = await store.applyBalanceChange(G, V, { fragments: -10 }, { note: { source: "검사" } });
-assert("부족하면 흡혈 실패", bloodFail.ok === false);
+assert("clamp 없이는 부족하면 실패", bloodFail.ok === false);
 assert(
   "  └ 양쪽 모두 그대로",
   (await store.getBalance(G, V)).fragments === 4 && (await store.getBalance(G, T)).fragments === 0,
 );
+
+// 흡혈은 그 기본을 쓰지 않는다. **있는 만큼만** 뺀다 — 회수와 같은 이유다.
+{
+  const source = readFileSync(`${PROJECT}/src/components/wish.ts`, "utf8");
+  const blood = source.slice(source.indexOf("async function submitBlood"));
+
+  assert("흡혈은 있는 만큼만 뺌 (clamp)", blood.includes("clamp: true"));
+  assert("  └ 더하는 것은 실제로 빠진 만큼", blood.includes("deltaFor(item, moved)"));
+  assert("  └ 빼앗을 것이 없으면 실패로", blood.includes("if (moved === 0) {"));
+  assert("  └ 적은 것보다 적게 갔으면 그렇다고 적음", blood.includes("(가진 것 전부)"));
+  assert(
+    "  └ 모달이 미리 말해 줌",
+    readFileSync(`${PROJECT}/src/wish/modals.ts`, "utf8").includes("가진 것보다 많으면 전부"),
+  );
+
+  // 저장소 수준에서 같은 흐름 — 4개 가진 사람에게서 10개를 흡혈하면 4개가 옮겨 간다.
+  const V2 = "666666666666666667";
+  const T2 = "777777777777777778";
+  await store.applyBalanceChange(G, V2, { fragments: 4 }, { note: { source: "검사" } });
+
+  const took = await store.applyBalanceChange(G, V2, { fragments: -10 }, { note: { source: "검사" }, clamp: true });
+  const moved = took.before.fragments - took.after.fragments;
+  assert("보유보다 많이 흡혈해도 처리됨", took.ok === true && took.after.fragments === 0, JSON.stringify(took));
+  assert("  └ 실제로 빠진 만큼을 셈 (4개)", moved === 4, String(moved));
+
+  const got = await store.applyBalanceChange(G, T2, { fragments: moved }, { note: { source: "검사" } });
+  assert("  └ 가져가는 쪽은 그만큼만", got.ok && got.after.fragments === 4, JSON.stringify(got));
+  assert("  └ 총합 보존 (4 = 0 + 4)", took.after.fragments + got.after.fragments === 4);
+
+  // 없는 사람에게서 또 빼면 아무것도 안 움직인다 — 그때는 흡혈 실패다.
+  const empty = await store.applyBalanceChange(G, V2, { fragments: -10 }, { note: { source: "검사" }, clamp: true });
+  assert("빼앗을 것이 없으면 0", empty.ok && empty.before.fragments - empty.after.fragments === 0);
+
+  await store.applyBalanceChange(G, T2, { fragments: -4 }, { note: { source: "검사" } });
+}
 
 const drained = await store.applyBalanceChange(G, V, { fragments: -3 }, { note: { source: "검사" } });
 const gained = await store.applyBalanceChange(G, T, { fragments: 3 }, { note: { source: "검사" } });

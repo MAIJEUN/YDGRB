@@ -20,6 +20,7 @@ import {
   formatAmount,
   maxAmount,
   parseAmount,
+  quantize,
 } from "../wish/amount.js";
 import { formatBalance, formatBalanceChange, formatBalanceChangeFor } from "../wish/format.js";
 import {
@@ -55,7 +56,7 @@ import {
   type BalanceDelta,
   type RankSort,
 } from "../wish/store.js";
-import type { WishAttachment, WishRecord } from "../wish/types.js";
+import type { Balance, WishAttachment, WishRecord } from "../wish/types.js";
 import { checkView, historyView, noticeView, panelView, rankView } from "../wish/views.js";
 import { speak } from "../ui/tone.js";
 
@@ -453,6 +454,11 @@ async function submitWaste(interaction: ComponentInteraction, guildId: string): 
 
 function deltaFor(item: Item, amount: number): BalanceDelta {
   return item === ITEM.ticket ? { tickets: amount } : { fragments: amount };
+}
+
+/** 보유량에서 그 항목의 수 — `deltaFor` 의 반대쪽. */
+function heldOf(balance: Balance, item: Item): number {
+  return item === ITEM.ticket ? balance.tickets : balance.fragments;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -900,17 +906,31 @@ async function submitBlood(interaction: ComponentInteraction, guildId: string): 
     return;
   }
 
-  // 먼저 뺀다. 부족하면 applyBalanceChange 가 아무것도 바꾸지 않고 ok:false 를 돌려준다.
+  // 먼저 뺀다. **있는 만큼만** — 3개 가진 사람에게서 10개를 흡혈하면 3개가 옮겨 간다.
+  // 회수와 같은 이유다. 「가진 걸 다 빼앗는다」 가 뜻이 통하니, 모자라다고 아무것도 안 하는
+  // 게 더 이상하다. 실제로 얼마가 빠졌는지는 뺀 결과(전 → 후)가 말해 준다.
   const drained = await applyBalanceChange(guildId, from, deltaFor(item, -amount), {
     note: { source: `흡혈 — <@${to}> 님에게`, reason },
+    clamp: true,
   });
   if (!drained.ok) {
+    await replaceView(
+      interaction,
+      adminFailure(interaction, "흡혈 실패", speak("빼는 중 문제가 생겼습니다.")),
+    );
+    return;
+  }
+
+  const moved = quantize(heldOf(drained.before, item) - heldOf(drained.after, item), decimals);
+
+  // 빼앗을 것이 없었다. 0을 옮기는 것은 흡혈이 아니다 — 역사에도 남지 않는다.
+  if (moved === 0) {
     await replaceViewAndAnnounce(
       interaction,
       noticeView({
         status: "failure",
         title: "흡혈 실패",
-        description: speak(`<@${from}> 님의 ${ITEM_LABEL[item]}이(가) 부족합니다.`),
+        description: speak(`<@${from}> 님은 ${ITEM_LABEL[item]}이(가) 없습니다.`),
         fields: [{ name: "현재 보유", value: formatBalance(drained.before) }],
         user: interaction.user,
         panel: PANEL.admin,
@@ -920,12 +940,13 @@ async function submitBlood(interaction: ComponentInteraction, guildId: string): 
     return;
   }
 
-  const gained = await applyBalanceChange(guildId, to, deltaFor(item, amount), {
+  // 더하는 것은 **실제로 빠진 만큼**이다. 적은 갯수를 더하면 없는 것이 생겨난다.
+  const gained = await applyBalanceChange(guildId, to, deltaFor(item, moved), {
     note: { source: `흡혈 — <@${from}> 님에게서`, reason },
   });
   if (!gained.ok) {
     // 더하는 변경은 음수가 될 수 없어 실패하지 않지만, 만에 하나 실패하면 뺀 것을 되돌린다.
-    await applyBalanceChange(guildId, from, deltaFor(item, amount), {
+    await applyBalanceChange(guildId, from, deltaFor(item, moved), {
       note: { source: "흡혈 되돌림" },
     });
     await replaceView(
@@ -935,12 +956,15 @@ async function submitBlood(interaction: ComponentInteraction, guildId: string): 
     return;
   }
 
+  // 적은 것보다 적게 옮겨 갔으면 그렇다고 적는다 — 적은 사람이 오타로 알면 안 된다.
+  const clamped = moved < amount;
+
   await replaceViewAndAnnounce(
     interaction,
     noticeView({
       status: "success",
       title: "흡혈",
-      description: `${ITEM_LABEL[item]} **${formatAmount(amount)}${ITEM_UNIT[item]}** · <@${from}> → <@${to}>`,
+      description: `${ITEM_LABEL[item]} **${formatAmount(moved)}${ITEM_UNIT[item]}**${clamped ? " (가진 것 전부)" : ""} · <@${from}> → <@${to}>`,
       fields: reasonField(reason),
       balance: [formatBalanceChangeFor(from, drained), formatBalanceChangeFor(to, gained)].join("\n\n"),
       user: interaction.user,

@@ -197,7 +197,7 @@ export function bloodModal(decimals: number): ModalBuilder {
         ),
       new LabelBuilder()
         .setLabel("흡혈할 갯수")
-        .setDescription(amountHint(decimals))
+        .setDescription(`${amountHint(decimals)} · 가진 것보다 많으면 전부`)
         .setTextInputComponent(
           new TextInputBuilder()
             .setCustomId(FIELD.bloodAmount)
