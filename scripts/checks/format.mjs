@@ -48,6 +48,34 @@ assert(
   (readFileSync(`${PROJECT}/src/ui/response.ts`, "utf8").match(/0x[0-9a-f]{6}/gu) ?? []).length === 4,
 );
 
+// ── 1-1. 나간 색은 바꾸지 않는다 (규칙 11) ──────────────────
+//
+// 색은 그 메시지가 **무엇인지**를 말한다. 「누가 소원을 빌었다」 는 수락되든 거절되든
+// 그대로고, 「판이 돌고 있다」 도 그 판이 끝난 뒤에 거짓이 되지 않는다. 무슨 일이
+// 일어났는지는 다음 메시지(규칙 7의 답장)가 말하고, 원본에서 바뀌는 것은 버튼뿐이다.
+console.log("\n=== 나간 색은 바꾸지 않는다 ===");
+{
+  const rules = readFileSync(`${PROJECT}/src/ui/response.ts`, "utf8");
+  assert("규칙으로 적혀 있음", rules.includes("한번 나간 메시지의 색은 나중에 바꾸지 않는다"));
+
+  // 빈 소원 — 처리해도 원본은 노랑 그대로, 결과 색은 답글이 쓴다.
+  const wish = readFileSync(`${PROJECT}/src/components/wish.ts`, "utf8");
+  const decide = wish.slice(wish.indexOf("async function decideWish"), wish.indexOf("async function fetchUser"));
+  const update = decide.slice(decide.indexOf("// ①"), decide.indexOf("// ②"));
+
+  assert("소원 원본은 색을 안 바꿈", !update.includes("status"), update);
+  assert("  └ 바꾸는 것은 버튼", update.includes("wishDecidedRows(accepted)"));
+  assert("  └ 결과 색은 답글이", decide.slice(decide.indexOf("// ②")).includes("status: accepted ?"));
+
+  // 미니게임 판 — 끝나도 시작 화면(노랑) 그대로 남고, 결과는 답장으로 간다.
+  const runner = readFileSync(`${PROJECT}/src/games/runner.ts`, "utf8");
+  const end = runner.slice(runner.indexOf("async function end("), runner.indexOf("export async function restoreGames"));
+
+  assert("  ┌ 마무리 구간을 찾음", end.includes("finished.add(session.id)"), end.slice(0, 80));
+  assert("판이 끝나도 판 화면은 그대로", !end.includes("replaceMessage"), end);
+  assert("  └ 결과는 답장으로", end.includes("announceAt("));
+}
+
 // ── 2. 순서 ────────────────────────────────────────────────
 console.log("\n=== 순서 ===");
 
