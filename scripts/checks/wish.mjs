@@ -812,6 +812,20 @@ const updatePart = decideBody.slice(decideBody.indexOf("// ①"), decideBody.ind
 const replyPart = decideBody.slice(decideBody.indexOf("// ②"));
 assert("  └ 두 구간을 찾음", updatePart.length > 0 && replyPart.length > 0);
 assert("  └ 원본에는 결과 내용을 덮어쓰지 않음", !updatePart.includes("처리한 관리자"), updatePart);
+
+// 색은 그 메시지가 **무엇인지**를 말한다. 「누가 소원을 빌었다」 는 수락되든 거절되든
+// 그대로다 — 미니게임 판이 끝난 뒤에도 노랑으로 남는 것과 같다.
+{
+  const wishMessagePart = decideSource.slice(
+    decideSource.indexOf("function wishMessage"),
+    decideSource.indexOf("async function decideWish"),
+  );
+
+  assert("빈 소원은 노랑", wishMessagePart.includes('status: "progress"'), wishMessagePart);
+  assert("  └ 처리해도 색은 그대로", !updatePart.includes("status"), updatePart);
+  assert("    · 무엇이 됐는지는 버튼이", updatePart.includes("wishDecidedRows(accepted)"));
+  assert("    · 그리고 답글이 말함", replyPart.includes('status: accepted ? "success" : "failure"'), replyPart);
+}
 assert("  └ 결과 내용은 답글에만", replyPart.includes("처리한 관리자"));
 assert("  └ 환불 변동도 답글에", replyPart.includes("balance: refundText") && !updatePart.includes("balance:"));
 assert(

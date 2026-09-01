@@ -606,7 +606,13 @@ async function submitWish(interaction: ComponentInteraction, guildId: string): P
   }
 }
 
-/** 소원 전달 메시지. 처리 대기 중이므로 진행중(노랑). */
+/**
+ * 소원 전달 메시지 — **빈 소원 그 자체**. 노랑이고, 처리한 뒤에도 노랑으로 남는다.
+ *
+ * 색은 이 메시지가 무엇인지를 말한다. 「누가 소원을 빌었다」 는 수락되든 거절되든
+ * 그대로다 — 미니게임 판이 끝난 뒤에도 노랑으로 남아 있고 결과는 답장이 말하는 것과 같다.
+ * 무엇이 됐는지는 눌리지 않는 버튼(초록/빨강)과 바로 아래 답장이 말한다.
+ */
 function wishMessage(
   content: string,
   requester: User,
@@ -672,10 +678,9 @@ async function decideWish(
       });
   const refundText = refund !== null && refund.ok ? formatBalanceChange(refund) : undefined;
 
-  const status = accepted ? "success" : "failure";
-
-  // ① 원본은 **내용을 그대로 두고** 결과 색과 눌리지 않는 버튼으로만 바꾼다.
+  // ① 원본은 **내용도 색도 그대로** 두고 눌리지 않는 버튼으로만 바꾼다.
   //    이미지와 첨부가 여기 붙어 있어서, 결과를 원본에 덮어쓰면 그게 날아간다.
+  //    색을 결과 색으로 갈지 않는 이유는 [wishMessage] 에 적어 두었다.
   if (interaction.message.flags.has(MessageFlags.IsComponentsV2)) {
     // 컨테이너가 곧 메시지 전체라 버튼만 따로 갈아 끼울 수 없다 — 같은 내용으로 다시 그린다.
     // 이때 원래 붙어 있던 첨부를 id 그대로 다시 넘겨야 `attachment://` 참조가 풀리지 않는다.
@@ -684,7 +689,6 @@ async function decideWish(
     await interaction.update({
       ...updateResponse({
         ...wishMessage(wish.content, requester, wish.attachments, wish.id),
-        status,
         rows: wishDecidedRows(accepted),
       }),
       attachments: retained(interaction.message),
@@ -695,10 +699,10 @@ async function decideWish(
     await interaction.update({ components: wishDecidedRows(accepted) });
   }
 
-  // ② 결과는 원본을 덮지 않고 **답글**로 남긴다.
+  // ② 결과는 원본을 덮지 않고 **답글**로 남긴다. 결과 색은 여기가 쓴다.
   await interaction.message.reply(
     channelMessage({
-      status,
+      status: accepted ? "success" : "failure",
       title: accepted ? "소원 수락됨" : "소원 거절됨",
       description: wish.content,
       fields: [
