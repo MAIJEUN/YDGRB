@@ -47,9 +47,10 @@ assert("/탕수육 등록됨", command !== undefined);
 const json = command.data.toJSON();
 const options = json.options ?? [];
 
-// 치는 글자도 순서도 지는 조건도 게임이 정해 놓은 것이라, 받을 값이 없다.
-assert("옵션은 제목 하나뿐", options.map((o) => o.name).join(",") === "제목", options.map((o) => o.name).join(","));
-assert("  └ 그마저 선택", options[0]?.required !== true);
+// 치는 글자도 순서도 게임이 정해 놓은 것이라, 받을 값이 거의 없다.
+assert("옵션은 제목·번갈아", options.map((o) => o.name).join(",") === "제목,번갈아", options.map((o) => o.name).join(","));
+assert("  └ 둘 다 선택", options.every((o) => o.required !== true));
+assert("  └ 번갈아는 켜고 끄는 것", options[1]?.type === 5, String(options[1]?.type));
 assert("  └ 서버 전용", JSON.stringify(json.contexts) === "[0]");
 
 // ── 2. 형식 ────────────────────────────────────────────────
@@ -59,6 +60,7 @@ assert("목록에서 자동으로 잡힘", registry.getGame("tangsuyuk") !== und
 assert("차례는 탕 · 수 · 육", game.STEPS.join(",") === "탕,수,육", game.STEPS.join(","));
 assert("채팅으로 겨룸", typeof tangsuyuk.onMessage === "function");
 assert("  └ 버튼은 없음", tangsuyuk.buttons === undefined);
+assert("기본은 잇달아 쳐도 되는 판", tangsuyuk.description === game.chainBody(false), tangsuyuk.description);
 
 // ── 3. 차례 ────────────────────────────────────────────────
 console.log("\n=== 3. 차례 ===");
@@ -80,18 +82,43 @@ console.log("\n=== 3. 차례 ===");
   // 앞뒤 공백은 봐준다. 모바일에서 붙는 것까지 지게 할 이유는 없다.
   assert("앞뒤 공백은 봐줌", game.play(S, P(1), " 탕 ").ok === true);
 
-  // 한 사람이 잇달아 칠 수 없다 — 맞는 글자라도 그렇다.
+  // 기본 판에서는 혼자 탕수육을 세 번 쳐도 된다.
+  assert("기본은 잇달아 쳐도 됨", game.play(S, P(1), "수").ok === true);
+  assert("  └ 횟수도 그대로 셈", game.chainOf(S).moves === 5, String(game.chainOf(S).moves));
+
+  const wrong = game.play(S, P(1), "ㅋㅋ");
+  assert("틀리게 치면 짐", wrong.reason === "wrong", JSON.stringify(wrong));
+  assert("  └ 쳐야 했던 글자를 알려 줌", wrong.expected === "육", wrong.expected);
+  assert("  └ 거기까지의 횟수도", wrong.moves === 5, String(wrong.moves));
+
+  assert("없는 판은 막힘", game.play("없음", P(1), "탕").reason === "gone");
+
+  game.dropChain(S);
+}
+
+// ── 3-1. 번갈아 (선택) ─────────────────────────────────────
+//
+// 켜면 규칙이 하나 붙는다 — 한 사람이 잇달아 칠 수 없다. 맞는 글자라도 그렇다.
+console.log("\n=== 3-1. 번갈아 ===");
+{
+  const S = "cccc3333";
+  game.keepChain(S, true);
+
+  assert("탕", game.play(S, P(1), "탕").ok === true);
+
   const twice = game.play(S, P(1), "수");
-  assert("잇달아 치면 짐", twice.reason === "twice", JSON.stringify(twice));
+  assert("켜면 잇달아 치면 짐", twice.reason === "twice", JSON.stringify(twice));
+  assert("  └ 차례는 그대로", game.nextOf(game.chainOf(S)) === "수");
   assert("  └ 다른 사람이면 됨", game.play(S, P(2), "수").ok === true);
 
   // 틀린 글자를 먼저 본다 — 잇달아 친 데다 글자까지 틀렸으면 글자가 틀렸다고 말한다.
   const both = game.play(S, P(2), "ㅋㅋ");
   assert("잇달아 + 틀린 글자는 「틀림」으로", both.reason === "wrong", JSON.stringify(both));
-  assert("  └ 쳐야 했던 글자를 알려 줌", both.expected === "육", both.expected);
-  assert("  └ 거기까지의 횟수도", both.moves === 5, String(both.moves));
+  assert("  └ 거기까지의 횟수도", both.moves === 2, String(both.moves));
 
-  assert("없는 판은 막힘", game.play("없음", P(1), "탕").reason === "gone");
+  // 켠 판만 제목에 그렇다고 적는다 — 같은 횟수라도 번갈아 친 판이 더 어렵다.
+  assert("켠 판은 제목에 실림", game.chainName(true) === "탕수육 · 번갈아", String(game.chainName(true)));
+  assert("  └ 기본은 게임 이름 그대로", game.chainName(false) === null, String(game.chainName(false)));
 
   game.dropChain(S);
 }
@@ -128,10 +155,10 @@ console.log("\n=== 4. 모든 메시지가 한 수 ===");
 }
 
 // ── 5. 잇달아 치면 진다 ────────────────────────────────────
-console.log("\n=== 5. 잇달아 치면 진다 ===");
+console.log("\n=== 5. 잇달아 치면 진다 (번갈아를 켠 판) ===");
 {
   const client = makeClient();
-  const opened = await open(client);
+  const opened = await open(client, true);
 
   await say(client, P(1), "탕");
   await say(client, P(1), "수");
@@ -180,7 +207,19 @@ console.log("\n=== 7. 화면 ===");
   const text = bodyOf(opened.view);
 
   assert("차례를 적음", text.includes("**탕** → **수** → **육**"), text);
-  assert("  └ 지는 조건도", text.includes(speak("틀리게 치거나 잇달아 치면 집니다.")), text);
+  assert("  └ 지는 조건도", text.includes(speak("틀리게 치면 집니다.")), text);
+  assert("  └ 기본 판은 잇달아를 말하지 않음", !text.includes("잇달아"), text);
+
+  // 한 채널에 한 판이라 여기서 또 열 수는 없다. 켠 판의 화면만 그려 본다.
+  const alternating = bodyOf(
+    views.startedView(
+      tangsuyuk,
+      { ...opened.session, name: game.chainName(true), body: game.chainBody(true) },
+      host,
+    ),
+  );
+  assert("  └ 켠 판은 번갈아라고", alternating.includes(speak("틀리게 치거나 잇달아 치면 집니다.")), alternating);
+  assert("    · 제목에도", alternating.includes("탕수육 · 번갈아"), alternating);
   assert("  └ 두 줄을 넘지 않음", text.split("\n").filter((line) => line.trim() !== "").length === 3, text);
   assert("  └ 노랑 (도는 중)", buildContainer(opened.view).toJSON().accent_color === 0xfee75c);
 
@@ -195,10 +234,14 @@ console.log("\n=== 7. 화면 ===");
 finish();
 
 /** 판 하나를 열고 채널에 붙인다. */
-async function open(client) {
+async function open(client, alternate = false) {
   const opened = await runner.openGame(tangsuyuk, G, CH, host, {
+    name: game.chainName(alternate),
+    body: game.chainBody(alternate),
     durationSeconds: null,
-    prepare: game.keepChain,
+    prepare: (sessionId) => {
+      game.keepChain(sessionId, alternate);
+    },
   });
   const payload = channelMessage(opened.view);
   const message = await client.makeChannel(CH).send(payload);
