@@ -72,6 +72,74 @@ assert("다르면 물어봄 (Y/N)", text.includes("지금 업데이트할까요?
 assert("  └ Y 가 아니면 건너뜀", text.includes('if /i not "%ANSWER%"=="Y"'));
 assert("예약 실행에서는 묻지 않음", text.indexOf('if /i "%~1"=="bot" goto bot') < text.indexOf("call :check_update"));
 
+console.log("\n=== 4-1. 무엇이 바뀌는지 편다 ===");
+//
+// 「새 버전이 있습니다」 만으로는 받을지 말지를 정할 수가 없다. 지금 버전 이후의 릴리스
+// 설명에서 제목 줄만 골라 버전마다 늘어놓는다.
+const psLine = text.split("\r\n").find((line) => line.startsWith("powershell") && line.includes("per_page=100"));
+
+assert("바뀐 것을 물어보기 전에 보여 줌", psLine !== undefined);
+assert(
+  "  └ 지금 버전까지 거슬러 올라감",
+  psLine.includes("[Array]::IndexOf($tags, '%CURRENT%')"),
+  "최신 하나만 보면 여러 버전 밀렸을 때 사이가 빈다",
+);
+assert("  └ 그 사이 릴리스를 전부", psLine.includes("Select-Object -First $i"));
+assert("  └ 못 찾으면 최신 하나만", psLine.includes("$show = $all | Select-Object -First 1"));
+assert("  └ 초안·시험판은 뺌", psLine.includes("-not $_.draft -and -not $_.prerelease"));
+assert("  └ 여기서도 타임아웃", psLine.includes("-TimeoutSec 5"));
+assert("  └ 실패하면 조용히 넘어감", psLine.includes("catch { exit }"));
+assert(
+  "  └ 출력은 파워셸이 직접",
+  !psLine.startsWith("for /f") && psLine.includes("Write-Host"),
+  "for /f 로 받아 echo 하면 제목에 든 괄호나 &, > 가 cmd 에게 먹힌다",
+);
+assert("묻는 것은 그 뒤", text.indexOf("per_page=100") < text.indexOf("지금 업데이트할까요?"));
+
+// 릴리스 설명을 실제로 넣어 보고, 제목 줄만 골라 나오는지 본다.
+// run.bat 에 적힌 그 코드를 그대로 떼어 돌린다 — 베껴 두면 둘이 갈라진다.
+{
+  const render = psLine.slice(psLine.indexOf("foreach ($r in $show)"), psLine.length - 1);
+  const box = path.join(tmpdir(), `runbat-notes-${Date.now()}`);
+  mkdirSync(box, { recursive: true });
+
+  const notes = [
+    "## 추가",
+    "",
+    "- `/탕수육 (번갈아) — 잇달아 치기를 막는다`",
+    "> 본문은 빼야 한다. 창을 덮는다.",
+    "> 두 줄이어도 마찬가지다.",
+    "",
+    "## 변경",
+    "",
+    "- `흡혈도 있는 만큼만 뺀다 — wish.ts`",
+    "",
+  ].join("\n");
+  writeFileSync(path.join(box, "notes.md"), notes, "utf8");
+
+  const fixture =
+    `[Console]::OutputEncoding=[Text.Encoding]::UTF8; ` +
+    `$show = @([pscustomobject]@{tag_name='2026.902.1'; body=(Get-Content '${path.join(box, "notes.md").replaceAll("\\", "\\\\")}' -Raw -Encoding UTF8)}); `;
+
+  let shown = "";
+  try {
+    shown = execSync(`powershell -NoProfile -ExecutionPolicy Bypass -Command "${fixture}${render}"`, {
+      timeout: 30_000,
+      encoding: "utf8",
+    });
+  } catch (error) {
+    shown = String(error);
+  }
+
+  assert("버전을 먼저 적음", shown.includes("YDGRB2026.902.1"), shown);
+  assert("  └ 분류를 칸으로", shown.includes("[추가]") && shown.includes("[변경]"), shown);
+  assert("  └ 제목을 줄마다", shown.includes("- /탕수육 (번갈아) — 잇달아 치기를 막는다"), shown);
+  assert("    · 감싼 따옴표는 벗김", !shown.includes("`"), shown);
+  assert("  └ 본문은 빼고", !shown.includes("창을 덮는다"), shown);
+
+  rmSync(box, { recursive: true, force: true });
+}
+
 console.log("\n=== 5. 업데이트 적용 ===");
 assert("zip 을 받아서 품", text.includes("curl -L --fail") && text.includes("tar -xf"));
 // 새 창을 띄우지 않는다 — 자세한 것은 runbat-apply-check.

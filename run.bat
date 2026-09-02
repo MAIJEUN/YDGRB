@@ -221,6 +221,19 @@ echo    새 버전이 있습니다
 echo      지금  YDGRB%CURRENT%
 echo      최신  YDGRB%LATEST%
 echo  ------------------------------------------
+
+REM  지금 버전 이후로 바뀐 것을 전부 편다.
+REM
+REM  「새 버전이 있습니다」 만으로는 받을지 말지를 정할 수가 없다. 릴리스 설명은
+REM  커밋 메시지로 만들어지므로(scripts/release-notes.mjs), 그 제목 줄만 골라
+REM  버전마다 늘어놓는다. 본문(> 로 시작하는 줄)은 뺀다 — 창을 덮는다.
+REM
+REM  출력은 파워셸이 직접 한다. for /f 로 받아 echo 하면 제목에 든 괄호나 &, ^>
+REM  가 cmd 에게 먹혀 줄이 깨진다.
+REM
+REM  지금 버전이 목록에 없으면(태그를 지웠거나 100개를 넘게 밀렸으면) 최신 것 하나만
+REM  보여 준다. 전부 쏟아 내면 그게 더 못 읽는다.
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference='SilentlyContinue'; [Console]::OutputEncoding=[Text.Encoding]::UTF8; try { $all = @(Invoke-RestMethod 'https://api.github.com/repos/%REPO%/releases?per_page=100' -Headers @{'User-Agent'='ydgrb'} -TimeoutSec 5) | Where-Object { -not $_.draft -and -not $_.prerelease } } catch { exit }; $tags = [string[]]($all | ForEach-Object { $_.tag_name }); $i = [Array]::IndexOf($tags, '%CURRENT%'); if ($i -ge 0) { $show = $all | Select-Object -First $i } else { $show = $all | Select-Object -First 1 }; foreach ($r in $show) { Write-Host ''; Write-Host ('  YDGRB' + $r.tag_name); foreach ($line in ($r.body -split '\r?\n')) { if ($line -match '^##\s*(.+)$') { Write-Host ('    [' + $matches[1].Trim() + ']') } elseif ($line -match '^-\s*(.+)$') { Write-Host ('      - ' + $matches[1].Trim().Trim([char]96)) } } }"
 echo.
 set "ANSWER="
 set /p "ANSWER=  지금 업데이트할까요? (Y/N): "
