@@ -85,8 +85,23 @@ assert(
   "최신 하나만 보면 여러 버전 밀렸을 때 사이가 빈다",
 );
 assert("  └ 그 사이 릴리스를 전부", psLine.includes("Select-Object -First $i"));
-assert("  └ 못 찾으면 최신 하나만", psLine.includes("$show = $all | Select-Object -First 1"));
+assert("  └ 못 찾으면 최신 하나만", psLine.includes("$show = @($all | Select-Object -First 1)"));
+assert("  └ 이미 최신이면 아무것도", psLine.includes("if ($i -eq 0) { exit }"));
 assert("  └ 초안·시험판은 뺌", psLine.includes("-not $_.draft -and -not $_.prerelease"));
+
+// Invoke-RestMethod 는 JSON 배열을 파이프에 **하나로 통째로** 흘린다. 곧바로
+// Where-Object 에 물리면 $_ 이 배열 전체가 되어 `-not $_.draft` 가 전부를 걸러 낸다.
+assert(
+  "  └ 받아 온 것을 변수에 먼저 담음",
+  /\$raw = Invoke-RestMethod[\s\S]{0,200}\$all = @\(\$raw \| Where-Object/u.test(psLine),
+  "곧바로 Where-Object 에 물리면 $_ 이 배열 전체가 되어 전부 걸러진다",
+);
+assert(
+  "  └ 목록이 비면 조용히 넘어감",
+  psLine.includes("if ($all.Count -eq 0) { exit }"),
+  "IndexOf 에 null 을 넘기면 .NET 예외가 그대로 창에 찍힌다",
+);
+assert("  └ 태그 목록도 배열로 감쌈", psLine.includes("$tags = @($all | ForEach-Object"));
 assert("  └ 여기서도 타임아웃", psLine.includes("-TimeoutSec 5"));
 assert("  └ 실패하면 조용히 넘어감", psLine.includes("catch { exit }"));
 assert(
@@ -99,7 +114,8 @@ assert("묻는 것은 그 뒤", text.indexOf("per_page=100") < text.indexOf("지
 // 릴리스 설명을 실제로 넣어 보고, 제목 줄만 골라 나오는지 본다.
 // run.bat 에 적힌 그 코드를 그대로 떼어 돌린다 — 베껴 두면 둘이 갈라진다.
 {
-  const render = psLine.slice(psLine.indexOf("foreach ($r in $show)"), psLine.length - 1);
+  // 두 겹 foreach 만 떼어 낸다 (뒤의 `} catch { exit }` 는 try 를 닫는 것이라 뺀다).
+  const render = psLine.slice(psLine.indexOf("foreach ($r in $show)"), psLine.lastIndexOf("} catch"));
   const box = path.join(tmpdir(), `runbat-notes-${Date.now()}`);
   mkdirSync(box, { recursive: true });
 

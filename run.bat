@@ -231,9 +231,13 @@ REM
 REM  출력은 파워셸이 직접 한다. for /f 로 받아 echo 하면 제목에 든 괄호나 &, ^>
 REM  가 cmd 에게 먹혀 줄이 깨진다.
 REM
+REM  받아 온 것을 **변수에 먼저 담는다.** Invoke-RestMethod 는 JSON 배열을 파이프에
+REM  하나로 통째로 흘려서, 곧바로 Where-Object 에 물리면 $_ 이 배열 전체가 된다
+REM  (-not $_.draft 가 배열에 걸려 전부 걸러진다). 담고 나서 거르면 하나씩 돈다.
+REM
 REM  지금 버전이 목록에 없으면(태그를 지웠거나 100개를 넘게 밀렸으면) 최신 것 하나만
 REM  보여 준다. 전부 쏟아 내면 그게 더 못 읽는다.
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference='SilentlyContinue'; [Console]::OutputEncoding=[Text.Encoding]::UTF8; try { $all = @(Invoke-RestMethod 'https://api.github.com/repos/%REPO%/releases?per_page=100' -Headers @{'User-Agent'='ydgrb'} -TimeoutSec 5) | Where-Object { -not $_.draft -and -not $_.prerelease } } catch { exit }; $tags = [string[]]($all | ForEach-Object { $_.tag_name }); $i = [Array]::IndexOf($tags, '%CURRENT%'); if ($i -ge 0) { $show = $all | Select-Object -First $i } else { $show = $all | Select-Object -First 1 }; foreach ($r in $show) { Write-Host ''; Write-Host ('  YDGRB' + $r.tag_name); foreach ($line in ($r.body -split '\r?\n')) { if ($line -match '^##\s*(.+)$') { Write-Host ('    [' + $matches[1].Trim() + ']') } elseif ($line -match '^-\s*(.+)$') { Write-Host ('      - ' + $matches[1].Trim().Trim([char]96)) } } }"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference='SilentlyContinue'; [Console]::OutputEncoding=[Text.Encoding]::UTF8; try { $raw = Invoke-RestMethod 'https://api.github.com/repos/%REPO%/releases?per_page=100' -Headers @{'User-Agent'='ydgrb'} -TimeoutSec 5; $all = @($raw | Where-Object { $_.tag_name -and -not $_.draft -and -not $_.prerelease }); if ($all.Count -eq 0) { exit }; $tags = @($all | ForEach-Object { $_.tag_name }); $i = [Array]::IndexOf($tags, '%CURRENT%'); if ($i -eq 0) { exit }; if ($i -gt 0) { $show = @($all | Select-Object -First $i) } else { $show = @($all | Select-Object -First 1) }; foreach ($r in $show) { Write-Host ''; Write-Host ('  YDGRB' + $r.tag_name); foreach ($line in (($r.body + '') -split '\r?\n')) { if ($line -match '^##\s*(.+)$') { Write-Host ('    [' + $matches[1].Trim() + ']') } elseif ($line -match '^-\s*(.+)$') { Write-Host ('      - ' + $matches[1].Trim().Trim([char]96)) } } } } catch { exit }"
 echo.
 set "ANSWER="
 set /p "ANSWER=  지금 업데이트할까요? (Y/N): "
