@@ -102,20 +102,31 @@ async function adminPanelView(
   const allowed = await allowedRoles(guild.id, targetId);
   const held = target === undefined ? [] : manageableHeld(target).map((role) => role.id);
 
-  const fields: ResponseField[] = [{ name: "열어 준 역할", value: roleList(allowed) }];
+  /**
+   * **편 기능의 것만 적는다.**
+   *
+   * 「지급/회수」 를 열어 놓고 명단이 함께 떠 있으면, 지금 손대는 것이 둘 중 어느
+   * 쪽인지가 흐려진다. 아무것도 안 폈으면 아무 목록도 적지 않는다 — 그때 정할 것은
+   * 무엇을 할지 하나뿐이다.
+   */
+  const fields: ResponseField[] = [];
 
-  // 명단에 있어도 봇이 못 만지는 것이 있으면 미리 말한다 — 유저가 눌러 보고 나서
-  // 알게 두면, 왜 안 되는지 물어볼 곳이 관리자밖에 없다.
-  const stuck = allowed.filter((id) => {
-    const role = guild.roles.cache.get(id);
-    return role !== undefined && !canManage(guild, role);
-  });
+  if (func === FUNC.allow) {
+    fields.push({ name: "열어 준 역할", value: roleList(allowed) });
 
-  if (stuck.length > 0) {
-    fields.push({
-      name: "봇이 만지지 못하는 역할",
-      value: [roleList(stuck), speak("봇 역할을 이 역할들보다 위로 올려 주세요.")].join("\n"),
+    // 명단에 있어도 봇이 못 만지는 것이 있으면 미리 말한다 — 유저가 눌러 보고 나서
+    // 알게 두면, 왜 안 되는지 물어볼 곳이 관리자밖에 없다.
+    const stuck = allowed.filter((id) => {
+      const role = guild.roles.cache.get(id);
+      return role !== undefined && !canManage(guild, role);
     });
+
+    if (stuck.length > 0) {
+      fields.push({
+        name: "봇이 만지지 못하는 역할",
+        value: [roleList(stuck), speak("봇 역할을 이 역할들보다 위로 올려 주세요.")].join("\n"),
+      });
+    }
   }
 
   if (func === FUNC.grant) {

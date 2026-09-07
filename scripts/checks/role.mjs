@@ -162,6 +162,10 @@ console.log("\n=== 4. 관리자 패널 ===");
     "편 것만 파랑이라 지금 무엇을 보는지 한눈에 갈린다",
   );
 
+  // 정보는 **편 기능의 것만** 적는다. 아무것도 안 폈으면 아무 목록도 없다 —
+  // 그때 정할 것은 무엇을 할지 하나뿐이다.
+  assert("  └ 아무 목록도 안 적음", !bodyOf(picked).includes("열어 준 역할") && !bodyOf(picked).includes("지금 가진 역할"), bodyOf(picked));
+
   // 버튼은 **눌렀을 때 갈 상태**를 싣는다 — 편 것을 다시 누르면 접힌다.
   assert(
     "안 편 버튼은 그 기능을 폄",
@@ -185,6 +189,7 @@ console.log("\n=== 4. 관리자 패널 ===");
   assert("  └ 하나도 안 고르고 낼 수 있음", allowSelects[1].min_values === 0, "그래야 전부 닫을 수 있다");
   assert(`  └ ${ids.MAX_ALLOWED_ROLES}개까지`, allowSelects[1].max_values === ids.MAX_ALLOWED_ROLES);
   assert("열어 준 역할을 멘션으로", bodyOf(allow).includes("<@&r1>"), bodyOf(allow));
+  assert("  └ 가진 역할은 안 적음", !bodyOf(allow).includes("지금 가진 역할"), "지금 손대는 것은 명단이다");
 
   // 명단에 있어도 봇이 못 만지는 것은 미리 말한다.
   assert("못 만지는 역할을 미리 알림", bodyOf(allow).includes("봇이 만지지 못하는 역할"), bodyOf(allow));
@@ -211,6 +216,11 @@ console.log("\n=== 4. 관리자 패널 ===");
     "골라 두면 풀었을 때 벗기려 들고, 벗길 수가 없다",
   );
   assert("  └ 가진 역할을 칸으로도", bodyOf(give).includes("지금 가진 역할"), bodyOf(give));
+  assert(
+    "    · 명단은 안 적음",
+    !bodyOf(give).includes("열어 준 역할"),
+    "명단이 함께 떠 있으면 지금 손대는 것이 둘 중 어느 쪽인지 흐려진다",
+  );
   assert("  └ 편 버튼이 파랑", buttonsOf(give)[1].style === 1, String(buttonsOf(give)[1].style));
 
   // 스물다섯을 넘게 가진 사람은 열지 않는다 — 못 담긴 것이 그 자리에서 벗겨진다.
