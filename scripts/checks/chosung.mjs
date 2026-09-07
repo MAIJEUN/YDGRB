@@ -75,17 +75,20 @@ assert("옵션이 하나도 없음", (json.options ?? []).length === 0, JSON.str
 assert("  └ 서버 전용", JSON.stringify(json.contexts) === "[0]", JSON.stringify(json.contexts));
 
 const modal = chosungModal().toJSON();
-const fields = modal.components.map((row) => row.components[0]);
+// 칸은 두 모양이다 — 글자 칸은 액션 로우(1) 안에, 그림 칸은 라벨(18) 안에 들어간다.
+const fields = modal.components.map((part) => (part.type === 18 ? part.component : part.components[0]));
 
 assert("모달로 받음", modal.custom_id === "chosung:new", modal.custom_id);
 assert(
-  "  └ 칸은 텍스트·기간·제목",
-  fields.map((f) => f.custom_id).join(",") === "text,duration,title",
+  "  └ 칸은 텍스트·기간·제목·그림",
+  fields.map((f) => f.custom_id).join(",") === "text,duration,title,images",
   fields.map((f) => f.custom_id).join(","),
 );
 assert("  └ 텍스트·기간은 필수", fields.slice(0, 2).every((f) => f.required === true));
 assert("  └ 제목은 선택 (형식이 정한 칸)", fields[2]?.required === false);
 assert("  └ 제목 칸 이름은 「제목」", fields[2]?.label === "제목", fields[2]?.label);
+// 퀴즈와 같은 칸을 쓴다 — 그림을 붙이는 자리가 게임마다 다르면 고칠 곳이 둘이 된다.
+assert("  └ 그림 칸도 퀴즈와 같은 것", fields[3]?.type === 19 && fields[3]?.required === false);
 
 // ── 4. 게임 ────────────────────────────────────────────────
 console.log("\n=== 4. 게임 ===");

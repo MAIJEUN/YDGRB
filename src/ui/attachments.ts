@@ -2,9 +2,24 @@ import { AttachmentBuilder } from "discord.js";
 import type { Attachment, Message, ReadonlyCollection, Snowflake } from "discord.js";
 
 
-import type { WishAttachment } from "./types.js";
+/**
+ * 화면에 붙는 파일 하나.
+ *
+ * 소원의 첨부도, 퀴즈의 그림도 이 모양이다 — 이름과 URL, 그리고 이미지인지 아닌지.
+ * 그것 말고는 여기서 알 필요가 없다.
+ */
+export interface Attached {
+  readonly name: string;
+  readonly url: string;
+  readonly size: number;
+  readonly contentType: string | null;
+}
 
 /**
+ * 모달로 올라온 파일을 화면에 붙이는 일.
+ *
+ * 두 곳이 쓴다 — [소원](../wish/)의 첨부와 [퀴즈](../games/answer.ts)의 그림.
+ *
  * 모달로 올라온 파일은 **임시 업로드**라서 그대로 두면 URL 이 만료된다.
  * 그래서 소원을 채널에 올릴 때 봇 메시지에 다시 첨부해 영구 파일로 만든다.
  *
@@ -15,7 +30,7 @@ import type { WishAttachment } from "./types.js";
  * (`retained` 참고).
  */
 
-export function isImage(file: Pick<WishAttachment, "contentType">): boolean {
+export function isImage(file: Pick<Attached, "contentType">): boolean {
   return file.contentType?.startsWith("image/") === true;
 }
 
@@ -33,7 +48,7 @@ function withSuffix(name: string, index: number): string {
 /** 모달 제출로 받은 파일 목록을 겹치지 않는 이름으로 정리한다. */
 export function prepareUploads(
   uploaded: ReadonlyCollection<Snowflake, Attachment> | null,
-): WishAttachment[] {
+): Attached[] {
   if (uploaded === null) return [];
 
   const used = new Set<string>();
@@ -54,7 +69,7 @@ export function prepareUploads(
 }
 
 /** 채널에 보낼 때 함께 올릴 파일. URL 을 주면 discord.js 가 받아서 다시 올려 준다. */
-export function toUploadFiles(files: readonly WishAttachment[]): AttachmentBuilder[] {
+export function toUploadFiles(files: readonly Attached[]): AttachmentBuilder[] {
   return files.map((file) => new AttachmentBuilder(file.url, { name: file.name }));
 }
 
@@ -69,7 +84,7 @@ export function retained(message: Message): Attachment[] {
 }
 
 /** 전송된 메시지에서 **영구** 첨부 정보를 읽어 온다 (URL 이 임시 업로드가 아닌 것으로 바뀐다). */
-export function fromMessage(message: Message): WishAttachment[] {
+export function fromMessage(message: Message): Attached[] {
   return Array.from(message.attachments.values(), (file) => ({
     name: file.name,
     url: file.url,
@@ -84,11 +99,11 @@ export function fromMessage(message: Message): WishAttachment[] {
  * CDN URL 대신 `attachment://` 를 쓴다. Components V2 메시지에서는 컴포넌트가 가리킨 첨부만
  * 그려지므로, 이렇게 하면 첨부로 한 번 · 묶음으로 한 번 두 벌로 보이는 일이 없다.
  */
-export function galleryImages(files: readonly WishAttachment[]): string[] {
+export function galleryImages(files: readonly Attached[]): string[] {
   return files.filter((file) => isImage(file)).map((file) => `attachment://${file.name}`);
 }
 
 /** 이미지가 아닌 첨부 — File 컴포넌트로 카드처럼 표시된다. */
-export function galleryFiles(files: readonly WishAttachment[]): string[] {
+export function galleryFiles(files: readonly Attached[]): string[] {
   return files.filter((file) => !isImage(file)).map((file) => `attachment://${file.name}`);
 }

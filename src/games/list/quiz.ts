@@ -1,7 +1,7 @@
 import { ActionRowBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } from "discord.js";
 
 import { customId } from "../../types.js";
-import { answerGame } from "../answer.js";
+import { IMAGE_FIELD, answerGame, imageField } from "../answer.js";
 import { titleInput } from "../command.js";
 import { defineGame } from "../types.js";
 import { speak } from "../../ui/tone.js";
@@ -31,6 +31,7 @@ export const FIELD = {
   answer: "answer",
   duration: "duration",
   title: "title",
+  images: IMAGE_FIELD,
 } as const;
 
 export const MAX_QUESTION_LENGTH = 300;
@@ -72,7 +73,8 @@ export function quizModal(): ModalBuilder {
       ),
       // 제목은 형식이 정한 칸이다. 모달로 받는 게임도 똑같이 둔다.
       titleInput(FIELD.title),
-    );
+    )
+    .addLabelComponents(imageField());
 }
 
 export default defineGame({

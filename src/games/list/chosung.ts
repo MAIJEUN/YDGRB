@@ -1,7 +1,7 @@
 import { ActionRowBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } from "discord.js";
 
 import { customId } from "../../types.js";
-import { answerGame } from "../answer.js";
+import { IMAGE_FIELD, answerGame, imageField } from "../answer.js";
 import { titleInput } from "../command.js";
 import { defineGame } from "../types.js";
 
@@ -27,6 +27,7 @@ export const FIELD = {
   text: "text",
   duration: "duration",
   title: "title",
+  images: IMAGE_FIELD,
 } as const;
 
 /** 초성으로 바꾸면 글자 수는 그대로다. 한 줄에 들어갈 만큼만 받는다. */
@@ -61,7 +62,8 @@ export function chosungModal(): ModalBuilder {
       ),
       // 제목은 형식이 정한 칸이다.
       titleInput(FIELD.title),
-    );
+    )
+    .addLabelComponents(imageField());
 }
 
 export default defineGame({

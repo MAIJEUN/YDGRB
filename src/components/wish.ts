@@ -12,7 +12,7 @@ import {
   prepareUploads,
   retained,
   toUploadFiles,
-} from "../wish/attachments.js";
+} from "../ui/attachments.js";
 import {
   MAX_DECIMALS,
   MIN_DECIMALS,

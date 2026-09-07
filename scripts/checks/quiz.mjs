@@ -17,7 +17,8 @@ const views = await import(`${DIST}/games/views.js`);
 const quiz = (await import(`${DIST}/games/list/quiz.js`)).default;
 const { quizModal } = await import(`${DIST}/games/list/quiz.js`);
 // 맞히기 규칙은 초성퀴즈와 함께 쓰는 공용 부품에 있다.
-const { keepAnswer, matches } = await import(`${DIST}/games/answer.js`);
+const answer = await import(`${DIST}/games/answer.js`);
+const { keepAnswer, matches } = answer;
 const { buildContainer, channelMessage } = await import(`${DIST}/ui/response.js`);
 
 const G = "111111111111111111";
@@ -43,23 +44,73 @@ assert("옵션이 하나도 없음", (json.options ?? []).length === 0, JSON.str
 assert("  └ 서버 전용", JSON.stringify(json.contexts) === "[0]", JSON.stringify(json.contexts));
 
 const modal = quizModal().toJSON();
-const fields = modal.components.map((row) => row.components[0]);
+// 칸은 두 모양이다 — 글자 칸은 액션 로우(1) 안에, 그림 칸은 라벨(18) 안에 들어간다.
+const fields = modal.components.map((part) => (part.type === 18 ? part.component : part.components[0]));
 
 assert("모달로 받음", modal.custom_id === "quiz:new", modal.custom_id);
 assert(
-  "  └ 칸은 문제·정답·기간·제목",
-  fields.map((f) => f.custom_id).join(",") === "question,answer,duration,title",
+  "  └ 칸은 문제·정답·기간·제목·그림",
+  fields.map((f) => f.custom_id).join(",") === "question,answer,duration,title,images",
   fields.map((f) => f.custom_id).join(","),
 );
 assert("  └ 문제·정답·기간은 필수", fields.slice(0, 3).every((f) => f.required === true));
 assert("  └ 제목은 선택 (형식이 정한 칸)", fields[3]?.required === false);
 assert("  └ 제목 칸 이름은 「제목」", fields[3]?.label === "제목", fields[3]?.label);
+assert("  └ 다섯 칸을 다 씀 (디스코드 한계)", modal.components.length === 5, String(modal.components.length));
+
+// 그림은 선택이다. 파일 종류를 가릴 수단이 없어 무엇이든 올라올 수 있다.
+assert("  └ 그림은 파일 올리기 칸", fields[4]?.type === 19, String(fields[4]?.type));
+assert("    · 선택 (안 올려도 됨)", fields[4]?.required === false);
+assert(
+  `    · ${answer.MAX_QUIZ_IMAGES}개까지`,
+  fields[4]?.max_values === answer.MAX_QUIZ_IMAGES && fields[4]?.min_values === 0,
+  `${fields[4]?.min_values}~${fields[4]?.max_values}`,
+);
+assert("    · 두 퀴즈가 같은 칸을 씀", answer.IMAGE_FIELD === "images", answer.IMAGE_FIELD);
 
 // ── 2. 게임 정의 ───────────────────────────────────────────
 console.log("\n=== 2. 게임 ===");
 assert("즉시 시작 형식", quiz.mode === "instant", quiz.mode);
 assert("  └ 채팅을 받는다", typeof quiz.onMessage === "function");
 assert("  └ 기간이 끝나면 마무리한다", typeof quiz.onTimeout === "function");
+
+// ── 2-1. 문제에 그림을 붙인다 ──────────────────────────────
+//
+// 정답과 한 자리에 둔다 — 판이 끝나면 같이 사라져야 하고, 파일에 남길 이유도 없다.
+console.log("\n=== 2-1. 문제 그림 ===");
+{
+  const S = "media111";
+  const round = {
+    id: S, gameId: "quiz", guildId: G, channelId: CH,
+    title: null, name: null, body: "이 사진 속 장소는?", maxPlayers: null, messageId: "1",
+    hostId: HOST, players: [], phase: "playing",
+    openedAt: Date.now(), playSeconds: 180, closesAt: Date.now() + 180_000,
+  };
+  answer.keepAnswer(S, "경복궁", [
+    { name: "a.png", url: "https://cdn/a.png", size: 1, contentType: "image/png" },
+    { name: "note.pdf", url: "https://cdn/n.pdf", size: 1, contentType: "application/pdf" },
+  ]);
+
+  assert("맡긴 그림을 게임이 그대로 냄", quiz.media({ id: S }).length === 2);
+
+  const view = views.startedView(quiz, round, host);
+
+  assert("이미지는 묶음으로", (view.images ?? []).join(",") === "attachment://a.png", JSON.stringify(view.images));
+  assert("  └ 이미지가 아닌 것은 파일 카드로", (view.files ?? []).join(",") === "attachment://note.pdf", JSON.stringify(view.files));
+  assert("  └ 실제로 올릴 파일도 함께", (view.uploads ?? []).length === 2, String((view.uploads ?? []).length));
+  assert(
+    "    · 페이로드에 실림",
+    (channelMessage(view).files ?? []).length === 2,
+    "가리키기만 하고 안 올리면 attachment:// 참조가 풀린다",
+  );
+
+  // 안 올렸으면 빈 자리도 만들지 않는다 — 빈 배열은 「첨부를 전부 지우라」가 된다.
+  answer.keepAnswer(S, "경복궁");
+  const bare = views.startedView(quiz, round, host);
+  assert("안 올렸으면 아무것도 안 붙음", (bare.images ?? []).length === 0 && (bare.uploads ?? []).length === 0);
+  assert("  └ 페이로드에도 files 칸이 없음", channelMessage(bare).files === undefined);
+
+}
 
 // ── 3. 정답 맞히기 ─────────────────────────────────────────
 console.log("\n=== 3. 정답 판정 ===");

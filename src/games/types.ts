@@ -9,6 +9,7 @@ import type {
   User,
 } from "discord.js";
 
+import type { Attached } from "../ui/attachments.js";
 import type { ResponseField, Status } from "../ui/response.js";
 
 /**
@@ -173,6 +174,16 @@ export interface GameDefinition {
    * 화면을 다시 그릴 때마다 불린다. 끝난 판에는 부르지 않는다 (그 자리는 결과가 쓴다).
    */
   fields?(session: GameSession): readonly ResponseField[];
+
+  /**
+   * 판 화면에 붙는 **그림·파일.** 퀴즈의 문제 그림처럼 판마다 딸려 오는 것.
+   *
+   * 모달로 올라온 것을 그대로 돌려주면 된다 — 화면에 어떻게 거는지(이미지 묶음이냐
+   * 파일 카드냐)는 [골격](views.ts)이 정한다.
+   *
+   * **시작 화면에만 붙는다.** 모집 패널에 걸면 사람이 들고 날 때마다 다시 올라간다.
+   */
+  media?(session: GameSession): readonly Attached[];
 
   /**
    * 「참가」를 누르면 이 **모달**을 띄운다. 없으면 곧바로 참가시킨다.

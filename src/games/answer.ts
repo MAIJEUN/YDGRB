@@ -1,3 +1,8 @@
+import { FileUploadBuilder, LabelBuilder } from "discord.js";
+import type { ModalSubmitInteraction } from "discord.js";
+
+import { prepareUploads } from "../ui/attachments.js";
+import type { Attached } from "../ui/attachments.js";
 import type { GameContext, GameDefinition } from "./types.js";
 import { speak } from "../ui/tone.js";
 
@@ -13,14 +18,34 @@ import { speak } from "../ui/tone.js";
 
 interface Round {
   readonly answer: string;
+  /** 문제에 딸려 온 그림. 모달로 올라온 그대로. */
+  readonly media: readonly Attached[];
   winnerId: string | null;
 }
 
 const rounds = new Map<string, Round>();
 
-/** 판을 열 때 정답을 맡겨 둔다. **시작하기 전에** 불러야 그 사이에 들어온 답을 안 놓친다. */
-export function keepAnswer(sessionId: string, answer: string): void {
-  rounds.set(sessionId, { answer, winnerId: null });
+/**
+ * 판을 열 때 정답을 맡겨 둔다. **시작하기 전에** 불러야 그 사이에 들어온 답을 안 놓친다.
+ *
+ * 그림도 여기 함께 둔다. 정답과 한 몸이라 — 판이 끝나면 같이 사라져야 하고, 파일에
+ * 남길 이유도 없다 (진행 중인 판은 재시작을 견디지 않는다).
+ */
+export function keepAnswer(
+  sessionId: string,
+  answer: string,
+  media: readonly Attached[] = [],
+): void {
+  rounds.set(sessionId, { answer, media, winnerId: null });
+}
+
+/**
+ * 그 판의 문제 그림. 게임의 `media` 훅이 이걸 그대로 돌려준다.
+ *
+ * 판이 끝나면 빈 배열이다 — 끝난 판의 화면에는 그림을 다시 걸지 않는다.
+ */
+export function mediaOf(sessionId: string): readonly Attached[] {
+  return rounds.get(sessionId)?.media ?? [];
 }
 
 /** 아직 답을 기다리고 있는 판인지. 게임이 `start()` 에서 확인용으로 쓴다. */
@@ -65,7 +90,46 @@ async function finish(
  * export default defineGame({ …, ...answerGame });
  * ```
  */
-export const answerGame: Pick<GameDefinition, "start" | "onMessage" | "onTimeout"> = {
+/**
+ * 문제에 붙일 그림 — **선택.**
+ *
+ * 모달 칸은 다섯 개까지라 여기가 마지막 자리다. 파일 종류를 가릴 수단은 없어서 무엇이든
+ * 올라올 수 있는데, 이미지가 아니면 [골격](views.ts)이 파일 카드로 건다. 올린 것이
+ * 사라지지 않는 편이 「이미지만 됩니다」 하고 버리는 것보다 낫다.
+ */
+export const MAX_QUIZ_IMAGES = 4;
+
+/** 모달 안쪽 그림 칸의 id. 두 퀴즈가 같은 것을 쓴다. */
+export const IMAGE_FIELD = "images";
+
+/** 그림 칸. 두 퀴즈의 모달이 같은 모양으로 마지막에 붙인다. */
+export function imageField(): LabelBuilder {
+  return new LabelBuilder()
+    .setLabel("그림")
+    .setDescription(`선택 · 최대 ${MAX_QUIZ_IMAGES}개`)
+    .setFileUploadComponent(
+      new FileUploadBuilder()
+        .setCustomId(IMAGE_FIELD)
+        .setMinValues(0)
+        .setMaxValues(MAX_QUIZ_IMAGES)
+        .setRequired(false),
+    );
+}
+
+/** 모달 제출에서 그림을 꺼낸다. 안 올렸으면 빈 배열. */
+export function readImages(interaction: ModalSubmitInteraction): Attached[] {
+  return prepareUploads(interaction.fields.getUploadedFiles(IMAGE_FIELD));
+}
+
+export const answerGame: Pick<
+  GameDefinition,
+  "start" | "media" | "onMessage" | "onTimeout"
+> = {
+  /** 문제에 딸려 온 그림. 두 퀴즈가 같은 자리에 맡겨 두므로 여기서 한 번만 꺼낸다. */
+  media(session) {
+    return mediaOf(session.id);
+  },
+
   start(context) {
     // 문제는 판을 열 때 화면에 실려 있다. 여기서 따로 할 일이 없다.
     if (!hasAnswer(context.session.id)) {

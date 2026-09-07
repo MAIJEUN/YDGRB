@@ -10,7 +10,7 @@ import {
   TextDisplayBuilder,
   ThumbnailBuilder,
 } from "discord.js";
-import type { ButtonBuilder } from "discord.js";
+import type { AttachmentBuilder, ButtonBuilder } from "discord.js";
 import type {
   ActionRowBuilder,
   InteractionEditReplyOptions,
@@ -177,6 +177,14 @@ export interface MessageOptions {
   readonly images?: readonly string[];
   /** 이미지가 아닌 첨부파일. `attachment://<파일명>` 만 받는다. */
   readonly files?: readonly string[];
+  /**
+   * **실제로 올릴 파일.** `images`·`files` 가 `attachment://` 로 가리킬 것들이다.
+   *
+   * 가리키는 것과 올리는 것이 따로인 이유는, 이미 올라가 있는 첨부를 가리키기만 하는
+   * 경우(수정할 때)가 있기 때문이다. 올릴 것이 없으면 페이로드에 이 칸을 만들지 않는다 —
+   * 빈 배열을 실으면 디스코드가 「첨부를 전부 지우라」로 읽는다.
+   */
+  readonly uploads?: readonly AttachmentBuilder[];
   readonly rows?: readonly ActionRowBuilder<MessageActionRowComponentBuilder>[];
   /**
    * 제목 **오른쪽 끝**에 붙는 버튼 하나.
@@ -346,11 +354,22 @@ export function buildContainer(options: MessageOptions): ContainerBuilder {
 const NO_PINGS: MessageMentionOptions = { parse: [], repliedUser: false };
 
 /** `interaction.reply()` / `followUp()` 에 그대로 넘길 수 있는 페이로드. */
+/** 올릴 파일이 있을 때만 페이로드에 싣는다. 빈 배열은 「첨부를 전부 지우라」가 된다. */
+function uploaded(options: MessageOptions): { files?: AttachmentBuilder[] } {
+  const uploads = options.uploads ?? [];
+  return uploads.length === 0 ? {} : { files: [...uploads] };
+}
+
 export function response(options: MessageOptions): InteractionReplyOptions {
   const flags: (MessageFlags.Ephemeral | MessageFlags.IsComponentsV2)[] = [MessageFlags.IsComponentsV2];
   if (options.ephemeral !== false) flags.push(MessageFlags.Ephemeral);
 
-  return { components: [buildContainer(options)], flags, allowedMentions: NO_PINGS };
+  return {
+    components: [buildContainer(options)],
+    flags,
+    allowedMentions: NO_PINGS,
+    ...uploaded(options),
+  };
 }
 
 /** `interaction.update()` 용. ephemeral 여부는 메시지를 만들 때 정해지므로 건드리지 않는다. */
@@ -381,6 +400,7 @@ export function messageEdit(options: MessageOptions): MessageEditOptions {
     components: [buildContainer(options)],
     flags: [MessageFlags.IsComponentsV2],
     allowedMentions: NO_PINGS,
+    ...uploaded(options),
   };
 }
 
@@ -390,5 +410,6 @@ export function channelMessage(options: MessageOptions): MessageCreateOptions {
     components: [buildContainer(options)],
     flags: [MessageFlags.IsComponentsV2],
     allowedMentions: NO_PINGS,
+    ...uploaded(options),
   };
 }

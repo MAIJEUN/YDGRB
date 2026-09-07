@@ -301,6 +301,28 @@ for (const [name, payload] of [
 assert("response 기본은 임시 메시지", response(base).flags.includes(MessageFlags.Ephemeral));
 assert("  └ ephemeral: false 면 공개", !response({ ...base, ephemeral: false }).flags.includes(MessageFlags.Ephemeral));
 
+// 가리키는 것(`attachment://`)과 올리는 것을 함께 실어야 참조가 풀리지 않는다.
+{
+  const { AttachmentBuilder } = requireFromProject("discord.js");
+  const withFile = {
+    ...base,
+    images: ["attachment://a.png"],
+    uploads: [new AttachmentBuilder("https://cdn/a.png", { name: "a.png" })],
+  };
+
+  for (const [name, payload] of [
+    ["response", response(withFile)],
+    ["channelMessage", channelMessage(withFile)],
+    ["messageEdit", messageEdit(withFile)],
+  ]) {
+    assert(`${name} — 올릴 파일을 실음`, (payload.files ?? []).length === 1, JSON.stringify(payload.files));
+  }
+
+  // 빈 배열을 실으면 디스코드가 「첨부를 전부 지우라」로 읽는다.
+  assert("올릴 것이 없으면 칸을 안 만듦", response(base).files === undefined);
+  assert("  └ 빈 배열도 마찬가지", response({ ...base, uploads: [] }).files === undefined);
+}
+
 // ── 6. 실제 화면들 ─────────────────────────────────────────
 //
 // 규칙을 지키는지 한 화면씩 실제로 그려서 본다. 지켜야 하는 것:

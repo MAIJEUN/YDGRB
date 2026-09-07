@@ -1,3 +1,5 @@
+import type { Attached } from "../ui/attachments.js";
+
 /** 한 유저가 가진 소원권과 조각. */
 export interface Balance {
   tickets: number;
@@ -6,16 +8,13 @@ export interface Balance {
 
 export type WishStatus = "pending" | "accepted" | "rejected";
 
-export interface WishAttachment {
-  name: string;
-  /**
-   * 소원을 채널에 올리기 전에는 모달 업로드의 **임시** URL,
-   * 올린 뒤에는 봇 메시지에 첨부된 영구 URL 로 교체된다.
-   */
-  url: string;
-  size: number;
-  contentType: string | null;
-}
+/**
+ * 소원에 붙은 파일.
+ *
+ * 채널에 올리기 전에는 모달 업로드의 **임시** URL, 올린 뒤에는 봇 메시지에 첨부된
+ * 영구 URL 로 교체된다. 모양은 [화면에 붙는 파일](../ui/attachments.ts)과 같다.
+ */
+export type WishAttachment = Attached;
 
 /** 유저가 빈 소원 한 건. 관리자가 수락/거절할 때까지 pending 으로 남는다. */
 export interface WishRecord {

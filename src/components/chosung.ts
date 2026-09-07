@@ -1,5 +1,5 @@
 import { checkDuration, normalizeTitle, openGameHere } from "../games/command.js";
-import { keepAnswer } from "../games/answer.js";
+import { keepAnswer, readImages } from "../games/answer.js";
 import chosung, { ACTION, CHOSUNG, FIELD } from "../games/list/chosung.js";
 import { refusedView } from "../games/views.js";
 import { toChoseong } from "../hangul.js";
@@ -47,8 +47,9 @@ export default defineComponentHandler({
       body: `# ${toChoseong(text)}`,
       durationSeconds: duration.seconds,
       // 시작하기 전에 맡긴다 — 시작한 뒤에 맡기면 그 사이에 들어온 답을 놓친다.
+      // 그림도 같이 맡긴다. 첫 화면에 붙어야 하므로 화면을 만들기 전이어야 한다.
       prepare: (sessionId) => {
-        keepAnswer(sessionId, text);
+        keepAnswer(sessionId, text, readImages(interaction));
       },
     });
   },

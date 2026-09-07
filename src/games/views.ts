@@ -2,6 +2,7 @@ import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import type { MessageActionRowComponentBuilder, User } from "discord.js";
 
 import { count } from "../info/format.js";
+import { galleryFiles, galleryImages, toUploadFiles } from "../ui/attachments.js";
 import { atWithCountdown } from "../time.js";
 import type { MessageOptions, ResponseField } from "../ui/response.js";
 import { customId } from "../types.js";
@@ -139,10 +140,16 @@ export function startedView(
   session: GameSession,
   host: User,
 ): MessageOptions {
+  // 판에 딸려 온 그림·파일. 가리키는 것과 올리는 것을 함께 넘긴다.
+  const media = game.media?.(session) ?? [];
+
   return {
     status: "progress",
     title: `${sessionTitle(game, session)} — 시작`,
     description: body(game, session),
+    images: galleryImages(media),
+    files: galleryFiles(media),
+    uploads: toUploadFiles(media),
     // 게임이 덧붙이는 칸은 골격이 적는 것 뒤다 — 언제 끝나는지가 먼저다.
     fields: [...deadline(session, "종료"), ...(game.fields?.(session) ?? [])],
     accessoryButton: stopButton(session),
