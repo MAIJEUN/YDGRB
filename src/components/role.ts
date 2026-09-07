@@ -93,7 +93,7 @@ async function allow(interaction: ComponentInteraction, targetId: string): Promi
   if (await denyNonAdmin(interaction)) return;
 
   if (targetId === "") {
-    await replaceView(interaction, refused(interaction, speak("누구에게 열어 줄지를 잃어버렸습니다.")));
+    await aside(interaction, refused(interaction, speak("누구에게 열어 줄지를 잃어버렸습니다.")));
     return;
   }
 
@@ -117,18 +117,19 @@ async function allow(interaction: ComponentInteraction, targetId: string): Promi
   if (stuck.length === 0) return;
 
   // 일부만 담겼으면 그 말을 따로 한다. 화면은 이미 담긴 것을 보여 주고 있다.
-  await interaction.followUp(
-    response(
-      noticeView({
-        status: saved.length === 0 ? "failure" : "progress",
-        title: speak("일부는 열어 주지 못했어요"),
-        description: speak(`${stuck.map((id) => `<@&${id}>`).join(" ")} 는 봇이 만질 수 없습니다.`),
-        fields: [{ name: "어떻게 하나", value: speak("서버 설정에서 봇 역할을 그 역할들보다 위로 올려 주세요.") }],
-        user: interaction.user,
-        panel: PANEL.admin,
-        isAdmin: true,
-      }),
-    ),
+  await aside(
+    interaction,
+    noticeView({
+      status: saved.length === 0 ? "failure" : "progress",
+      title: speak("일부는 열어 주지 못했어요"),
+      description: speak(`${stuck.map((id) => `<@&${id}>`).join(" ")} 는 봇이 만질 수 없습니다.`),
+      fields: [
+        { name: "어떻게 하나", value: speak("서버 설정에서 봇 역할을 그 역할들보다 위로 올려 주세요.") },
+      ],
+      user: interaction.user,
+      panel: PANEL.admin,
+      isAdmin: true,
+    }),
   );
 }
 
@@ -152,8 +153,9 @@ async function toggle(interaction: ComponentInteraction): Promise<void> {
   // 지워졌거나 못 만지게 된 역할은 명단에서도 걷어 낸다.
   await pruneMissingRoles(guild.id, member.id, roles.map((role) => role.id));
 
+  // 열어 준 것이 없으면 패널 본문이 이미 그 말을 한다. 알림을 겹쳐 놓지 않는다.
   if (roles.length === 0) {
-    await replaceView(interaction, refused(interaction, speak("열어 준 역할이 없습니다.")));
+    await replaceView(interaction, await panelView(member, PANEL.user, isAdmin(interaction)));
     return;
   }
 
@@ -170,13 +172,26 @@ async function toggle(interaction: ComponentInteraction): Promise<void> {
 
   const failed = await applyRoles(member, add, remove);
 
-  await replaceView(
+  // **패널은 그 자리에 그대로 둔다.** 드롭다운은 지금 가진 것을 비추는 것이라, 알림으로
+  // 덮으면 방금 무엇을 가졌는지도, 다음에 무엇을 고를지도 사라진다. 다시 그려서 새 상태를
+  // 비추게 하고, 무슨 일이 있었는지는 [따로](../ui/response.ts) 낸다.
+  await replaceView(interaction, await panelView(member, PANEL.user, isAdmin(interaction)));
+
+  await aside(
     interaction,
     noticeView({
-      status: failed.length === 0 ? "success" : add.length + remove.length === failed.length ? "failure" : "progress",
+      status:
+        failed.length === 0
+          ? "success"
+          : add.length + remove.length === failed.length
+            ? "failure"
+            : "progress",
       title: "역할",
       description: describe(add, remove, failed),
-      fields: failed.length === 0 ? [] : [{ name: "붙이지 못한 역할", value: failed.map((role) => `<@&${role.id}>`).join(" ") }],
+      fields:
+        failed.length === 0
+          ? []
+          : [{ name: "붙이지 못한 역할", value: failed.map((role) => `<@&${role.id}>`).join(" ") }],
       user: interaction.user,
       panel: PANEL.user,
       isAdmin: isAdmin(interaction),
@@ -228,12 +243,32 @@ function describe(add: readonly Role[], remove: readonly Role[], failed: readonl
   return parts.length === 0 ? speak("바뀐 것이 없습니다.") : parts.join(" ");
 }
 
+/** 패널을 그 자리에서 다시 그린다. 드롭다운이 지금 상태를 비추게 하는 유일한 길이다. */
 async function replaceView(
   interaction: ComponentInteraction,
   view: MessageOptions,
 ): Promise<void> {
   if (interaction.isMessageComponent()) {
     await interaction.update(updateResponse(view));
+    return;
+  }
+
+  await interaction.reply(response(view));
+}
+
+/**
+ * 알림을 **따로** 낸다 — 패널을 밀어내지 않고 그 옆에 붙인다.
+ *
+ * 패널 자리에 결과를 그리면 드롭다운이 사라져 한 번 쓰고 끝나는 화면이 된다. 무슨 일이
+ * 있었는지는 알아야 하지만, 그것 때문에 쓰던 것을 빼앗지는 않는다.
+ *
+ * 패널이 누른 사람에게만 보이므로 이 알림도 그 사람에게만 간다.
+ */
+async function aside(interaction: ComponentInteraction, view: MessageOptions): Promise<void> {
+  if (!interaction.isRepliable()) return;
+
+  if (interaction.replied || interaction.deferred) {
+    await interaction.followUp(response(view));
     return;
   }
 

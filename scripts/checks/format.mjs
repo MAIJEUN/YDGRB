@@ -76,6 +76,30 @@ console.log("\n=== 나간 색은 바꾸지 않는다 ===");
   assert("  └ 결과는 답장으로", end.includes("announceAt("));
 }
 
+// ── 1-2. 알림은 쓰던 것을 빼앗지 않는다 (규칙 12) ───────────
+//
+// 패널에서 무언가를 했으면 패널은 자리에 그대로 두고(새 상태로 다시 그리고), 무슨 일이
+// 있었는지는 따로 낸다. 드롭다운은 지금 상태를 비추는 것이라 알림 화면에 다시 그릴 수가
+// 없다 — 결과로 덮으면 한 번 쓰고 끝나는 화면이 된다.
+console.log("\n=== 알림은 쓰던 것을 빼앗지 않는다 ===");
+{
+  const rules = readFileSync(`${PROJECT}/src/ui/response.ts`, "utf8");
+  assert("규칙으로 적혀 있음", rules.includes("알림은 쓰던 것을 빼앗지 않는다"));
+
+  const role = readFileSync(`${PROJECT}/src/components/role.ts`, "utf8");
+  const toggle = role.slice(role.indexOf("async function toggle"), role.indexOf("async function applyRoles"));
+
+  assert("역할 패널은 그 자리에 다시 그림", toggle.includes("await replaceView(interaction, await panelView("));
+  assert("  └ 결과는 따로", toggle.includes("await aside("), toggle);
+  assert(
+    "  └ 알림이 패널을 밀어내지 않음",
+    !/replaceView\([^)]*noticeView/u.test(toggle),
+    "알림을 패널 자리에 그리면 드롭다운이 사라져 한 번 쓰고 끝난다",
+  );
+  assert("따로 내는 길이 한곳", role.includes("async function aside("));
+  assert("  └ 이미 답했으면 이어 붙임", role.includes("interaction.followUp(response(view))"));
+}
+
 // ── 2. 순서 ────────────────────────────────────────────────
 console.log("\n=== 순서 ===");
 

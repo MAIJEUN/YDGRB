@@ -205,6 +205,18 @@ console.log("\n=== 6. 권한 ===");
     "다른 데서 받은 역할까지 벗기면 남의 것을 건드리는 셈이다",
   );
   assert("패널 전환도 다시 확인", handler.includes("isPanelKind(target) && admin"));
+
+  // 한 번 고르고 끝나는 화면이 아니어야 한다 — 켜고 끄기는 여러 번 한다.
+  assert(
+    "고친 뒤에도 드롭다운이 남음",
+    toggle.includes("await replaceView(interaction, await panelView("),
+    "알림으로 덮으면 한 번 쓰고 끝나는 화면이 된다",
+  );
+  assert("  └ 결과는 따로 냄", toggle.includes("await aside("));
+  assert(
+    "  └ 다시 그린 드롭다운이 새 상태를 비춤",
+    read("src/roles/panels.ts").includes("if (held.includes(role.id)) option.setDefault(true);"),
+  );
   assert("붙이지 못해도 나머지는 계속", handler.includes("failed.push(role)"));
 }
 
