@@ -1,21 +1,42 @@
 import { PermissionFlagsBits } from "discord.js";
-import type { GuildMember, Role } from "discord.js";
+import type { Guild, GuildMember, Role } from "discord.js";
 
 import { logger } from "../logger.js";
-import { ACTION, MAX_ALLOWED_ROLES, PANEL, ROLE, isPanelKind } from "../roles/ids.js";
+import {
+  ACTION,
+  FUNC,
+  FUNC_LABEL,
+  MAX_ALLOWED_ROLES,
+  PANEL,
+  ROLE,
+  isFunc,
+  isPanelKind,
+} from "../roles/ids.js";
+import type { AdminFunc } from "../roles/ids.js";
 import { allowedRoles, pruneMissingRoles, setAllowedRoles } from "../roles/store.js";
-import { canManage, noticeView, panelView, usableRoles } from "../roles/views.js";
+import {
+  canManage,
+  manageableHeld,
+  noticeView,
+  panelView,
+  tooManyToGrant,
+  usableRoles,
+} from "../roles/views.js";
 import { response, updateResponse, type MessageOptions } from "../ui/response.js";
 import { speak } from "../ui/tone.js";
 import { defineComponentHandler, type ComponentInteraction } from "../types.js";
 
 /**
- * 역할 패널의 드롭다운과 패널 전환 버튼.
+ * 역할 패널의 드롭다운·버튼.
  *
- * customId 규칙: `role:panel:<유저|관리자>` · `role:pick` · `role:allow:<유저>` · `role:toggle`
+ * customId 규칙:
+ *   `role:panel:<유저|관리자>` · `role:pick:<기능|->` · `role:open:<기능|->:<유저>`
+ *   `role:allow:<유저>` · `role:grant:<유저>` · `role:toggle`
  *
  * **유저 쪽에는 권한을 묻지 않는다.** 그게 이 시스템이 있는 이유다. 대신 명단에 없는
  * 역할은 여기서 막는다 — 드롭다운이 보내온 값을 그대로 믿으면 아무 역할이나 붙일 수 있다.
+ *
+ * 관리자 쪽은 반대다. 누를 때마다 권한을 다시 본다 — customId 는 누구나 흉내 낼 수 있다.
  */
 export default defineComponentHandler({
   namespace: ROLE,
@@ -31,11 +52,19 @@ export default defineComponentHandler({
         return;
 
       case ACTION.pick:
-        await pickUser(interaction);
+        await pickUser(interaction, rest[0]);
+        return;
+
+      case ACTION.open:
+        await openFunc(interaction, rest[0], rest[1] ?? "");
         return;
 
       case ACTION.allow:
         await allow(interaction, rest[0] ?? "");
+        return;
+
+      case ACTION.grant:
+        await grant(interaction, rest[0] ?? "");
         return;
 
       case ACTION.toggle:
@@ -51,8 +80,7 @@ export default defineComponentHandler({
 /**
  * 유저 패널 ↔ 관리자 패널 전환.
  *
- * 버튼은 관리자에게만 보이지만, 눌린 것을 그대로 믿지 않고 여기서 다시 확인한다 —
- * customId 는 누구나 흉내 낼 수 있다.
+ * 버튼은 관리자에게만 보이지만, 눌린 것을 그대로 믿지 않고 여기서 다시 확인한다.
  */
 async function switchPanel(
   interaction: ComponentInteraction,
@@ -66,8 +94,16 @@ async function switchPanel(
   await replaceView(interaction, await panelView(interaction.member, panel, admin));
 }
 
-/** 관리자가 대상 유저를 골랐다. 그 사람 몫의 역할 드롭다운이 아래에 붙는다. */
-async function pickUser(interaction: ComponentInteraction): Promise<void> {
+/**
+ * 관리자가 대상 유저를 골랐다.
+ *
+ * 펴 둔 기능은 그대로 들고 간다 — 「지급/회수」 를 펴 놓고 사람을 바꾸면 그 사람 것이
+ * 이어서 보인다. 사람마다 버튼을 다시 누르게 할 이유가 없다.
+ */
+async function pickUser(
+  interaction: ComponentInteraction,
+  rawFunc: string | undefined,
+): Promise<void> {
   if (!interaction.isUserSelectMenu()) return;
   if (!interaction.inCachedGuild()) return;
   if (await denyNonAdmin(interaction)) return;
@@ -75,14 +111,28 @@ async function pickUser(interaction: ComponentInteraction): Promise<void> {
   const targetId = interaction.values[0];
   if (targetId === undefined) return;
 
-  await replaceView(
-    interaction,
-    await panelView(interaction.member, PANEL.admin, true, targetId),
-  );
+  await showAdmin(interaction, targetId, isFunc(rawFunc) ? rawFunc : null);
 }
 
 /**
- * 그 사람에게 열어 줄 역할을 정했다.
+ * 기능을 펴고 접는다.
+ *
+ * customId 에 **눌렀을 때 갈 상태**가 실려 있다 — 편 것을 다시 누르면 접힌다.
+ */
+async function openFunc(
+  interaction: ComponentInteraction,
+  rawFunc: string | undefined,
+  targetId: string,
+): Promise<void> {
+  if (!interaction.isButton()) return;
+  if (!interaction.inCachedGuild()) return;
+  if (await denyNonAdmin(interaction)) return;
+
+  await showAdmin(interaction, targetId, isFunc(rawFunc) ? rawFunc : null);
+}
+
+/**
+ * 「권한」 — 그 사람이 스스로 켜고 끌 수 있는 역할을 정했다.
  *
  * 드롭다운이 「지금 열려 있는 것」을 골라 둔 채로 뜨므로, 여기 실려 온 목록이 곧 결과다.
  * 하나도 안 고르고 냈으면 전부 닫는다.
@@ -101,18 +151,12 @@ async function allow(interaction: ComponentInteraction, targetId: string): Promi
   const picked = interaction.values.slice(0, MAX_ALLOWED_ROLES);
 
   // 봇이 못 만지는 역할은 명단에 넣어 봐야 유저 쪽에서 눌렀을 때 실패한다. 여기서 가른다.
-  const usable = picked.filter((id) => {
-    const role = guild.roles.cache.get(id);
-    return role !== undefined && canManage(guild, role);
-  });
+  const usable = picked.filter((id) => canManageId(guild, id));
   const stuck = picked.filter((id) => !usable.includes(id));
 
   const saved = await setAllowedRoles(guild.id, targetId, usable);
 
-  await replaceView(
-    interaction,
-    await panelView(interaction.member, PANEL.admin, true, targetId),
-  );
+  await showAdmin(interaction, targetId, FUNC.allow);
 
   if (stuck.length === 0) return;
 
@@ -122,10 +166,62 @@ async function allow(interaction: ComponentInteraction, targetId: string): Promi
     noticeView({
       status: saved.length === 0 ? "failure" : "progress",
       title: speak("일부는 열어 주지 못했어요"),
-      description: speak(`${stuck.map((id) => `<@&${id}>`).join(" ")} 는 봇이 만질 수 없습니다.`),
+      description: speak(`${mentionRoles(stuck)} 는 봇이 만질 수 없습니다.`),
       fields: [
         { name: "어떻게 하나", value: speak("서버 설정에서 봇 역할을 그 역할들보다 위로 올려 주세요.") },
       ],
+      user: interaction.user,
+      panel: PANEL.admin,
+      isAdmin: true,
+    }),
+  );
+}
+
+/**
+ * 「지급/회수」 — 그 사람의 역할을 지금 바로 붙였다 뗀다.
+ *
+ * 명단과 상관없다. 관리자가 직접 주고 뺏는 자리라, 서버의 아무 역할이나 실려 올 수 있다.
+ * **뺄 수 있는 것은 봇이 만질 수 있는 것뿐**이라, 그 밖의 역할은 골라 두지도 않았고
+ * 여기서도 건드리지 않는다.
+ */
+async function grant(interaction: ComponentInteraction, targetId: string): Promise<void> {
+  if (!interaction.isRoleSelectMenu()) return;
+  if (!interaction.inCachedGuild()) return;
+  if (await denyNonAdmin(interaction)) return;
+
+  const guild = interaction.guild;
+  const target = await guild.members.fetch(targetId).catch(() => null);
+
+  if (target === null) {
+    await aside(interaction, refused(interaction, speak("그 사람을 찾지 못했습니다.")));
+    return;
+  }
+
+  const picked = interaction.values;
+  const held = manageableHeld(target);
+
+  const add = picked
+    .filter((id) => !target.roles.cache.has(id) && canManageId(guild, id))
+    .map((id) => guild.roles.cache.get(id))
+    .filter((role): role is Role => role !== undefined);
+  const remove = held.filter((role) => !picked.includes(role.id));
+
+  const stuck = picked.filter((id) => !target.roles.cache.has(id) && !canManageId(guild, id));
+
+  const failed = add.length + remove.length === 0 ? [] : await applyRoles(target, add, remove);
+
+  // 패널은 그 자리에 새 상태로 다시 그린다 (규칙 12).
+  await showAdmin(interaction, targetId, FUNC.grant);
+
+  if (add.length + remove.length + stuck.length === 0) return;
+
+  await aside(
+    interaction,
+    noticeView({
+      status: statusOf(add.length + remove.length, failed.length + stuck.length),
+      title: `역할 · ${FUNC_LABEL.grant}`,
+      description: [`<@${targetId}>`, describe(add, remove, failed)].join("\n"),
+      fields: stuckField([...failed.map((role) => role.id), ...stuck]),
       user: interaction.user,
       panel: PANEL.admin,
       isAdmin: true,
@@ -147,8 +243,7 @@ async function toggle(interaction: ComponentInteraction): Promise<void> {
   const member = interaction.member;
   const guild = interaction.guild;
 
-  const ids = await allowedRoles(guild.id, member.id);
-  const roles = usableRoles(guild, ids);
+  const roles = usableRoles(guild, await allowedRoles(guild.id, member.id));
 
   // 지워졌거나 못 만지게 된 역할은 명단에서도 걷어 낸다.
   await pruneMissingRoles(guild.id, member.id, roles.map((role) => role.id));
@@ -172,30 +267,71 @@ async function toggle(interaction: ComponentInteraction): Promise<void> {
 
   const failed = await applyRoles(member, add, remove);
 
-  // **패널은 그 자리에 그대로 둔다.** 드롭다운은 지금 가진 것을 비추는 것이라, 알림으로
-  // 덮으면 방금 무엇을 가졌는지도, 다음에 무엇을 고를지도 사라진다. 다시 그려서 새 상태를
-  // 비추게 하고, 무슨 일이 있었는지는 [따로](../ui/response.ts) 낸다.
+  // **패널은 그 자리에 그대로 둔다** (규칙 12). 드롭다운은 지금 가진 것을 비추는 것이라,
+  // 알림으로 덮으면 방금 무엇을 가졌는지도, 다음에 무엇을 고를지도 사라진다.
   await replaceView(interaction, await panelView(member, PANEL.user, isAdmin(interaction)));
 
   await aside(
     interaction,
     noticeView({
-      status:
-        failed.length === 0
-          ? "success"
-          : add.length + remove.length === failed.length
-            ? "failure"
-            : "progress",
+      status: statusOf(add.length + remove.length, failed.length),
       title: "역할",
       description: describe(add, remove, failed),
-      fields:
-        failed.length === 0
-          ? []
-          : [{ name: "붙이지 못한 역할", value: failed.map((role) => `<@&${role.id}>`).join(" ") }],
+      fields: stuckField(failed.map((role) => role.id)),
       user: interaction.user,
       panel: PANEL.user,
       isAdmin: isAdmin(interaction),
     }),
+  );
+}
+
+/** 관리자 패널을 그 자리에 다시 그린다. 「지급/회수」 를 편 때만 대상의 지금 역할이 필요하다. */
+async function showAdmin(
+  interaction: ComponentInteraction,
+  targetId: string,
+  func: AdminFunc | null,
+): Promise<void> {
+  if (!interaction.inCachedGuild()) return;
+
+  const target =
+    func === FUNC.grant ? await interaction.guild.members.fetch(targetId).catch(() => null) : null;
+
+  // 가진 역할이 드롭다운에 다 안 담기는 사람은 열지 않는다 — 못 담긴 것이 그 자리에서
+  // 벗겨진다. 그 말을 따로 하고 기능은 접어 둔 채로 그린다.
+  if (target !== null && tooManyToGrant(target)) {
+    await replaceView(
+      interaction,
+      await panelView(interaction.member, PANEL.admin, true, targetId, null),
+    );
+    await aside(
+      interaction,
+      noticeView({
+        status: "failure",
+        title: speak("지급/회수를 열 수 없어요"),
+        description: speak(
+          `<@${targetId}> 님은 봇이 만질 수 있는 역할을 **${MAX_ALLOWED_ROLES}개**보다 많이 가지고 있습니다.`,
+        ),
+        fields: [
+          { name: "왜", value: speak("드롭다운이 그만큼만 골라 둘 수 있어, 못 담긴 것이 그 자리에서 벗겨집니다.") },
+        ],
+        user: interaction.user,
+        panel: PANEL.admin,
+        isAdmin: true,
+      }),
+    );
+    return;
+  }
+
+  await replaceView(
+    interaction,
+    await panelView(
+      interaction.member,
+      PANEL.admin,
+      true,
+      targetId,
+      func,
+      target ?? undefined,
+    ),
   );
 }
 
@@ -243,6 +379,25 @@ function describe(add: readonly Role[], remove: readonly Role[], failed: readonl
   return parts.length === 0 ? speak("바뀐 것이 없습니다.") : parts.join(" ");
 }
 
+/** 전부 됐으면 초록, 전부 안 됐으면 빨강, 반쯤이면 노랑. */
+function statusOf(tried: number, failed: number): "success" | "progress" | "failure" {
+  if (failed === 0) return "success";
+  return tried === 0 || tried === failed ? "failure" : "progress";
+}
+
+function stuckField(ids: readonly string[]): { name: string; value: string }[] {
+  return ids.length === 0 ? [] : [{ name: "손대지 못한 역할", value: mentionRoles(ids) }];
+}
+
+function mentionRoles(ids: readonly string[]): string {
+  return ids.map((id) => `<@&${id}>`).join(" ");
+}
+
+function canManageId(guild: Guild, id: string): boolean {
+  const role = guild.roles.cache.get(id);
+  return role !== undefined && canManage(guild, role);
+}
+
 /** 패널을 그 자리에서 다시 그린다. 드롭다운이 지금 상태를 비추게 하는 유일한 길이다. */
 async function replaceView(
   interaction: ComponentInteraction,
@@ -257,7 +412,7 @@ async function replaceView(
 }
 
 /**
- * 알림을 **따로** 낸다 — 패널을 밀어내지 않고 그 옆에 붙인다.
+ * 알림을 **따로** 낸다 — 패널을 밀어내지 않고 그 옆에 붙인다 (규칙 12).
  *
  * 패널 자리에 결과를 그리면 드롭다운이 사라져 한 번 쓰고 끝나는 화면이 된다. 무슨 일이
  * 있었는지는 알아야 하지만, 그것 때문에 쓰던 것을 빼앗지는 않는다.
@@ -276,12 +431,7 @@ async function aside(interaction: ComponentInteraction, view: MessageOptions): P
 }
 
 function refused(interaction: ComponentInteraction, description: string): MessageOptions {
-  return {
-    status: "failure",
-    title: "역할",
-    description,
-    user: interaction.user,
-  };
+  return { status: "failure", title: "역할", description, user: interaction.user };
 }
 
 function isAdmin(interaction: ComponentInteraction): boolean {

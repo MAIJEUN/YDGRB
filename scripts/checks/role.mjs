@@ -53,7 +53,23 @@ const selectsOf = (view) =>
     .components.filter((component) => component.type === 1)
     .flatMap((row) => row.components)
     .filter((component) => component.type !== 2);
+const buttonsOf = (view) =>
+  jsonOf(view)
+    .components.filter((component) => component.type === 1)
+    .flatMap((row) => row.components)
+    .filter((component) => component.type === 2);
 const accessoryOf = (view) => jsonOf(view).components[0]?.accessory;
+
+/** 그 사람이 가진 역할까지 아는 멤버. 「지급/회수」 가 이걸 본다. */
+const holder = (id, held = []) => ({
+  ...member(id, held),
+  roles: {
+    cache: {
+      has: (roleId) => held.includes(roleId),
+      values: () => held.map((roleId) => roles.get(roleId)).filter((role) => role !== undefined),
+    },
+  },
+});
 
 // ── 1. 커맨드 ──────────────────────────────────────────────
 console.log("\n=== 1. 커맨드 ===");
@@ -117,41 +133,92 @@ console.log("\n=== 3. 봇이 만질 수 있는 역할만 ===");
   assert("낱개로도 같은 판단", views.canManage(guild, roles.get("r1")) && !views.canManage(guild, roles.get("r3")));
 }
 
-// ── 4. 관리자 패널 ─────────────────────────────────────────
+// ── 4. 관리자 패널 — 유저 하나, 기능 버튼 ─────────────────
+//
+// 유저를 고르는 자리는 하나뿐이다. 기능마다 유저 드롭다운을 두면 같은 사람을 두 번 고르게
+// 되고, 어느 쪽에 고른 사람이 화면의 주인인지도 흐려진다.
 console.log("\n=== 4. 관리자 패널 ===");
 {
-  const before = await views.panelView(member(ADMIN), "admin", true, null);
-  const beforeSelects = selectsOf(before);
+  const before = await views.panelView(member(ADMIN), "admin", true, null, null);
 
-  assert("유저 드롭다운이 하나", beforeSelects.length === 1, String(beforeSelects.length));
-  assert("  └ 유저를 고르는 것 (type 5)", beforeSelects[0].type === 5, String(beforeSelects[0].type));
-  assert("  └ 한 명만", beforeSelects[0].min_values === 1 && beforeSelects[0].max_values === 1);
-  assert("고르기 전에는 열어 준 사람을 보여 줌", bodyOf(before).includes("열어 준 사람"), bodyOf(before));
+  assert("유저 드롭다운이 하나", selectsOf(before).length === 1, String(selectsOf(before).length));
+  assert("  └ 유저를 고르는 것 (type 5)", selectsOf(before)[0].type === 5, String(selectsOf(before)[0].type));
+  assert("  └ 한 명만", selectsOf(before)[0].min_values === 1 && selectsOf(before)[0].max_values === 1);
+  assert("고르기 전에는 기능 버튼도 없음", buttonsOf(before).length === 0, "누구 것인지 모르는 채로 누를 것이 없다");
+  assert("  └ 열어 준 사람을 보여 줌", bodyOf(before).includes("열어 준 사람"), bodyOf(before));
   assert("  └ 멘션으로", bodyOf(before).includes(`<@${USER}>`), bodyOf(before));
-  assert("  └ 역할 드롭다운은 아직 없음", !beforeSelects.some((s) => s.type === 6));
+  assert("  └ 무엇을 할 수 있는지 적음", bodyOf(before).includes("**권한**") && bodyOf(before).includes("**지급/회수**"));
 
-  const after = await views.panelView(member(ADMIN), "admin", true, USER);
-  const afterSelects = selectsOf(after);
+  // 유저를 고르면 기능 버튼이 붙는다. 드롭다운은 아직 펴지 않는다.
+  const picked = await views.panelView(member(ADMIN), "admin", true, USER, null);
 
-  assert("유저를 고르면 역할 드롭다운이 붙음", afterSelects.length === 2, String(afterSelects.length));
-  assert("  └ 역할을 고르는 것 (type 6)", afterSelects[1].type === 6, String(afterSelects[1].type));
-  assert("  └ 고른 사람을 띄워 둠", JSON.stringify(afterSelects[0].default_values ?? []).includes(USER));
+  assert("유저를 고르면 기능 버튼", buttonsOf(picked).map((x) => x.label).join(",") === "권한,지급/회수", JSON.stringify(buttonsOf(picked).map((x) => x.label)));
+  assert("  └ 유저 드롭다운은 그대로 하나", selectsOf(picked).length === 1, String(selectsOf(picked).length));
+  assert("  └ 고른 사람을 띄워 둠", JSON.stringify(selectsOf(picked)[0].default_values ?? []).includes(USER));
+  assert("  └ 누구 것인지 본문이 말함", bodyOf(picked).includes(`<@${USER}>`), bodyOf(picked));
+  assert(
+    "  └ 아직 아무 기능도 안 폄",
+    buttonsOf(picked).every((x) => x.style === 2),
+    "편 것만 파랑이라 지금 무엇을 보는지 한눈에 갈린다",
+  );
+
+  // 버튼은 **눌렀을 때 갈 상태**를 싣는다 — 편 것을 다시 누르면 접힌다.
+  assert(
+    "안 편 버튼은 그 기능을 폄",
+    buttonsOf(picked)[0].custom_id === `role:open:allow:${USER}`,
+    buttonsOf(picked)[0].custom_id,
+  );
+
+  // ── 권한을 폈다 ──
+  const allow = await views.panelView(member(ADMIN), "admin", true, USER, "allow");
+  const allowSelects = selectsOf(allow);
+
+  assert("[권한] 을 펴면 역할 드롭다운이 붙음", allowSelects.length === 2, String(allowSelects.length));
+  assert("  └ 역할을 고르는 것 (type 6)", allowSelects[1].type === 6, String(allowSelects[1].type));
+  assert("  └ 편 버튼이 파랑", buttonsOf(allow)[0].style === 1, String(buttonsOf(allow)[0].style));
+  assert("  └ 다시 누르면 접힘", buttonsOf(allow)[0].custom_id === `role:open:-:${USER}`, buttonsOf(allow)[0].custom_id);
   assert(
     "  └ 지금 열려 있는 것이 골라진 채로",
-    JSON.stringify(afterSelects[1].default_values ?? []).includes("r1"),
-    JSON.stringify(afterSelects[1].default_values),
+    JSON.stringify(allowSelects[1].default_values ?? []).includes("r1"),
+    JSON.stringify(allowSelects[1].default_values),
   );
-  assert("  └ 하나도 안 고르고 낼 수 있음", afterSelects[1].min_values === 0, "그래야 전부 닫을 수 있다");
-  assert(`  └ ${ids.MAX_ALLOWED_ROLES}개까지`, afterSelects[1].max_values === ids.MAX_ALLOWED_ROLES);
-
-  assert("열어 준 역할을 멘션으로", bodyOf(after).includes("<@&r1>"), bodyOf(after));
+  assert("  └ 하나도 안 고르고 낼 수 있음", allowSelects[1].min_values === 0, "그래야 전부 닫을 수 있다");
+  assert(`  └ ${ids.MAX_ALLOWED_ROLES}개까지`, allowSelects[1].max_values === ids.MAX_ALLOWED_ROLES);
+  assert("열어 준 역할을 멘션으로", bodyOf(allow).includes("<@&r1>"), bodyOf(allow));
 
   // 명단에 있어도 봇이 못 만지는 것은 미리 말한다.
-  assert("못 만지는 역할을 미리 알림", bodyOf(after).includes("봇이 만지지 못하는 역할"), bodyOf(after));
-  assert("  └ 어떻게 하면 되는지도", bodyOf(after).includes(speak("봇 역할을 이 역할들보다 위로 올려 주세요.")), bodyOf(after));
+  assert("못 만지는 역할을 미리 알림", bodyOf(allow).includes("봇이 만지지 못하는 역할"), bodyOf(allow));
+  assert("  └ 어떻게 하면 되는지도", bodyOf(allow).includes(speak("봇 역할을 이 역할들보다 위로 올려 주세요.")), bodyOf(allow));
 
-  assert("파랑 (보여 주기만)", jsonOf(after).accent_color === 0x5865f2);
-  assert("패널을 오가는 버튼", accessoryOf(after)?.label === "유저 패널", JSON.stringify(accessoryOf(after)));
+  assert("파랑 (보여 주기만)", jsonOf(allow).accent_color === 0x5865f2);
+  assert("패널을 오가는 버튼", accessoryOf(allow)?.label === "유저 패널", JSON.stringify(accessoryOf(allow)));
+
+  // ── 지급/회수를 폈다 ──
+  const target = holder(USER, ["r1", "r3"]);
+  const give = await views.panelView(member(ADMIN), "admin", true, USER, "grant", target);
+  const giveSelects = selectsOf(give);
+
+  assert("[지급/회수] 도 역할 드롭다운", giveSelects.length === 2 && giveSelects[1].type === 6);
+  assert("  └ 명단이 아니라 서버의 아무 역할이나", giveSelects[1].custom_id === `role:grant:${USER}`, giveSelects[1].custom_id);
+  assert(
+    "  └ 지금 가진 것이 골라진 채로",
+    JSON.stringify(giveSelects[1].default_values ?? []).includes("r1"),
+    JSON.stringify(giveSelects[1].default_values),
+  );
+  assert(
+    "    · 봇이 못 만지는 것은 골라 두지 않음",
+    !JSON.stringify(giveSelects[1].default_values ?? []).includes("r3"),
+    "골라 두면 풀었을 때 벗기려 들고, 벗길 수가 없다",
+  );
+  assert("  └ 가진 역할을 칸으로도", bodyOf(give).includes("지금 가진 역할"), bodyOf(give));
+  assert("  └ 편 버튼이 파랑", buttonsOf(give)[1].style === 1, String(buttonsOf(give)[1].style));
+
+  // 스물다섯을 넘게 가진 사람은 열지 않는다 — 못 담긴 것이 그 자리에서 벗겨진다.
+  const crowded = holder(USER, Array.from({ length: 30 }, (_, i) => `m${i}`));
+  for (let i = 0; i < 30; i += 1) roles.set(`m${i}`, role(`m${i}`, `역할${i}`));
+  assert("너무 많이 가졌으면 열지 않음", views.tooManyToGrant(crowded) === true);
+  assert("  └ 스물다섯까지는 괜찮음", views.tooManyToGrant(holder(USER, ["r1", "r2"])) === false);
+  for (let i = 0; i < 30; i += 1) roles.delete(`m${i}`);
 }
 
 // ── 5. 유저 패널 ───────────────────────────────────────────
@@ -205,6 +272,17 @@ console.log("\n=== 6. 권한 ===");
     "다른 데서 받은 역할까지 벗기면 남의 것을 건드리는 셈이다",
   );
   assert("패널 전환도 다시 확인", handler.includes("isPanelKind(target) && admin"));
+
+  // 「지급/회수」 는 관리자만. 그리고 봇이 못 만지는 역할은 건드리지 않는다.
+  const give = handler.slice(handler.indexOf("async function grant("), handler.indexOf("async function toggle("));
+  assert("지급/회수도 관리자만", give.includes("if (await denyNonAdmin(interaction)) return;"));
+  assert("  └ 뺄 수 있는 것만 뺌", give.includes("const held = manageableHeld(target);"));
+  assert("  └ 붙일 때도 만질 수 있는지 봄", give.includes("canManageId(guild, id)"));
+  assert(
+    "  └ 못 만지는 것은 따로 적음",
+    give.includes("const stuck = picked.filter("),
+    "말없이 무시하면 왜 안 붙었는지 알 길이 없다",
+  );
 
   // 한 번 고르고 끝나는 화면이 아니어야 한다 — 켜고 끄기는 여러 번 한다.
   assert(

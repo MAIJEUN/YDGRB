@@ -11,7 +11,17 @@ import type { MessageActionRowComponentBuilder, Role } from "discord.js";
 
 import { customId } from "../types.js";
 import { speak } from "../ui/tone.js";
-import { ACTION, MAX_ALLOWED_ROLES, PANEL, ROLE, type PanelKind } from "./ids.js";
+import {
+  ACTION,
+  FUNC,
+  FUNC_LABEL,
+  MAX_ALLOWED_ROLES,
+  NO_FUNC,
+  PANEL,
+  ROLE,
+  type AdminFunc,
+  type PanelKind,
+} from "./ids.js";
 
 type Row = ActionRowBuilder<MessageActionRowComponentBuilder>;
 
@@ -20,17 +30,30 @@ function row(...components: MessageActionRowComponentBuilder[]): Row {
 }
 
 /**
- * 관리자 패널 — 유저를 고르는 드롭다운, 그리고 그 유저에게 열어 줄 역할 드롭다운.
+ * 관리자 패널 — **유저 하나, 기능 버튼, 그리고 편 기능의 드롭다운.**
  *
- * 역할 드롭다운은 **유저를 고른 뒤에야** 붙는다. 누구 것인지 모르는 채로 역할부터
- * 고르게 하면 그 고른 것이 갈 곳이 없다.
+ *   [ 유저 고르기                     ▾ ]
+ *   [ 권한 ] [ 지급/회수 ]                 ← 유저를 고른 뒤에 붙는다
+ *   [ 그 기능의 역할 드롭다운          ▾ ]  ← 기능을 편 뒤에 붙는다
+ *
+ * 유저를 고르는 자리는 하나뿐이다. 기능마다 유저 드롭다운을 두면 같은 사람을 두 번 고르게
+ * 되고, 어느 쪽에 고른 사람이 화면의 주인인지도 흐려진다.
+ *
+ * 아래로 **펴지는** 모양인 것도 같은 이유다. 누구 것인지 모르는 채로 역할부터 고르게 하면
+ * 그 고른 것이 갈 곳이 없고, 두 기능을 한꺼번에 펴 두면 어느 드롭다운이 무엇을 하는
+ * 것인지 눌러 보기 전에는 모른다.
  */
-export function adminPanelRows(targetId: string | null, allowed: readonly string[]): Row[] {
+export function adminPanelRows(
+  targetId: string | null,
+  func: AdminFunc | null,
+  options: { readonly allowed?: readonly string[]; readonly held?: readonly string[] } = {},
+): Row[] {
   const rows: Row[] = [
     row(
       new UserSelectMenuBuilder()
-        .setCustomId(customId(ROLE, ACTION.pick))
-        .setPlaceholder("역할을 열어 줄 유저 고르기")
+        // 펴 둔 기능을 함께 싣는다 — 기능을 편 채 사람을 바꾸면 그 사람 것이 이어서 보인다.
+        .setCustomId(customId(ROLE, ACTION.pick, func ?? NO_FUNC))
+        .setPlaceholder("유저 고르기")
         .setMinValues(1)
         .setMaxValues(1)
         // 고른 사람을 그대로 띄워 둔다 — 화면이 누구 것인지 드롭다운만 봐도 알게.
@@ -38,13 +61,33 @@ export function adminPanelRows(targetId: string | null, allowed: readonly string
     ),
   ];
 
-  if (targetId !== null) rows.push(row(allowSelect(targetId, allowed)));
+  if (targetId === null) return rows;
+
+  rows.push(row(...funcButtons(targetId, func)));
+
+  if (func === FUNC.allow) rows.push(row(allowSelect(targetId, options.allowed ?? [])));
+  if (func === FUNC.grant) rows.push(row(grantSelect(targetId, options.held ?? [])));
 
   return rows;
 }
 
 /**
- * 열어 줄 역할 드롭다운 — **지금 열려 있는 것이 골라진 채로** 뜬다.
+ * 무엇을 할지 고르는 버튼. 펴 둔 것은 **파랑**이라 지금 무엇을 보고 있는지 한눈에 갈린다.
+ *
+ * customId 에는 지금 상태가 아니라 **눌렀을 때 갈 상태**를 싣는다. 지금 상태를 싣고
+ * 뒤집으면 같은 화면을 두 사람이 볼 때 서로 반대로 열린다. 편 것을 다시 누르면 접힌다.
+ */
+function funcButtons(targetId: string, func: AdminFunc | null): ButtonBuilder[] {
+  return [FUNC.allow, FUNC.grant].map((each) =>
+    new ButtonBuilder()
+      .setCustomId(customId(ROLE, ACTION.open, func === each ? NO_FUNC : each, targetId))
+      .setLabel(FUNC_LABEL[each])
+      .setStyle(func === each ? ButtonStyle.Primary : ButtonStyle.Secondary),
+  );
+}
+
+/**
+ * 「권한」 — 그 사람이 **스스로** 켜고 끌 수 있는 역할. 지금 열려 있는 것이 골라진 채로 뜬다.
  *
  * 그래서 이 드롭다운은 「더한다」가 아니라 「이만큼으로 정한다」다. 빼려면 골라 둔 것을
  * 풀면 되고, 하나도 안 고르고 내면 전부 닫힌다.
@@ -52,11 +95,26 @@ export function adminPanelRows(targetId: string | null, allowed: readonly string
 export function allowSelect(targetId: string, allowed: readonly string[]): RoleSelectMenuBuilder {
   return new RoleSelectMenuBuilder()
     .setCustomId(customId(ROLE, ACTION.allow, targetId))
-    .setPlaceholder(speak("이 사람이 켜고 끌 수 있는 역할"))
+    .setPlaceholder(speak("이 사람이 스스로 켜고 끌 수 있는 역할"))
     // 하나도 안 고르고 낼 수 있어야 전부 닫을 수 있다.
     .setMinValues(0)
     .setMaxValues(MAX_ALLOWED_ROLES)
-    .setDefaultRoles(...allowed);
+    .setDefaultRoles(...allowed.slice(0, MAX_ALLOWED_ROLES));
+}
+
+/**
+ * 「지급/회수」 — 그 사람의 역할을 **지금 바로** 붙였다 뗀다. 지금 가진 것이 골라진 채로 뜬다.
+ *
+ * 여기 실려 오는 것은 서버의 아무 역할이나 될 수 있다. 그게 이 기능이다 — 명단과 상관없이
+ * 관리자가 직접 주고 뺏는 자리다.
+ */
+export function grantSelect(targetId: string, held: readonly string[]): RoleSelectMenuBuilder {
+  return new RoleSelectMenuBuilder()
+    .setCustomId(customId(ROLE, ACTION.grant, targetId))
+    .setPlaceholder(speak("이 사람이 가질 역할"))
+    .setMinValues(0)
+    .setMaxValues(MAX_ALLOWED_ROLES)
+    .setDefaultRoles(...held.slice(0, MAX_ALLOWED_ROLES));
 }
 
 /**
@@ -64,6 +122,9 @@ export function allowSelect(targetId: string, allowed: readonly string[]): RoleS
  *
  * **지금 가진 것이 골라진 채로** 뜬다. 고른 것이 곧 「이걸 갖겠다」라, 골라 두었던 것을
  * 풀고 내면 벗겨진다. 켜고 끄기를 버튼 스물다섯 개로 늘어놓지 않아도 되는 이유다.
+ *
+ * 역할 드롭다운이 아니라 **글자 드롭다운**이다. 역할 드롭다운은 서버의 모든 역할을 담고,
+ * 담기는 것을 고를 수단이 없다 (채널 드롭다운에만 있다). 열어 준 것만 보여 주려면 이것뿐이다.
  *
  * 열어 준 것이 하나도 없으면 드롭다운을 만들지 않는다 — 고를 것이 없는 드롭다운은
  * 눌러 보고 나서야 빈 것을 안다. 그 말은 화면 본문이 한다.
@@ -97,13 +158,17 @@ export function panelRows(
   panel: PanelKind,
   options: {
     readonly targetId?: string | null;
+    readonly func?: AdminFunc | null;
     readonly allowed?: readonly string[];
     readonly roles?: readonly Role[];
     readonly held?: readonly string[];
   } = {},
 ): Row[] {
   return panel === PANEL.admin
-    ? adminPanelRows(options.targetId ?? null, options.allowed ?? [])
+    ? adminPanelRows(options.targetId ?? null, options.func ?? null, {
+        allowed: options.allowed,
+        held: options.held,
+      })
     : userPanelRows(options.roles ?? [], options.held ?? []);
 }
 
