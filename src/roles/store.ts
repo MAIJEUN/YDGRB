@@ -43,16 +43,6 @@ export async function allowedRoles(guildId: string, userId: string): Promise<str
   return [...(guild?.allowed[userId] ?? [])];
 }
 
-/** 이 서버에서 누군가에게 무언가를 열어 준 사람들. 관리자 패널이 한눈에 보려고 쓴다. */
-export async function openedUsers(guildId: string): Promise<string[]> {
-  const guild = (await file.read()).guilds[guildId];
-  if (guild === undefined) return [];
-
-  return Object.entries(guild.allowed)
-    .filter(([, roles]) => roles.length > 0)
-    .map(([userId]) => userId);
-}
-
 /**
  * 그 사람에게 열어 줄 역할을 **통째로 정한다.**
  *

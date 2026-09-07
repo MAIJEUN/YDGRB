@@ -104,11 +104,9 @@ console.log("\n=== 2. 명단 ===");
   await store.setAllowedRoles(G, USER, ["r2"]);
   assert("낸 목록이 곧 결과", (await store.allowedRoles(G, USER)).join(",") === "r2");
 
-  assert("열어 준 사람을 셈", (await store.openedUsers(G)).join(",") === USER);
-
   // 빈 목록이면 칸을 아예 지운다.
   await store.setAllowedRoles(G, USER, []);
-  assert("전부 닫으면 명단에서 빠짐", (await store.openedUsers(G)).length === 0);
+  assert("전부 닫으면 명단에서 빠짐", (await store.allowedRoles(G, USER)).length === 0);
   assert("  └ 파일에도 안 남음", !readFileSync(path.join(sandbox, "data", "roles.json"), "utf8").includes(USER));
 
   // 스물다섯을 넘으면 뒤를 자른다 — 드롭다운에 담기지 않을 것을 저장하지 않는다.
@@ -145,9 +143,13 @@ console.log("\n=== 4. 관리자 패널 ===");
   assert("  └ 유저를 고르는 것 (type 5)", selectsOf(before)[0].type === 5, String(selectsOf(before)[0].type));
   assert("  └ 한 명만", selectsOf(before)[0].min_values === 1 && selectsOf(before)[0].max_values === 1);
   assert("고르기 전에는 기능 버튼도 없음", buttonsOf(before).length === 0, "누구 것인지 모르는 채로 누를 것이 없다");
-  assert("  └ 열어 준 사람을 보여 줌", bodyOf(before).includes("열어 준 사람"), bodyOf(before));
-  assert("  └ 멘션으로", bodyOf(before).includes(`<@${USER}>`), bodyOf(before));
   assert("  └ 무엇을 할 수 있는지 적음", bodyOf(before).includes("**권한**") && bodyOf(before).includes("**지급/회수**"));
+  // 목록은 편 기능의 것만 — 홈에는 아직 아무 기능도 없으므로 아무 목록도 없다.
+  assert(
+    "  └ 아무 목록도 없음",
+    !bodyOf(before).includes("열어 준 사람") && !bodyOf(before).includes("열어 준 역할"),
+    bodyOf(before),
+  );
 
   // 유저를 고르면 기능 버튼이 붙는다. 드롭다운은 아직 펴지 않는다.
   const picked = await views.panelView(member(ADMIN), "admin", true, USER, null);

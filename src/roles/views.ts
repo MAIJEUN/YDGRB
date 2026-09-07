@@ -4,7 +4,7 @@ import type { MessageOptions, ResponseField, Status } from "../ui/response.js";
 import { speak } from "../ui/tone.js";
 import { FUNC, FUNC_LABEL, MAX_ALLOWED_ROLES, PANEL, type AdminFunc, type PanelKind } from "./ids.js";
 import { panelRows, panelSwitchButton } from "./panels.js";
-import { allowedRoles, openedUsers } from "./store.js";
+import { allowedRoles } from "./store.js";
 
 /**
  * 역할 패널.
@@ -67,8 +67,8 @@ export async function panelView(
 /**
  * 관리자 패널 — 유저 하나를 고르고, 그 사람을 놓고 무엇을 할지 고른다.
  *
- * 유저를 고르기 전에는 **이미 열어 준 사람들**을 보여 준다. 빈 화면에 드롭다운 하나만
- * 두면 누구를 이미 손봐 뒀는지 알 길이 없어 같은 사람을 두 번 만지게 된다.
+ * **목록은 편 기능의 것만 적는다.** 아무것도 안 폈으면 아무 목록도 없다 — 그 화면에서
+ * 정할 것은 누구를 고를지, 무엇을 할지뿐이라 어느 목록도 「이 화면의 것」이 아니다.
  */
 async function adminPanelView(
   member: GuildMember,
@@ -86,6 +86,8 @@ async function adminPanelView(
     accessoryButton: panelSwitchButton(PANEL.admin, isAdmin),
   };
 
+  // 홈에는 목록을 두지 않는다. 아직 아무 기능도 고르지 않았으므로 어느 목록도 「이
+  // 화면의 것」이 아니고, 여기서 정할 것은 누구를 고를지 하나뿐이다.
   if (targetId === null) {
     return {
       ...base,
@@ -94,7 +96,6 @@ async function adminPanelView(
         speak(`**${FUNC_LABEL.allow}** — 그 사람이 스스로 켜고 끌 수 있는 역할을 정합니다.`),
         speak(`**${FUNC_LABEL.grant}** — 그 사람의 역할을 지금 바로 붙였다 뗍니다.`),
       ].join("\n"),
-      fields: [{ name: "열어 준 사람", value: mentionUsers(await openedUsers(guild.id)) }],
       rows: panelRows(PANEL.admin, { targetId, func }),
     };
   }
@@ -172,10 +173,6 @@ async function userPanelView(member: GuildMember, isAdmin: boolean): Promise<Mes
     accessoryButton: panelSwitchButton(PANEL.user, isAdmin),
     rows: panelRows(PANEL.user, { roles, held }),
   };
-}
-
-function mentionUsers(ids: readonly string[]): string {
-  return ids.length === 0 ? speak("_아직 없습니다._") : ids.map((id) => `<@${id}>`).join(" ");
 }
 
 /**
