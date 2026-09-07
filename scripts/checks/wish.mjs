@@ -416,7 +416,8 @@ assert(
 assert("메시지 id 도 보존됨", (await restartedAgain.getWish(G, pending.id))?.messageId === "555555555555555555");
 
 console.log("\n=== 6. 첨부파일 처리 ===");
-const attach = await import(`${DIST}/wish/attachments.js`);
+// 첨부를 다루는 부품은 소원 것만이 아니라 ui/ 에 있다 (퀴즈의 그림도 이걸 쓴다).
+const attach = await import(`${DIST}/ui/attachments.js`);
 
 const uploads = attach.prepareUploads(
   new Map([
