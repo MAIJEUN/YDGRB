@@ -2,7 +2,9 @@ import type { Guild, GuildMember, User } from "discord.js";
 
 import { at, atWithCountdown } from "../time.js";
 import type { MessageOptions, ResponseField } from "../ui/response.js";
+import { speak } from "../ui/tone.js";
 import { channelCounts, count, orNone, premiumTier } from "./format.js";
+import type { MessageCount } from "./messages.js";
 
 /**
  * 서버·유저 정보 화면.
@@ -89,7 +91,34 @@ function roles(member: GuildMember): string {
   return shown.join(" ");
 }
 
-export function profileView(member: GuildMember, banner: string | null, user: User): MessageOptions {
+/**
+ * 「메시지」 칸 — 지금까지 이 서버에 남긴 메시지 수.
+ *
+ * 숫자 아래에 **무엇을 기준으로 센 것인지** 작게 붙인다. 디스코드 검색에서 보이는 숫자와
+ * 다를 수 있기 때문이다 — 봇이 못 보는 채널은 빠진다.
+ *
+ * 셀 수 없었으면(권한·디스코드 쪽 문제) 칸을 아예 만들지 않는다. 볼 때마다 「못 셌다」 가
+ * 뜨면 프로필이 아니라 오류 화면처럼 보인다. 색인 중일 때만 그렇다고 말한다 — 그건 잠시
+ * 뒤 다시 보면 나오는 것이라 알려 줄 만하다.
+ */
+function messageField(messages: MessageCount | undefined): ResponseField[] {
+  if (messages === undefined) return [];
+
+  if (messages.ok) {
+    return [{ name: "메시지", value: `**${count(messages.total)}개**\n-# 봇이 볼 수 있는 채널 기준` }];
+  }
+
+  return messages.reason === "indexing"
+    ? [{ name: "메시지", value: speak("_디스코드가 아직 세는 중입니다. 잠시 뒤 다시 보세요._") }]
+    : [];
+}
+
+export function profileView(
+  member: GuildMember,
+  banner: string | null,
+  user: User,
+  messages?: MessageCount,
+): MessageOptions {
   const timeout = member.isCommunicationDisabled() ? member.communicationDisabledUntil : null;
 
   return {
@@ -103,6 +132,7 @@ export function profileView(member: GuildMember, banner: string | null, user: Us
       ...field("별명", member.nickname === null ? null : `\`${member.nickname}\``),
       { name: "계정 만든 날", value: atWithCountdown(member.user.createdAt) },
       ...field("서버 참가", member.joinedAt === null ? null : atWithCountdown(member.joinedAt)),
+      ...messageField(messages),
       ...field("부스트 시작", member.premiumSince === null ? null : at(member.premiumSince)),
       ...field("타임아웃", timeout === null ? null : `${atWithCountdown(timeout)} 까지`),
       { name: `역할 (${count(Math.max(member.roles.cache.size - 1, 0))}개)`, value: roles(member) },

@@ -201,6 +201,67 @@ const timedOut = textOf(
 );
 assert("타임아웃은 타임스탬프로", /\*\*타임아웃\*\*\n<t:1800000000:F>/u.test(timedOut), timedOut);
 
+console.log("\n=== 3-2. 지금까지의 메시지 수 ===");
+//
+// 봇이 세어 둔 것이 아니라 디스코드 서버 메시지 검색에 개수만 묻는다 — 봇이 들어오기 전의
+// 메시지도 세어진다. 디스코드가 색인 중이면 숫자를 안 주므로 그 경우도 본다.
+{
+  const { countMessages } = await import(`${DIST}/info/messages.js`);
+
+  const asked = [];
+  const clientWith = (...replies) => ({
+    rest: {
+      get: async (route, options) => {
+        asked.push({ route, query: options?.query?.toString() });
+        const next = replies.shift();
+        if (next instanceof Error) throw next;
+        return next;
+      },
+    },
+  });
+
+  const found = await countMessages(clientWith({ total_results: 1234, messages: [] }), GUILD, "555555555555555555");
+  assert("검색이 준 총 개수를 그대로", found.ok && found.total === 1234, JSON.stringify(found));
+  assert("  └ 서버 메시지 검색에 물음", asked[0].route === `/guilds/${GUILD}/messages/search`, asked[0].route);
+  assert("  └ 그 사람이 쓴 것만", asked[0].query.includes("author_id=555555555555555555"), asked[0].query);
+  assert("  └ 본문은 하나만 받음", asked[0].query.includes("limit=1"), asked[0].query);
+
+  asked.length = 0;
+  const later = await countMessages(
+    clientWith({ code: 110000, retry_after: 0 }, { total_results: 7, messages: [] }),
+    GUILD,
+    "555555555555555555",
+  );
+  assert("색인 중이면 한 번 더 물음", later.ok && later.total === 7 && asked.length === 2, JSON.stringify(later));
+
+  const still = await countMessages(clientWith({ code: 110000, retry_after: 0 }, { code: 110000, retry_after: 0 }), GUILD, "1");
+  assert("  └ 그래도 안 되면 「세는 중」", !still.ok && still.reason === "indexing", JSON.stringify(still));
+
+  const denied = await countMessages(clientWith(new Error("Missing Access")), GUILD, "1");
+  assert("권한이 없으면 실패로 (던지지 않음)", !denied.ok && denied.reason === "unavailable", JSON.stringify(denied));
+
+  // 화면
+  const counted = textOf(buildContainer(profileView(fakeMember, null, user, { ok: true, total: 12345 })).toJSON());
+  assert("「메시지」 칸에 개수", counted.includes("**메시지**\n**12,345개**"), counted);
+  assert("  └ 무엇을 기준으로 센 것인지 작게", counted.includes("-# 봇이 볼 수 있는 채널 기준"), counted);
+  assert("  └ 서버 참가 다음 자리", counted.indexOf("**서버 참가**") < counted.indexOf("**메시지**"), counted);
+
+  const indexing = textOf(buildContainer(profileView(fakeMember, null, user, { ok: false, reason: "indexing" })).toJSON());
+  assert("색인 중이면 그렇다고", indexing.includes("**메시지**") && indexing.includes("세는 중"), indexing);
+
+  const failed = textOf(buildContainer(profileView(fakeMember, null, user, { ok: false, reason: "unavailable" })).toJSON());
+  assert(
+    "셀 수 없었으면 칸을 안 만듦",
+    !failed.includes("**메시지**"),
+    "볼 때마다 「못 셌다」 가 뜨면 프로필이 아니라 오류 화면처럼 보인다",
+  );
+
+  assert(
+    "명령이 배너와 함께 물음",
+    read("src/commands/profile.ts").includes("countMessages(interaction.client, interaction.guildId, member.id)"),
+  );
+}
+
 console.log("\n=== 4. 규칙 ===");
 const views = read("src/info/views.ts");
 const format = read("src/info/format.ts");
