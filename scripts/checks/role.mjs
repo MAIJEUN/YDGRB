@@ -393,6 +393,19 @@ console.log("\n=== 6. 권한 ===");
 
   // 여럿에게 역할을 붙였다 떼면 3초를 넘길 수 있다. 먼저 받았다고 답해 둬야 한다.
   assert("지급/회수는 먼저 받았다고 답함", give.indexOf("await interaction.deferUpdate();") < give.indexOf("applyRoles("));
+
+  // 권한을 열어 주면 그 역할을 바로 붙여 둔다. 닫는다고 떼지는 않는다.
+  const allowBody = handler.slice(handler.indexOf("async function allow("), handler.indexOf("async function grant("));
+  assert("권한을 열면 바로 붙여 둠", allowBody.includes("await applyRoles(target, give, [])"), "열어만 두면 받은 사람이 직접 켜야 비로소 가진다");
+  assert("  └ 새로 연 것만, 봇이 만질 수 있는 것만", allowBody.includes("const opened = usable"));
+  assert("  └ 이미 가진 사람은 그대로", allowBody.includes("opened.filter((role) => !target.roles.cache.has(role.id))"));
+  assert(
+    "  └ 닫았다고 떼지는 않음",
+    !/applyRoles\(target, [^,]+, (?!\[\])/u.test(allowBody),
+    "닫는 것은 「스스로 못 만진다」 이지 「빼앗는다」 가 아니다",
+  );
+  assert("  └ 이것도 먼저 받았다고 답함", allowBody.indexOf("await interaction.deferUpdate();") < allowBody.indexOf("applyRoles("));
+  assert("  └ 무엇을 붙였는지 따로 알림", allowBody.includes("없던 사람에게는 바로 붙여 두었습니다"));
   assert("  └ 켜고 끄기도", toggle.indexOf("await interaction.deferUpdate();") < toggle.indexOf("applyRoles("));
   assert("  └ 받아 둔 것은 고쳐서 답함", handler.includes("await interaction.editReply(editResponse(view));"));
   assert(

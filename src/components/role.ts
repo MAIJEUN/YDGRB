@@ -149,6 +149,8 @@ async function openFunc(interaction: ComponentInteraction, rawFunc: string | und
  *   일부에게만 열린 것                              → 드롭다운에 없었으니 그대로 둔다
  *
  * 한 사람만 골랐으면 그 사람 명단이 그대로 떴으므로 「이만큼으로 정한다」 와 같다.
+ *
+ * 새로 연 역할은 **바로 붙여 둔다** (아래에 이유).
  */
 async function allow(interaction: ComponentInteraction): Promise<void> {
   if (!interaction.isRoleSelectMenu()) return;
@@ -160,6 +162,9 @@ async function allow(interaction: ComponentInteraction): Promise<void> {
     await lostTargets(interaction);
     return;
   }
+
+  // 열어 준 역할을 사람마다 붙여 주므로 3초를 넘길 수 있다. 먼저 받았다고 답해 둔다.
+  await interaction.deferUpdate();
 
   const guild = interaction.guild;
   const picked = interaction.values.slice(0, MAX_ALLOWED_ROLES);
@@ -183,30 +188,62 @@ async function allow(interaction: ComponentInteraction): Promise<void> {
     await setAllowedRoles(guild.id, id, next);
   }
 
+  /**
+   * **새로 열어 준 역할은 바로 붙여 둔다.**
+   *
+   * 열어 주는 것은 대개 「이 역할을 가져라, 대신 싫으면 스스로 빼라」 다. 열어만 두고 안
+   * 붙이면 받은 사람이 유저 패널을 찾아가 직접 켜야 비로소 가진다.
+   *
+   * 이미 가진 사람에게는 다시 붙이지 않는다. **닫은 역할은 떼지 않는다** — 닫는 것은 「이제
+   * 스스로 못 만진다」 이지 「빼앗는다」 가 아니다. 빼앗으려면 「지급/회수」 를 쓴다.
+   */
+  const opened = usable
+    .map((id) => guild.roles.cache.get(id))
+    .filter((role): role is Role => role !== undefined);
+
+  const targets = opened.length === 0 ? [] : await fetchMembers(guild, targetIds);
+  const failed: { readonly userId: string; readonly role: Role }[] = [];
+
+  for (const target of targets) {
+    const give = opened.filter((role) => !target.roles.cache.has(role.id));
+    for (const role of await applyRoles(target, give, [])) failed.push({ userId: target.id, role });
+  }
+
   await showAdmin(interaction, targetIds, FUNC.allow);
 
-  if (stuck.length === 0 && full === 0) return;
+  if (opened.length === 0 && stuck.length === 0 && full === 0) return;
 
-  // 일부만 담겼으면 그 말을 따로 한다. 화면은 이미 담긴 것을 보여 주고 있다.
-  const fields = [
-    ...(stuck.length === 0
-      ? []
-      : [{ name: "어떻게 하나", value: speak("서버 설정에서 봇 역할을 그 역할들보다 위로 올려 주세요.") }]),
-    ...(full === 0
-      ? []
-      : [{ name: "다 담지 못한 사람", value: speak(`${full}명은 열어 준 역할이 ${MAX_ALLOWED_ROLES}개를 넘어 뒤가 잘렸습니다.`) }]),
-  ];
+  // 무슨 일이 있었는지는 따로 낸다 (규칙 12). 화면은 이미 담긴 것을 보여 주고 있다.
+  const problems = failed.length + stuck.length + full;
 
   await aside(
     interaction,
     noticeView({
-      status: usable.length + removed.length === 0 ? "failure" : "progress",
-      title: speak("일부는 열어 주지 못했어요"),
-      description:
-        stuck.length === 0
-          ? speak("명단이 넘친 사람이 있습니다.")
-          : speak(`${mentionRoles(stuck)} 는 봇이 만질 수 없습니다.`),
-      fields,
+      status: problems === 0 ? "success" : opened.length === 0 ? "failure" : "progress",
+      title: `역할 · ${FUNC_LABEL.allow}`,
+      description: [
+        targetIds.map((id) => `<@${id}>`).join(" "),
+        opened.length === 0
+          ? speak("새로 열어 준 역할이 없습니다.")
+          : speak(`${mentionRoles(opened.map((role) => role.id))} 를 열고, 없던 사람에게는 바로 붙여 두었습니다.`),
+      ].join("\n"),
+      fields: [
+        ...stuckField(stuck),
+        ...(stuck.length === 0
+          ? []
+          : [{ name: "어떻게 하나", value: speak("서버 설정에서 봇 역할을 그 역할들보다 위로 올려 주세요.") }]),
+        ...(failed.length === 0
+          ? []
+          : [
+              {
+                name: "붙이지 못한 것",
+                value: failed.map((entry) => `<@${entry.userId}> — <@&${entry.role.id}>`).join("\n"),
+              },
+            ]),
+        ...(full === 0
+          ? []
+          : [{ name: "다 담지 못한 사람", value: speak(`${full}명은 열어 준 역할이 ${MAX_ALLOWED_ROLES}개를 넘어 뒤가 잘렸습니다.`) }]),
+      ],
       user: interaction.user,
       panel: PANEL.admin,
       isAdmin: true,
