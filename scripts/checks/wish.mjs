@@ -842,6 +842,53 @@ assert(
 );
 assert("신청자에게 DM 도 보냄", decideBody.includes("notifyWisher("));
 
+console.log("\n=== 8-2. 소원 빌기 — 3초 안에 답하기 · 되돌리는 때 ===");
+//
+// 실제로 있었던 일: 첨부를 다시 올리느라 3초를 넘겨 디스코드가 인터랙션을 버렸다. 그러자
+// 「다 됐다」는 안내가 실패했고, 그 실패가 「전달 실패」로 잡혀 소원권을 돌려주고 기록을
+// 지웠다. 채널에는 버튼이 살아 있는 소원이 남았고, 관리자가 누르자 「소원 정보를 찾지
+// 못했습니다」 가 떴다.
+{
+  const submitBody = decideSource.slice(
+    decideSource.indexOf("async function submitWish"),
+    decideSource.indexOf("function wishMessage"),
+  );
+  const sendAt = submitBody.indexOf("channel.send(");
+  const postedAt = submitBody.indexOf("이미 채널에 올라가 있다");
+
+  assert("  ┌ 구간을 찾음", sendAt > 0 && postedAt > sendAt);
+  assert(
+    "올리기 전에 먼저 받았다고 답함",
+    submitBody.indexOf("await interaction.deferUpdate();") > 0 &&
+      submitBody.indexOf("await interaction.deferUpdate();") < sendAt,
+    "첨부를 다시 올리는 데 3초를 넘기기 쉽다",
+  );
+  assert("  └ 패널 밖에서 연 모달이면 새 답을 받아 둠", submitBody.includes("await interaction.deferReply({ flags: MessageFlags.Ephemeral });"));
+
+  const before = submitBody.slice(sendAt, postedAt);
+  const after = submitBody.slice(postedAt);
+
+  assert("되돌리는 것은 올리지 못했을 때뿐", before.includes("await deleteWish(guildId, wish.id);") && before.includes("소원 전달 실패 — 환불"));
+  assert(
+    "  └ 올린 뒤에는 기록을 지우지 않음",
+    !after.includes("deleteWish("),
+    "채널에 버튼이 살아 있는 소원이 남는데 기록이 없으면 관리자가 처리할 길이 없다",
+  );
+  assert("    · 소원권도 돌려주지 않음", !after.includes("tickets: 1"));
+  assert("  └ 안내를 못 띄워도 로그만", after.includes("소원을 보냈다는 안내를 띄우지 못했습니다"));
+
+  const replaceBody = decideSource.slice(
+    decideSource.indexOf("async function replaceView("),
+    decideSource.indexOf("async function announce("),
+  );
+  assert(
+    "받아 둔 인터랙션은 고쳐서 답함",
+    replaceBody.indexOf("interaction.editReply(editResponse(view))") > 0 &&
+      replaceBody.indexOf("interaction.editReply(editResponse(view))") < replaceBody.indexOf("interaction.update("),
+    "이미 답한 인터랙션에 update 를 또 하면 디스코드가 거절한다",
+  );
+}
+
 // 답글 안에서 유저는 멘션으로 가리켜야 한다.
 assert(
   "결과 답글의 신청자·관리자는 멘션",

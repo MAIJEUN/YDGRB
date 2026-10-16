@@ -1,9 +1,15 @@
 import { MessageFlags, PermissionFlagsBits } from "discord.js";
-import type { ModalBuilder, ModalSubmitInteraction, User } from "discord.js";
+import type { Message, ModalBuilder, ModalSubmitInteraction, User } from "discord.js";
 
 import { logger } from "../logger.js";
 import { reasonField, readModalReason } from "../ui/reason.js";
-import { channelMessage, response, updateResponse, type MessageOptions } from "../ui/response.js";
+import {
+  channelMessage,
+  editResponse,
+  response,
+  updateResponse,
+  type MessageOptions,
+} from "../ui/response.js";
 import { defineComponentHandler, type ComponentInteraction } from "../types.js";
 import {
   fromMessage,
@@ -227,6 +233,13 @@ export default defineComponentHandler({
  *
  */
 async function replaceView(interaction: ComponentInteraction, view: MessageOptions): Promise<void> {
+  // 먼저 「받았다」고만 답해 둔 인터랙션이면(오래 걸리는 일 앞에서 defer 한 것) 그 답을 고친다.
+  // 이미 답한 인터랙션에 update/reply 를 또 하면 디스코드가 거절한다.
+  if (interaction.deferred || interaction.replied) {
+    await interaction.editReply(editResponse(view));
+    return;
+  }
+
   if (interaction.isMessageComponent()) {
     await interaction.update(updateResponse(view));
     return;
@@ -509,6 +522,12 @@ async function submitWish(interaction: ComponentInteraction, guildId: string): P
   const content = interaction.fields.getTextInputValue(FIELD.wishContent).trim();
   const attachments = prepareUploads(interaction.fields.getUploadedFiles(FIELD.wishFiles));
 
+  // **먼저 「받았다」고 답해 둔다.** 첨부를 다시 올리는 데(내려받아 올리기) 3초를 넘기기
+  // 쉽고, 그러면 디스코드가 인터랙션을 버려 답할 길이 사라진다. 패널에서 연 모달이면 그
+  // 패널을, 아니면 누른 사람에게만 보이는 새 답을 받아 둔다.
+  if (interaction.isFromMessage()) await interaction.deferUpdate();
+  else await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
   const channelId = (await getSettings(guildId)).wishChannelId;
   if (channelId === null) {
     await replaceView(
@@ -552,6 +571,8 @@ async function submitWish(interaction: ComponentInteraction, guildId: string): P
     channelId,
   });
 
+  let message: Message;
+
   try {
     const channel = await interaction.client.channels.fetch(channelId);
     if (channel === null || !channel.isSendable()) {
@@ -560,31 +581,14 @@ async function submitWish(interaction: ComponentInteraction, guildId: string): P
 
     // 파일을 봇 메시지에 다시 올려 영구 첨부로 만든다.
     // 컨테이너가 그 첨부를 attachment:// 로 가리키므로 파일이 따로 또 그려지지 않는다.
-    const message = await channel.send({
+    message = await channel.send({
       ...channelMessage(wishMessage(content, interaction.user, attachments, wish.id)),
       files: toUploadFiles(attachments),
     });
-
-    // 임시 URL 을 메시지에 붙은 영구 URL 로 교체해 둔다.
-    await attachWishMessage(guildId, wish.id, message.id, fromMessage(message));
-
-    await replaceView(
-      interaction,
-      noticeView({
-        status: "success",
-        title: speak("소원을 보냈습니다"),
-        description: speak(`<#${channelId}> 로 전달했습니다.`),
-        fields: [{ name: "소원 내용", value: content.slice(0, 1000) }],
-        balance: formatBalanceChange(spent),
-        user: interaction.user,
-        panel: PANEL.user,
-        isAdmin: isAdmin(interaction),
-      }),
-    );
   } catch (error) {
+    // **올리지 못했을 때만** 되돌린다. 채널에 아무것도 없으니 기록도 소원권도 없던 일로 한다.
     logger.error("소원 전달 실패 — 소원권을 되돌립니다", error);
 
-    // 전달에 실패했으므로 차감을 취소한다.
     const refund = await applyBalanceChange(guildId, interaction.user.id, { tickets: 1 }, {
       note: { source: "소원 전달 실패 — 환불" },
     });
@@ -603,6 +607,40 @@ async function submitWish(interaction: ComponentInteraction, guildId: string): P
         isAdmin: isAdmin(interaction),
       }),
     );
+    return;
+  }
+
+  // ── 여기부터는 소원이 **이미 채널에 올라가 있다.** ─────────────
+  //
+  // 무엇이 실패해도 되돌리지 않는다. 되돌리면 채널에는 버튼이 살아 있는 소원이 남는데
+  // 기록은 사라져, 관리자가 누르는 순간 「소원 정보를 찾지 못했습니다」 가 뜬다.
+  // 빈 사람은 소원권을 돌려받고, 소원은 처리할 길 없이 걸려 있게 된다.
+
+  try {
+    // 임시 URL 을 메시지에 붙은 영구 URL 로 교체해 둔다.
+    // 실패해도 수락·거절에는 지장이 없다 — 그쪽은 customId 의 소원 id 로 기록을 찾는다.
+    await attachWishMessage(guildId, wish.id, message.id, fromMessage(message));
+  } catch (error) {
+    logger.error(`소원 메시지를 기록에 붙이지 못했습니다 (${wish.id})`, error);
+  }
+
+  try {
+    await replaceView(
+      interaction,
+      noticeView({
+        status: "success",
+        title: speak("소원을 보냈습니다"),
+        description: speak(`<#${channelId}> 로 전달했습니다.`),
+        fields: [{ name: "소원 내용", value: content.slice(0, 1000) }],
+        balance: formatBalanceChange(spent),
+        user: interaction.user,
+        panel: PANEL.user,
+        isAdmin: isAdmin(interaction),
+      }),
+    );
+  } catch (error) {
+    // 알려 주지 못했을 뿐, 소원은 갔다.
+    logger.warn(`소원을 보냈다는 안내를 띄우지 못했습니다 (${wish.id})`, error);
   }
 }
 
