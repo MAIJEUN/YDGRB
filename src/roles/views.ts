@@ -55,27 +55,49 @@ export async function panelView(
   member: GuildMember,
   panel: PanelKind,
   isAdmin: boolean,
-  targetId: string | null = null,
+  targetIds: readonly string[] = [],
   func: AdminFunc | null = null,
-  target?: GuildMember,
+  targets: readonly GuildMember[] = [],
 ): Promise<MessageOptions> {
   return panel === PANEL.admin
-    ? adminPanelView(member, targetId, func, isAdmin, target)
+    ? adminPanelView(member, targetIds, func, isAdmin, targets)
     : userPanelView(member, isAdmin);
 }
 
 /**
- * 관리자 패널 — 유저 하나를 고르고, 그 사람을 놓고 무엇을 할지 고른다.
+ * 여럿이 **모두** 가진 것 — 첫 목록의 차례 그대로.
+ *
+ * 여럿을 놓고 드롭다운을 띄울 때 「골라 둔 것」은 이것이다. 일부만 가진 것을 골라 두면
+ * 풀었을 때 그걸 가진 사람에게서도 빼고, 안 골라 두면 고른 적 없는 사람에게 붙인다 —
+ * 어느 쪽이든 관리자가 손대지 않은 것을 바꾸게 된다.
+ */
+export function shared(lists: readonly (readonly string[])[]): string[] {
+  const [first = [], ...rest] = lists;
+  return first.filter((id) => rest.every((list) => list.includes(id)));
+}
+
+/** 누군가는 가졌지만 모두가 가지지는 않은 것. 드롭다운에 없으므로 건드리지 않는다. */
+export function partly(lists: readonly (readonly string[])[]): string[] {
+  const all = [...new Set(lists.flat())];
+  const common = shared(lists);
+  return all.filter((id) => !common.includes(id));
+}
+
+/**
+ * 관리자 패널 — 유저를 고르고(여럿도 된다), 그 사람들을 놓고 무엇을 할지 고른다.
  *
  * **목록은 편 기능의 것만 적는다.** 아무것도 안 폈으면 아무 목록도 없다 — 그 화면에서
  * 정할 것은 누구를 고를지, 무엇을 할지뿐이라 어느 목록도 「이 화면의 것」이 아니다.
+ *
+ * 여럿을 골랐으면 목록이 둘로 갈린다 — **모두**의 것과 **일부**의 것. 드롭다운은 모두의 것만
+ * 골라 둔 채로 뜨고, 일부의 것은 건드리지 않는다는 말과 함께 따로 보여 준다.
  */
 async function adminPanelView(
   member: GuildMember,
-  targetId: string | null,
+  targetIds: readonly string[],
   func: AdminFunc | null,
   isAdmin: boolean,
-  target?: GuildMember,
+  targets: readonly GuildMember[],
 ): Promise<MessageOptions> {
   const guild = member.guild;
 
@@ -88,20 +110,25 @@ async function adminPanelView(
 
   // 홈에는 목록을 두지 않는다. 아직 아무 기능도 고르지 않았으므로 어느 목록도 「이
   // 화면의 것」이 아니고, 여기서 정할 것은 누구를 고를지 하나뿐이다.
-  if (targetId === null) {
+  if (targetIds.length === 0) {
     return {
       ...base,
       description: [
-        speak("**유저**를 고르면 무엇을 할지 고를 수 있습니다."),
+        speak("**유저**를 고르면 무엇을 할지 고를 수 있습니다. 여럿을 함께 골라도 됩니다."),
         speak(`**${FUNC_LABEL.allow}** — 그 사람이 스스로 켜고 끌 수 있는 역할을 정합니다.`),
         speak(`**${FUNC_LABEL.grant}** — 그 사람의 역할을 지금 바로 붙였다 뗍니다.`),
       ].join("\n"),
-      rows: panelRows(PANEL.admin, { targetId, func }),
+      rows: panelRows(PANEL.admin, { targetIds, func }),
     };
   }
 
-  const allowed = await allowedRoles(guild.id, targetId);
-  const held = target === undefined ? [] : manageableHeld(target).map((role) => role.id);
+  const many = targetIds.length > 1;
+
+  const allowedLists = await Promise.all(targetIds.map((id) => allowedRoles(guild.id, id)));
+  const heldLists = targets.map((target) => manageableHeld(target).map((role) => role.id));
+
+  const allowed = shared(allowedLists);
+  const held = shared(heldLists);
 
   /**
    * **편 기능의 것만 적는다.**
@@ -113,11 +140,12 @@ async function adminPanelView(
   const fields: ResponseField[] = [];
 
   if (func === FUNC.allow) {
-    fields.push({ name: "열어 준 역할", value: roleList(allowed) });
+    fields.push({ name: many ? "모두에게 열린 역할" : "열어 준 역할", value: roleList(allowed) });
+    fields.push(...partlyField("일부에게만 열린 역할", partly(allowedLists)));
 
     // 명단에 있어도 봇이 못 만지는 것이 있으면 미리 말한다 — 유저가 눌러 보고 나서
     // 알게 두면, 왜 안 되는지 물어볼 곳이 관리자밖에 없다.
-    const stuck = allowed.filter((id) => {
+    const stuck = [...new Set(allowedLists.flat())].filter((id) => {
       const role = guild.roles.cache.get(id);
       return role !== undefined && !canManage(guild, role);
     });
@@ -131,22 +159,37 @@ async function adminPanelView(
   }
 
   if (func === FUNC.grant) {
-    fields.push({ name: "지금 가진 역할", value: roleList(held) });
+    fields.push({ name: many ? "모두 가진 역할" : "지금 가진 역할", value: roleList(held) });
+    fields.push(...partlyField("일부만 가진 역할", partly(heldLists)));
   }
 
   return {
     ...base,
-    description: [
-      `<@${targetId}>`,
-      func === null
-        ? speak("무엇을 할지 고르세요.")
-        : func === FUNC.allow
-          ? speak("이 사람이 스스로 켜고 끌 수 있는 역할을 정합니다.")
-          : speak("고른 것만 남습니다 — 골라 두었던 것을 풀고 내면 벗겨집니다."),
-    ].join("\n"),
+    description: [targetIds.map((id) => `<@${id}>`).join(" "), guide(func, many)].join("\n"),
     fields,
-    rows: panelRows(PANEL.admin, { targetId, func, allowed, held }),
+    rows: panelRows(PANEL.admin, { targetIds, func, allowed, held }),
   };
+}
+
+/** 지금 편 기능이 무엇을 하는지 한 줄로. 여럿이면 「모두」 라는 말이 붙는다. */
+function guide(func: AdminFunc | null, many: boolean): string {
+  if (func === null) return speak("무엇을 할지 고르세요.");
+
+  if (func === FUNC.allow) {
+    return many
+      ? speak("고른 것은 모두에게 열고, 풀어 낸 것은 모두에게서 닫습니다.")
+      : speak("이 사람이 스스로 켜고 끌 수 있는 역할을 정합니다.");
+  }
+
+  return many
+    ? speak("고른 것은 모두에게 붙이고, 풀어 낸 것은 모두에게서 뗍니다.")
+    : speak("고른 것만 남습니다 — 골라 두었던 것을 풀고 내면 벗겨집니다.");
+}
+
+/** 「일부」 칸 — 있을 때만. 건드리지 않는다는 말을 함께 붙인다. */
+function partlyField(name: string, ids: readonly string[]): ResponseField[] {
+  if (ids.length === 0) return [];
+  return [{ name, value: [roleList(ids), speak("_여기 있는 것은 건드리지 않습니다._")].join("\n") }];
 }
 
 /** 유저 패널 — 열어 준 역할을 켜고 끈다. */
@@ -178,12 +221,12 @@ async function userPanelView(member: GuildMember, isAdmin: boolean): Promise<Mes
 /**
  * 「지급/회수」 를 열 수 있는가.
  *
- * 드롭다운이 스물다섯 개까지만 골라 둘 수 있어서, 그보다 많이 가진 사람은 **가진 것을
- * 다 띄울 수가 없다.** 그대로 열면 못 띄운 것이 「안 고른 것」으로 보여 그 자리에서
- * 벗겨진다. 그래서 아예 열지 않는다.
+ * 드롭다운이 스물다섯 개까지만 골라 둘 수 있어서, 그보다 많이 **모두** 가진 경우에는 골라
+ * 둘 것을 다 띄울 수가 없다. 그대로 열면 못 띄운 것이 「풀어 낸 것」으로 보여 그 자리에서
+ * 벗겨진다. 그래서 아예 열지 않는다. (일부만 가진 것은 애초에 안 띄우므로 상관없다.)
  */
-export function tooManyToGrant(target: GuildMember): boolean {
-  return manageableHeld(target).length > MAX_ALLOWED_ROLES;
+export function tooManyToGrant(targets: readonly GuildMember[]): boolean {
+  return shared(targets.map((target) => manageableHeld(target).map((role) => role.id))).length > MAX_ALLOWED_ROLES;
 }
 
 export interface NoticeOptions {

@@ -1,5 +1,5 @@
 import { PermissionFlagsBits } from "discord.js";
-import type { Guild, GuildMember, Role } from "discord.js";
+import type { Guild, GuildMember, Message, Role } from "discord.js";
 
 import { logger } from "../logger.js";
 import {
@@ -7,6 +7,7 @@ import {
   FUNC,
   FUNC_LABEL,
   MAX_ALLOWED_ROLES,
+  MAX_TARGETS,
   PANEL,
   ROLE,
   isFunc,
@@ -19,10 +20,11 @@ import {
   manageableHeld,
   noticeView,
   panelView,
+  shared,
   tooManyToGrant,
   usableRoles,
 } from "../roles/views.js";
-import { response, updateResponse, type MessageOptions } from "../ui/response.js";
+import { editResponse, response, updateResponse, type MessageOptions } from "../ui/response.js";
 import { speak } from "../ui/tone.js";
 import { defineComponentHandler, type ComponentInteraction } from "../types.js";
 
@@ -30,13 +32,17 @@ import { defineComponentHandler, type ComponentInteraction } from "../types.js";
  * 역할 패널의 드롭다운·버튼.
  *
  * customId 규칙:
- *   `role:panel:<유저|관리자>` · `role:pick:<기능|->` · `role:open:<기능|->:<유저>`
- *   `role:allow:<유저>` · `role:grant:<유저>` · `role:toggle`
+ *   `role:panel:<유저|관리자>` · `role:pick:<기능|->` · `role:open:<기능|->`
+ *   `role:allow` · `role:grant` · `role:toggle`
  *
  * **유저 쪽에는 권한을 묻지 않는다.** 그게 이 시스템이 있는 이유다. 대신 명단에 없는
  * 역할은 여기서 막는다 — 드롭다운이 보내온 값을 그대로 믿으면 아무 역할이나 붙일 수 있다.
  *
  * 관리자 쪽은 반대다. 누를 때마다 권한을 다시 본다 — customId 는 누구나 흉내 낼 수 있다.
+ *
+ * 관리자 쪽의 **대상은 customId 가 아니라 패널의 유저 드롭다운**에서 읽는다
+ * ([targetsOf](#targetsOf)). 여럿을 고를 수 있어 id 를 다 실으면 100자를 넘고, 그렇게 하면
+ * 관리자가 보고 있는 사람과 손대는 사람이 갈라질 수도 없다.
  */
 export default defineComponentHandler({
   namespace: ROLE,
@@ -52,19 +58,19 @@ export default defineComponentHandler({
         return;
 
       case ACTION.pick:
-        await pickUser(interaction, rest[0]);
+        await pickUsers(interaction, rest[0]);
         return;
 
       case ACTION.open:
-        await openFunc(interaction, rest[0], rest[1] ?? "");
+        await openFunc(interaction, rest[0]);
         return;
 
       case ACTION.allow:
-        await allow(interaction, rest[0] ?? "");
+        await allow(interaction);
         return;
 
       case ACTION.grant:
-        await grant(interaction, rest[0] ?? "");
+        await grant(interaction);
         return;
 
       case ACTION.toggle:
@@ -95,12 +101,12 @@ async function switchPanel(
 }
 
 /**
- * 관리자가 대상 유저를 골랐다.
+ * 관리자가 대상 유저를 골랐다 — 한 명이든 여럿이든.
  *
- * 펴 둔 기능은 그대로 들고 간다 — 「지급/회수」 를 펴 놓고 사람을 바꾸면 그 사람 것이
+ * 펴 둔 기능은 그대로 들고 간다 — 「지급/회수」 를 펴 놓고 사람을 바꾸면 그 사람들 것이
  * 이어서 보인다. 사람마다 버튼을 다시 누르게 할 이유가 없다.
  */
-async function pickUser(
+async function pickUsers(
   interaction: ComponentInteraction,
   rawFunc: string | undefined,
 ): Promise<void> {
@@ -108,10 +114,10 @@ async function pickUser(
   if (!interaction.inCachedGuild()) return;
   if (await denyNonAdmin(interaction)) return;
 
-  const targetId = interaction.values[0];
-  if (targetId === undefined) return;
+  const targetIds = interaction.values.slice(0, MAX_TARGETS);
+  if (targetIds.length === 0) return;
 
-  await showAdmin(interaction, targetId, isFunc(rawFunc) ? rawFunc : null);
+  await showAdmin(interaction, targetIds, isFunc(rawFunc) ? rawFunc : null);
 }
 
 /**
@@ -119,57 +125,88 @@ async function pickUser(
  *
  * customId 에 **눌렀을 때 갈 상태**가 실려 있다 — 편 것을 다시 누르면 접힌다.
  */
-async function openFunc(
-  interaction: ComponentInteraction,
-  rawFunc: string | undefined,
-  targetId: string,
-): Promise<void> {
+async function openFunc(interaction: ComponentInteraction, rawFunc: string | undefined): Promise<void> {
   if (!interaction.isButton()) return;
   if (!interaction.inCachedGuild()) return;
   if (await denyNonAdmin(interaction)) return;
 
-  await showAdmin(interaction, targetId, isFunc(rawFunc) ? rawFunc : null);
+  const targetIds = targetsOf(interaction);
+  if (targetIds.length === 0) {
+    await lostTargets(interaction);
+    return;
+  }
+
+  await showAdmin(interaction, targetIds, isFunc(rawFunc) ? rawFunc : null);
 }
 
 /**
- * 「권한」 — 그 사람이 스스로 켜고 끌 수 있는 역할을 정했다.
+ * 「권한」 — 고른 사람들이 스스로 켜고 끌 수 있는 역할을 정했다.
  *
- * 드롭다운이 「지금 열려 있는 것」을 골라 둔 채로 뜨므로, 여기 실려 온 목록이 곧 결과다.
- * 하나도 안 고르고 냈으면 전부 닫는다.
+ * 드롭다운은 **모두에게 열린 것**을 골라 둔 채로 떴다. 그래서 —
+ *
+ *   더한 것   (골랐는데 모두에게 열려 있지 않던 것) → 모두에게 연다
+ *   풀어 낸 것 (모두에게 열려 있었는데 안 고른 것)   → 모두에게서 닫는다
+ *   일부에게만 열린 것                              → 드롭다운에 없었으니 그대로 둔다
+ *
+ * 한 사람만 골랐으면 그 사람 명단이 그대로 떴으므로 「이만큼으로 정한다」 와 같다.
  */
-async function allow(interaction: ComponentInteraction, targetId: string): Promise<void> {
+async function allow(interaction: ComponentInteraction): Promise<void> {
   if (!interaction.isRoleSelectMenu()) return;
   if (!interaction.inCachedGuild()) return;
   if (await denyNonAdmin(interaction)) return;
 
-  if (targetId === "") {
-    await aside(interaction, refused(interaction, speak("누구에게 열어 줄지를 잃어버렸습니다.")));
+  const targetIds = targetsOf(interaction);
+  if (targetIds.length === 0) {
+    await lostTargets(interaction);
     return;
   }
 
   const guild = interaction.guild;
   const picked = interaction.values.slice(0, MAX_ALLOWED_ROLES);
 
+  const lists = await Promise.all(targetIds.map((id) => allowedRoles(guild.id, id)));
+  const before = shared(lists);
+
   // 봇이 못 만지는 역할은 명단에 넣어 봐야 유저 쪽에서 눌렀을 때 실패한다. 여기서 가른다.
-  const usable = picked.filter((id) => canManageId(guild, id));
-  const stuck = picked.filter((id) => !usable.includes(id));
+  const added = picked.filter((id) => !before.includes(id));
+  const usable = added.filter((id) => canManageId(guild, id));
+  const stuck = added.filter((id) => !usable.includes(id));
+  const removed = before.filter((id) => !picked.includes(id));
 
-  const saved = await setAllowedRoles(guild.id, targetId, usable);
+  let full = 0;
+  for (const [index, id] of targetIds.entries()) {
+    const current = lists[index] ?? [];
+    const next = [...current.filter((roleId) => !removed.includes(roleId)), ...usable.filter((roleId) => !current.includes(roleId))];
 
-  await showAdmin(interaction, targetId, FUNC.allow);
+    // 스물다섯을 넘는 사람은 저장소가 뒤를 자른다. 몇 명이 그랬는지는 따로 센다.
+    if (next.length > MAX_ALLOWED_ROLES) full += 1;
+    await setAllowedRoles(guild.id, id, next);
+  }
 
-  if (stuck.length === 0) return;
+  await showAdmin(interaction, targetIds, FUNC.allow);
+
+  if (stuck.length === 0 && full === 0) return;
 
   // 일부만 담겼으면 그 말을 따로 한다. 화면은 이미 담긴 것을 보여 주고 있다.
+  const fields = [
+    ...(stuck.length === 0
+      ? []
+      : [{ name: "어떻게 하나", value: speak("서버 설정에서 봇 역할을 그 역할들보다 위로 올려 주세요.") }]),
+    ...(full === 0
+      ? []
+      : [{ name: "다 담지 못한 사람", value: speak(`${full}명은 열어 준 역할이 ${MAX_ALLOWED_ROLES}개를 넘어 뒤가 잘렸습니다.`) }]),
+  ];
+
   await aside(
     interaction,
     noticeView({
-      status: saved.length === 0 ? "failure" : "progress",
+      status: usable.length + removed.length === 0 ? "failure" : "progress",
       title: speak("일부는 열어 주지 못했어요"),
-      description: speak(`${mentionRoles(stuck)} 는 봇이 만질 수 없습니다.`),
-      fields: [
-        { name: "어떻게 하나", value: speak("서버 설정에서 봇 역할을 그 역할들보다 위로 올려 주세요.") },
-      ],
+      description:
+        stuck.length === 0
+          ? speak("명단이 넘친 사람이 있습니다.")
+          : speak(`${mentionRoles(stuck)} 는 봇이 만질 수 없습니다.`),
+      fields,
       user: interaction.user,
       panel: PANEL.admin,
       isAdmin: true,
@@ -178,50 +215,92 @@ async function allow(interaction: ComponentInteraction, targetId: string): Promi
 }
 
 /**
- * 「지급/회수」 — 그 사람의 역할을 지금 바로 붙였다 뗀다.
+ * 「지급/회수」 — 고른 사람들의 역할을 지금 바로 붙였다 뗀다.
+ *
+ * 드롭다운은 **모두 가진 것**을 골라 둔 채로 떴다. 「권한」 과 같은 규칙이다 —
+ * 더한 것은 모두에게 붙이고, 풀어 낸 것은 모두에게서 떼고, 일부만 가진 것은 그대로 둔다.
  *
  * 명단과 상관없다. 관리자가 직접 주고 뺏는 자리라, 서버의 아무 역할이나 실려 올 수 있다.
  * **뺄 수 있는 것은 봇이 만질 수 있는 것뿐**이라, 그 밖의 역할은 골라 두지도 않았고
  * 여기서도 건드리지 않는다.
+ *
+ * 사람 수만큼 역할을 붙였다 떼므로 3초 안에 끝난다는 보장이 없다. **먼저 「받았다」고
+ * 답해 두고** 일을 한 뒤 패널을 고친다 — 안 그러면 디스코드가 「응답하지 않음」 을 띄운다.
  */
-async function grant(interaction: ComponentInteraction, targetId: string): Promise<void> {
+async function grant(interaction: ComponentInteraction): Promise<void> {
   if (!interaction.isRoleSelectMenu()) return;
   if (!interaction.inCachedGuild()) return;
   if (await denyNonAdmin(interaction)) return;
 
-  const guild = interaction.guild;
-  const target = await guild.members.fetch(targetId).catch(() => null);
+  const targetIds = targetsOf(interaction);
+  if (targetIds.length === 0) {
+    await lostTargets(interaction);
+    return;
+  }
 
-  if (target === null) {
-    await aside(interaction, refused(interaction, speak("그 사람을 찾지 못했습니다.")));
+  await interaction.deferUpdate();
+
+  const guild = interaction.guild;
+  const targets = await fetchMembers(guild, targetIds);
+
+  if (targets.length === 0) {
+    await aside(interaction, refused(interaction, speak("고른 사람을 찾지 못했습니다.")));
     return;
   }
 
   const picked = interaction.values;
-  const held = manageableHeld(target);
+  const before = shared(targets.map((target) => manageableHeld(target).map((role) => role.id)));
 
   const add = picked
-    .filter((id) => !target.roles.cache.has(id) && canManageId(guild, id))
+    .filter((id) => !before.includes(id) && canManageId(guild, id))
     .map((id) => guild.roles.cache.get(id))
     .filter((role): role is Role => role !== undefined);
-  const remove = held.filter((role) => !picked.includes(role.id));
+  const remove = before
+    .filter((id) => !picked.includes(id))
+    .map((id) => guild.roles.cache.get(id))
+    .filter((role): role is Role => role !== undefined);
 
-  const stuck = picked.filter((id) => !target.roles.cache.has(id) && !canManageId(guild, id));
+  const stuck = picked.filter((id) => !before.includes(id) && !canManageId(guild, id));
 
-  const failed = add.length + remove.length === 0 ? [] : await applyRoles(target, add, remove);
+  // 사람마다 이미 가진 것은 다시 붙이지 않고, 없는 것은 떼려 들지 않는다.
+  const failed: { readonly userId: string; readonly role: Role }[] = [];
+  let tried = 0;
+
+  for (const target of targets) {
+    const give = add.filter((role) => !target.roles.cache.has(role.id));
+    const take = remove.filter((role) => target.roles.cache.has(role.id));
+    tried += give.length + take.length;
+
+    for (const role of await applyRoles(target, give, take)) failed.push({ userId: target.id, role });
+  }
 
   // 패널은 그 자리에 새 상태로 다시 그린다 (규칙 12).
-  await showAdmin(interaction, targetId, FUNC.grant);
+  await showAdmin(interaction, targetIds, FUNC.grant);
 
   if (add.length + remove.length + stuck.length === 0) return;
+
+  const failedRoles = failed.map((entry) => entry.role);
 
   await aside(
     interaction,
     noticeView({
-      status: statusOf(add.length + remove.length, failed.length + stuck.length),
+      status: statusOf(tried, failed.length + stuck.length),
       title: `역할 · ${FUNC_LABEL.grant}`,
-      description: [`<@${targetId}>`, describe(add, remove, failed)].join("\n"),
-      fields: stuckField([...failed.map((role) => role.id), ...stuck]),
+      description: [
+        targets.map((target) => `<@${target.id}>`).join(" "),
+        describe(add, remove, failedRoles),
+      ].join("\n"),
+      fields: [
+        ...stuckField(stuck),
+        ...(failed.length === 0
+          ? []
+          : [
+              {
+                name: "붙이거나 떼지 못한 것",
+                value: failed.map((entry) => `<@${entry.userId}> — <@&${entry.role.id}>`).join("\n"),
+              },
+            ]),
+      ],
       user: interaction.user,
       panel: PANEL.admin,
       isAdmin: true,
@@ -265,6 +344,9 @@ async function toggle(interaction: ComponentInteraction): Promise<void> {
     return;
   }
 
+  // 여러 개를 한 번에 바꾸면 3초를 넘길 수 있다. 먼저 받았다고 답해 둔다.
+  await interaction.deferUpdate();
+
   const failed = await applyRoles(member, add, remove);
 
   // **패널은 그 자리에 그대로 둔다** (규칙 12). 드롭다운은 지금 가진 것을 비추는 것이라,
@@ -285,31 +367,29 @@ async function toggle(interaction: ComponentInteraction): Promise<void> {
   );
 }
 
-/** 관리자 패널을 그 자리에 다시 그린다. 「지급/회수」 를 편 때만 대상의 지금 역할이 필요하다. */
+/**
+ * 관리자 패널을 그 자리에 다시 그린다. 「지급/회수」 를 편 때만 대상들의 지금 역할이 필요하다.
+ */
 async function showAdmin(
   interaction: ComponentInteraction,
-  targetId: string,
+  targetIds: readonly string[],
   func: AdminFunc | null,
 ): Promise<void> {
   if (!interaction.inCachedGuild()) return;
 
-  const target =
-    func === FUNC.grant ? await interaction.guild.members.fetch(targetId).catch(() => null) : null;
+  const targets = func === FUNC.grant ? await fetchMembers(interaction.guild, targetIds) : [];
 
-  // 가진 역할이 드롭다운에 다 안 담기는 사람은 열지 않는다 — 못 담긴 것이 그 자리에서
+  // 모두 가진 역할이 드롭다운에 다 안 담기면 열지 않는다 — 못 담긴 것이 그 자리에서
   // 벗겨진다. 그 말을 따로 하고 기능은 접어 둔 채로 그린다.
-  if (target !== null && tooManyToGrant(target)) {
-    await replaceView(
-      interaction,
-      await panelView(interaction.member, PANEL.admin, true, targetId, null),
-    );
+  if (targets.length > 0 && tooManyToGrant(targets)) {
+    await replaceView(interaction, await panelView(interaction.member, PANEL.admin, true, targetIds, null));
     await aside(
       interaction,
       noticeView({
         status: "failure",
         title: speak("지급/회수를 열 수 없어요"),
         description: speak(
-          `<@${targetId}> 님은 봇이 만질 수 있는 역할을 **${MAX_ALLOWED_ROLES}개**보다 많이 가지고 있습니다.`,
+          `고른 사람들이 모두 가진, 봇이 만질 수 있는 역할이 **${MAX_ALLOWED_ROLES}개**보다 많습니다.`,
         ),
         fields: [
           { name: "왜", value: speak("드롭다운이 그만큼만 골라 둘 수 있어, 못 담긴 것이 그 자리에서 벗겨집니다.") },
@@ -324,15 +404,64 @@ async function showAdmin(
 
   await replaceView(
     interaction,
-    await panelView(
-      interaction.member,
-      PANEL.admin,
-      true,
-      targetId,
-      func,
-      target ?? undefined,
-    ),
+    await panelView(interaction.member, PANEL.admin, true, targetIds, func, targets),
   );
+}
+
+/**
+ * 패널이 지금 띄우고 있는 대상 — **그 패널의 유저 드롭다운에 골라 둔 사람들.**
+ *
+ * customId 에 실을 수 없으므로(스물다섯 명이면 100자를 넘는다) 눌린 메시지에서 그 드롭다운을
+ * 찾아 읽는다. 봇이 그려 둔 메시지라 흉내 낼 수 없고, 관리자가 보고 있는 사람이 곧 대상이다.
+ */
+export function targetsOf(interaction: ComponentInteraction): string[] {
+  if (!interaction.isMessageComponent()) return [];
+  return pickedUsers(interaction.message);
+}
+
+interface Node {
+  readonly type?: number;
+  readonly custom_id?: string;
+  readonly default_values?: readonly { readonly id: string }[];
+  readonly components?: readonly Node[];
+  readonly component?: Node;
+}
+
+/** 메시지의 컴포넌트 나무를 훑어 유저 드롭다운(type 5)의 골라 둔 값을 꺼낸다. */
+export function pickedUsers(message: Pick<Message, "components">): string[] {
+  const visit = (node: Node): string[] | null => {
+    if (node.type === 5 && node.custom_id?.startsWith(`${ROLE}:${ACTION.pick}`) === true) {
+      return (node.default_values ?? []).map((value) => value.id);
+    }
+
+    for (const child of [...(node.components ?? []), ...(node.component === undefined ? [] : [node.component])]) {
+      const found = visit(child);
+      if (found !== null) return found;
+    }
+    return null;
+  };
+
+  for (const top of message.components) {
+    const found = visit(top.toJSON() as Node);
+    if (found !== null) return found.slice(0, MAX_TARGETS);
+  }
+  return [];
+}
+
+/** 대상이 사라졌다 — 패널이 너무 오래됐거나 모양이 바뀐 것이다. */
+async function lostTargets(interaction: ComponentInteraction): Promise<void> {
+  await aside(interaction, refused(interaction, speak("누구를 골랐는지 잃어버렸습니다. 유저를 다시 골라 주세요.")));
+}
+
+/** 고른 사람들을 한 번에 불러온다. 서버를 떠난 사람은 빠진다. */
+async function fetchMembers(guild: Guild, ids: readonly string[]): Promise<GuildMember[]> {
+  if (ids.length === 0) return [];
+
+  const found = await guild.members.fetch({ user: [...ids] }).catch(() => null);
+  if (found === null) return [];
+
+  // 고른 차례 그대로 — 화면에 적는 차례와 드롭다운의 차례가 어긋나지 않게.
+  return ids.map((id) => found.get(id)).filter((member): member is GuildMember => member !== undefined);
 }
 
 /** 실제로 붙였다 뗀다. 하나가 실패해도 나머지는 계속한다. */
@@ -382,7 +511,7 @@ function describe(add: readonly Role[], remove: readonly Role[], failed: readonl
 /** 전부 됐으면 초록, 전부 안 됐으면 빨강, 반쯤이면 노랑. */
 function statusOf(tried: number, failed: number): "success" | "progress" | "failure" {
   if (failed === 0) return "success";
-  return tried === 0 || tried === failed ? "failure" : "progress";
+  return tried === 0 || tried <= failed ? "failure" : "progress";
 }
 
 function stuckField(ids: readonly string[]): { name: string; value: string }[] {
@@ -398,12 +527,21 @@ function canManageId(guild: Guild, id: string): boolean {
   return role !== undefined && canManage(guild, role);
 }
 
-/** 패널을 그 자리에서 다시 그린다. 드롭다운이 지금 상태를 비추게 하는 유일한 길이다. */
+/**
+ * 패널을 그 자리에서 다시 그린다. 드롭다운이 지금 상태를 비추게 하는 유일한 길이다.
+ *
+ * 먼저 「받았다」고만 답해 둔 인터랙션(deferUpdate)이면 그 답을 고친다.
+ */
 async function replaceView(
   interaction: ComponentInteraction,
   view: MessageOptions,
 ): Promise<void> {
   if (interaction.isMessageComponent()) {
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply(editResponse(view));
+      return;
+    }
+
     await interaction.update(updateResponse(view));
     return;
   }

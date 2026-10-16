@@ -137,11 +137,15 @@ console.log("\n=== 3. 봇이 만질 수 있는 역할만 ===");
 // 되고, 어느 쪽에 고른 사람이 화면의 주인인지도 흐려진다.
 console.log("\n=== 4. 관리자 패널 ===");
 {
-  const before = await views.panelView(member(ADMIN), "admin", true, null, null);
+  const before = await views.panelView(member(ADMIN), "admin", true, [], null);
 
   assert("유저 드롭다운이 하나", selectsOf(before).length === 1, String(selectsOf(before).length));
   assert("  └ 유저를 고르는 것 (type 5)", selectsOf(before)[0].type === 5, String(selectsOf(before)[0].type));
-  assert("  └ 한 명만", selectsOf(before)[0].min_values === 1 && selectsOf(before)[0].max_values === 1);
+  assert(
+    `  └ 여럿을 고를 수 있음 (${ids.MAX_TARGETS}명까지)`,
+    selectsOf(before)[0].min_values === 1 && selectsOf(before)[0].max_values === ids.MAX_TARGETS,
+    `${selectsOf(before)[0].min_values}~${selectsOf(before)[0].max_values}`,
+  );
   assert("고르기 전에는 기능 버튼도 없음", buttonsOf(before).length === 0, "누구 것인지 모르는 채로 누를 것이 없다");
   assert("  └ 무엇을 할 수 있는지 적음", bodyOf(before).includes("**권한**") && bodyOf(before).includes("**지급/회수**"));
   // 목록은 편 기능의 것만 — 홈에는 아직 아무 기능도 없으므로 아무 목록도 없다.
@@ -152,7 +156,7 @@ console.log("\n=== 4. 관리자 패널 ===");
   );
 
   // 유저를 고르면 기능 버튼이 붙는다. 드롭다운은 아직 펴지 않는다.
-  const picked = await views.panelView(member(ADMIN), "admin", true, USER, null);
+  const picked = await views.panelView(member(ADMIN), "admin", true, [USER], null);
 
   assert("유저를 고르면 기능 버튼", buttonsOf(picked).map((x) => x.label).join(",") === "권한,지급/회수", JSON.stringify(buttonsOf(picked).map((x) => x.label)));
   assert("  └ 유저 드롭다운은 그대로 하나", selectsOf(picked).length === 1, String(selectsOf(picked).length));
@@ -171,18 +175,18 @@ console.log("\n=== 4. 관리자 패널 ===");
   // 버튼은 **눌렀을 때 갈 상태**를 싣는다 — 편 것을 다시 누르면 접힌다.
   assert(
     "안 편 버튼은 그 기능을 폄",
-    buttonsOf(picked)[0].custom_id === `role:open:allow:${USER}`,
+    buttonsOf(picked)[0].custom_id === "role:open:allow",
     buttonsOf(picked)[0].custom_id,
   );
 
   // ── 권한을 폈다 ──
-  const allow = await views.panelView(member(ADMIN), "admin", true, USER, "allow");
+  const allow = await views.panelView(member(ADMIN), "admin", true, [USER], "allow");
   const allowSelects = selectsOf(allow);
 
   assert("[권한] 을 펴면 역할 드롭다운이 붙음", allowSelects.length === 2, String(allowSelects.length));
   assert("  └ 역할을 고르는 것 (type 6)", allowSelects[1].type === 6, String(allowSelects[1].type));
   assert("  └ 편 버튼이 파랑", buttonsOf(allow)[0].style === 1, String(buttonsOf(allow)[0].style));
-  assert("  └ 다시 누르면 접힘", buttonsOf(allow)[0].custom_id === `role:open:-:${USER}`, buttonsOf(allow)[0].custom_id);
+  assert("  └ 다시 누르면 접힘", buttonsOf(allow)[0].custom_id === "role:open:-", buttonsOf(allow)[0].custom_id);
   assert(
     "  └ 지금 열려 있는 것이 골라진 채로",
     JSON.stringify(allowSelects[1].default_values ?? []).includes("r1"),
@@ -202,11 +206,11 @@ console.log("\n=== 4. 관리자 패널 ===");
 
   // ── 지급/회수를 폈다 ──
   const target = holder(USER, ["r1", "r3"]);
-  const give = await views.panelView(member(ADMIN), "admin", true, USER, "grant", target);
+  const give = await views.panelView(member(ADMIN), "admin", true, [USER], "grant", [target]);
   const giveSelects = selectsOf(give);
 
   assert("[지급/회수] 도 역할 드롭다운", giveSelects.length === 2 && giveSelects[1].type === 6);
-  assert("  └ 명단이 아니라 서버의 아무 역할이나", giveSelects[1].custom_id === `role:grant:${USER}`, giveSelects[1].custom_id);
+  assert("  └ 명단이 아니라 서버의 아무 역할이나", giveSelects[1].custom_id === "role:grant", giveSelects[1].custom_id);
   assert(
     "  └ 지금 가진 것이 골라진 채로",
     JSON.stringify(giveSelects[1].default_values ?? []).includes("r1"),
@@ -228,9 +232,92 @@ console.log("\n=== 4. 관리자 패널 ===");
   // 스물다섯을 넘게 가진 사람은 열지 않는다 — 못 담긴 것이 그 자리에서 벗겨진다.
   const crowded = holder(USER, Array.from({ length: 30 }, (_, i) => `m${i}`));
   for (let i = 0; i < 30; i += 1) roles.set(`m${i}`, role(`m${i}`, `역할${i}`));
-  assert("너무 많이 가졌으면 열지 않음", views.tooManyToGrant(crowded) === true);
-  assert("  └ 스물다섯까지는 괜찮음", views.tooManyToGrant(holder(USER, ["r1", "r2"])) === false);
+  assert("너무 많이 가졌으면 열지 않음", views.tooManyToGrant([crowded]) === true);
+  assert("  └ 스물다섯까지는 괜찮음", views.tooManyToGrant([holder(USER, ["r1", "r2"])]) === false);
+  // 여럿이면 **모두** 가진 것으로 센다 — 일부만 가진 것은 애초에 안 띄우므로 상관없다.
+  assert(
+    "  └ 여럿이면 모두 가진 것으로 셈",
+    views.tooManyToGrant([crowded, holder(ADMIN, ["r1"])]) === false,
+  );
   for (let i = 0; i < 30; i += 1) roles.delete(`m${i}`);
+}
+
+// ── 4-1. 여럿을 골랐을 때 ─────────────────────────────────
+//
+// 드롭다운은 **모두**의 것만 골라 둔 채로 뜬다. 일부의 것을 골라 두면 풀었을 때 그걸 가진
+// 사람에게서도 빼고, 안 골라 두면 고른 적 없는 사람에게 붙인다 — 어느 쪽이든 관리자가
+// 손대지 않은 것을 바꾸게 된다.
+console.log("\n=== 4-1. 여럿을 골랐을 때 ===");
+{
+  assert("모두의 것", views.shared([["r1", "r2"], ["r1", "r3"]]).join(",") === "r1");
+  assert("  └ 일부의 것", views.partly([["r1", "r2"], ["r1", "r3"]]).join(",") === "r2,r3");
+  assert("  └ 한 사람이면 그 사람 것 그대로", views.shared([["r1", "r2"]]).join(",") === "r1,r2");
+  assert("    · 일부의 것은 없음", views.partly([["r1", "r2"]]).length === 0);
+
+  const A = "666666666666666661";
+  const B = "666666666666666662";
+  await store.setAllowedRoles(G, A, ["r1", "r2"]);
+  await store.setAllowedRoles(G, B, ["r1"]);
+
+  const both = await views.panelView(member(ADMIN), "admin", true, [A, B], "allow");
+  const bothSelects = selectsOf(both);
+
+  assert("고른 사람을 모두 띄워 둠", JSON.stringify(bothSelects[0].default_values ?? []).includes(A) && JSON.stringify(bothSelects[0].default_values ?? []).includes(B));
+  assert("  └ 본문도 모두 멘션", bodyOf(both).includes(`<@${A}> <@${B}>`), bodyOf(both));
+  assert(
+    "역할 드롭다운은 모두의 것만 골라 둠",
+    JSON.stringify(bothSelects[1].default_values ?? []) === JSON.stringify([{ id: "r1", type: "role" }]),
+    JSON.stringify(bothSelects[1].default_values),
+  );
+  assert("  └ 「모두에게 열린 역할」 로 적음", bodyOf(both).includes("모두에게 열린 역할"), bodyOf(both));
+  assert("  └ 일부의 것은 따로", bodyOf(both).includes("일부에게만 열린 역할") && bodyOf(both).includes("<@&r2>"), bodyOf(both));
+  assert("    · 건드리지 않는다고 말함", bodyOf(both).includes(speak("_여기 있는 것은 건드리지 않습니다._")), bodyOf(both));
+
+  // 한 사람이면 예전 그대로다 — 「모두」 라는 말도, 「일부」 칸도 없다.
+  const one = await views.panelView(member(ADMIN), "admin", true, [A], "allow");
+  assert("한 사람이면 「열어 준 역할」", bodyOf(one).includes("열어 준 역할") && !bodyOf(one).includes("모두에게"), bodyOf(one));
+  assert("  └ 일부 칸도 없음", !bodyOf(one).includes("일부에게만"), bodyOf(one));
+
+  // 지급/회수도 같은 규칙이다.
+  const give = await views.panelView(member(ADMIN), "admin", true, [A, B], "grant", [holder(A, ["r1", "r2"]), holder(B, ["r1"])]);
+  assert("지급/회수도 모두 가진 것만 골라 둠", JSON.stringify(selectsOf(give)[1].default_values ?? []).includes("r1") && !JSON.stringify(selectsOf(give)[1].default_values ?? []).includes("r2"));
+  assert("  └ 일부만 가진 것은 따로", bodyOf(give).includes("일부만 가진 역할"), bodyOf(give));
+
+  await store.setAllowedRoles(G, A, []);
+  await store.setAllowedRoles(G, B, []);
+}
+
+// ── 4-2. 대상은 패널의 유저 드롭다운에서 읽는다 ────────────
+//
+// 스물다섯 명의 id 는 customId 100자에 안 들어간다. 그리고 관리자가 보고 있는 사람과 손대는
+// 사람이 갈라지면 안 된다 — 드롭다운에 띄운 사람이 곧 대상이다.
+console.log("\n=== 4-2. 대상은 드롭다운에서 ===");
+{
+  const handler = await import(`${DIST}/components/role.js`);
+  const many = Array.from({ length: 25 }, (_, i) => `7777777777777777${String(i).padStart(2, "0")}`);
+
+  const view = await views.panelView(member(ADMIN), "admin", true, many, "allow");
+  const json = jsonOf(view);
+
+  assert(
+    "customId 에 사람을 싣지 않음",
+    JSON.stringify(json).match(/"custom_id":"[^"]*"/gu).every((found) => found.length < 100 && !found.includes("7777")),
+    "스물다섯 명을 실으면 100자를 넘는다",
+  );
+  assert(
+    "메시지에서 그대로 읽어 냄",
+    handler.pickedUsers({ components: [buildContainer(view)] }).join(",") === many.join(","),
+  );
+  assert("  └ 홈이면 아무도 없음", handler.pickedUsers({ components: [buildContainer(await views.panelView(member(ADMIN), "admin", true, [], null))] }).length === 0);
+  assert(
+    "  └ 다른 드롭다운은 안 읽음",
+    handler.pickedUsers({ components: [buildContainer(await views.panelView(member(USER, ["r1"]), "user", false))] }).length === 0,
+    "유저 패널의 역할 드롭다운을 대상으로 읽으면 안 된다",
+  );
+
+  const source = read("src/components/role.ts");
+  assert("버튼·역할 드롭다운은 메시지에서 대상을 찾음", (source.match(/const targetIds = targetsOf\(interaction\);/gu) ?? []).length === 3);
+  assert("  └ 못 찾으면 다시 고르라고", source.includes("유저를 다시 골라 주세요"));
 }
 
 // ── 5. 유저 패널 ───────────────────────────────────────────
@@ -288,7 +375,7 @@ console.log("\n=== 6. 권한 ===");
   // 「지급/회수」 는 관리자만. 그리고 봇이 못 만지는 역할은 건드리지 않는다.
   const give = handler.slice(handler.indexOf("async function grant("), handler.indexOf("async function toggle("));
   assert("지급/회수도 관리자만", give.includes("if (await denyNonAdmin(interaction)) return;"));
-  assert("  └ 뺄 수 있는 것만 뺌", give.includes("const held = manageableHeld(target);"));
+  assert("  └ 뺄 수 있는 것만 뺌", give.includes("manageableHeld(target)"));
   assert("  └ 붙일 때도 만질 수 있는지 봄", give.includes("canManageId(guild, id)"));
   assert(
     "  └ 못 만지는 것은 따로 적음",
@@ -303,6 +390,11 @@ console.log("\n=== 6. 권한 ===");
     "알림으로 덮으면 한 번 쓰고 끝나는 화면이 된다",
   );
   assert("  └ 결과는 따로 냄", toggle.includes("await aside("));
+
+  // 여럿에게 역할을 붙였다 떼면 3초를 넘길 수 있다. 먼저 받았다고 답해 둬야 한다.
+  assert("지급/회수는 먼저 받았다고 답함", give.indexOf("await interaction.deferUpdate();") < give.indexOf("applyRoles("));
+  assert("  └ 켜고 끄기도", toggle.indexOf("await interaction.deferUpdate();") < toggle.indexOf("applyRoles("));
+  assert("  └ 받아 둔 것은 고쳐서 답함", handler.includes("await interaction.editReply(editResponse(view));"));
   assert(
     "  └ 다시 그린 드롭다운이 새 상태를 비춤",
     read("src/roles/panels.ts").includes("if (held.includes(role.id)) option.setDefault(true);"),
