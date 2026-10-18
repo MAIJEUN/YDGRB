@@ -70,6 +70,8 @@ npm run dev
 |----------|------|
 | `npm run dev` | 파일 저장 시 자동 재시작 (tsx watch) |
 | `npm run deploy` | 슬래시 커맨드를 디스코드에 등록 |
+| `npm run deploy:now` | **즉시 등록** — 봇이 들어가 있는 서버마다 올려 바로 보이게 (글로벌 쪽은 비움) |
+| `npm run deploy:reset` | **초기화** — 글로벌과 서버마다 등록된 커맨드를 전부 지움 |
 | `npm run typecheck` | 타입 검사만 |
 | `npm run build` | `dist/` 로 컴파일 |
 | `npm test` | [검사 전부 돌리기](#검사--npm-test) (빌드 먼저) |
@@ -78,12 +80,30 @@ npm run dev
 **`npm run deploy` 는 언제 다시 실행하나요?** 커맨드를 새로 만들거나 이름·설명·옵션을 바꿨을 때만 하면 됩니다.
 커맨드 내부 로직만 고쳤다면 봇 재시작(`dev` 는 자동)으로 충분합니다.
 
+#### 등록 · 즉시 등록 · 초기화
+
+| | 어디에 | 언제 쓰나 |
+|---|---|---|
+| **등록** | `DISCORD_GUILD_ID` 가 있으면 그 서버, 없으면 글로벌 | 평소 |
+| **즉시 등록** | 봇이 들어가 있는 **서버마다** (`DISCORD_GUILD_ID` 가 있으면 그 서버만) | 바뀐 커맨드를 지금 바로 보고 싶을 때 |
+| **초기화** | 글로벌 + 서버마다 등록된 것 **전부 지움** | 커맨드가 두 번 보이거나, 지운 커맨드가 계속 남아 있을 때 |
+
+**글로벌과 서버 등록은 따로 쌓입니다.** 둘 다 해 두면 그 서버에서 같은 커맨드가 **두 번** 보입니다.
+그래서 즉시 등록은 서버마다 올리면서 **글로벌 쪽을 비웁니다.** 이미 겹쳐 버렸으면 초기화로 다
+지우고 하나만 다시 올리세요.
+
+즉시 등록과 초기화는 봇이 꺼져 있어도 됩니다 — 봇이 들어간 서버 목록을 REST 로만 물어 옵니다.
+`--now` 와 `--reset` 을 함께 주면 아무것도 하지 않습니다 (지우라는 것인지 올리라는 것인지 모르는
+채로 지우면 되돌릴 수 없습니다).
+
 ## 폴더 구조
 
 ```
 src/
 ├─ index.ts               봇 진입점 — 설정 로드 → 커맨드/이벤트/컴포넌트 등록 → 로그인
-├─ deploy-commands.ts     슬래시 커맨드 등록 스크립트
+├─ deploy-commands.ts     슬래시 커맨드 등록 스크립트 (설정을 읽고 찍기만)
+├─ deploy/
+│  └─ run.ts                 등록 · 즉시 등록 · 초기화 — 무엇을 어디에 올리고 지우는지
 ├─ client.ts              Client 생성 + 인텐트 설정
 ├─ config.ts              .env 읽고 검증
 ├─ env.ts                 .env 파일 로딩 (부수효과 전용)
@@ -2871,7 +2891,8 @@ CI 에서도 돕니다 — 워크플로가 **릴리스를 만들기 전에** 이
 | `환경변수 DISCORD_TOKEN 가 비어 있습니다` | `.env` 가 없거나 값이 빔 |
 | `An invalid token was provided` | 토큰 오타. Client Secret 이 아니라 **Bot 토큰**이 맞는지 확인 |
 | `401: Unauthorized` (deploy) | 토큰이 틀렸거나 `DISCORD_CLIENT_ID` 가 다른 앱의 ID |
-| 서버에서 커맨드가 안 보임 | `npm run deploy` 안 함 / 초대 시 `applications.commands` 스코프 누락 / 글로벌 등록 반영 대기 |
+| 서버에서 커맨드가 안 보임 | `npm run deploy` 안 함 / 초대 시 `applications.commands` 스코프 누락 / 글로벌 등록 반영 대기 — 급하면 `npm run deploy:now` |
+| 같은 커맨드가 두 번 보임 | 글로벌과 서버에 둘 다 등록된 것. `npm run deploy:reset` 후 `deploy:now` 한 번 |
 | 버튼 누르면 「이 인터랙션에 실패했습니다」 | 3초 안에 응답하지 않았거나, `customId` 네임스페이스에 맞는 핸들러가 없음. 봇 재시작 전에 보낸 메시지의 버튼일 수도 있음 |
 | 모달이 안 뜸 | `showModal()` 은 첫 응답으로만 됩니다. 이미 `reply()`/`deferReply()` 했으면 못 띄웁니다 |
 | Components V2 메시지가 400 에러 | `MessageFlags.IsComponentsV2` 를 켠 메시지에는 `content`/`embeds` 를 같이 못 씁니다. 렌더러를 거치면 이 조합이 나올 수 없습니다 |

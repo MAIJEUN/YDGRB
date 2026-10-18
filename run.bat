@@ -107,13 +107,17 @@ REM ---------------------------------------------------------------
 echo.
 echo    1. 봇 실행
 echo    2. 슬래시 커맨드 등록   ^(커맨드를 새로 만들거나 이름·옵션을 바꿨을 때만^)
-echo    3. 종료
+echo    3. 슬래시 커맨드 즉시 등록   ^(봇이 있는 서버마다 바로 반영^)
+echo    4. 슬래시 커맨드 초기화   ^(등록된 것을 모두 지움^)
+echo    5. 종료
 echo.
 set "CHOICE="
 set /p "CHOICE=  번호: "
 if "%CHOICE%"=="1" goto bot
 if "%CHOICE%"=="2" goto deploy
-if "%CHOICE%"=="3" exit /b 0
+if "%CHOICE%"=="3" goto deploy_now
+if "%CHOICE%"=="4" goto deploy_reset
+if "%CHOICE%"=="5" exit /b 0
 
 REM  입력이 끊기면(파이프로 실행되는 등) set /p 가 그냥 지나간다.
 REM  그대로 두면 메뉴가 무한히 돌므로 몇 번 비면 끝낸다.
@@ -127,6 +131,31 @@ goto menu
 :deploy
 echo.
 node dist\deploy-commands.js
+echo.
+pause
+goto menu
+
+REM  즉시 등록 — 서버마다 올려 바로 보이게 하고, 글로벌 쪽은 비운다 (두 번 보이지 않게).
+:deploy_now
+echo.
+node dist\deploy-commands.js --now
+echo.
+pause
+goto menu
+
+REM  초기화 — 글로벌과 서버마다 등록된 커맨드를 전부 지운다. 되돌릴 수 없으니 한 번 묻는다.
+REM  지운 뒤에는 2번이나 3번으로 다시 올려야 커맨드가 보인다.
+:deploy_reset
+echo.
+echo  [!] 등록된 슬래시 커맨드를 전부 지웁니다. 다시 등록하기 전까지 아무 커맨드도 안 보입니다.
+set "SURE="
+set /p "SURE=  정말 지울까요? (Y/N): "
+if /i not "%SURE%"=="Y" (
+    echo  [*] 그만둡니다.
+    goto menu
+)
+echo.
+node dist\deploy-commands.js --reset
 echo.
 pause
 goto menu

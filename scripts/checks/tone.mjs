@@ -92,6 +92,8 @@ const SKIP_FILES = new Set([
   "src/env.ts",
   "src/index.ts",
   "src/deploy-commands.ts",
+  // 위와 같은 것 — 등록 스크립트의 터미널 출력이다. 디스코드에 나가는 말이 아니다.
+  "src/deploy/run.ts",
   "src/errors.ts",
   "src/ui/tone.ts",
   "src/wish/store.ts",

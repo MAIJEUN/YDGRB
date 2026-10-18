@@ -16,6 +16,8 @@
     "pretest": "npm run build",
     "test": "node scripts/checks/run.mjs",
     "deploy": "tsx src/deploy-commands.ts",
+    "deploy:now": "tsx src/deploy-commands.ts --now",
+    "deploy:reset": "tsx src/deploy-commands.ts --reset",
     "ship": "node scripts/ship.mjs",
     "version:next": "node scripts/version.mjs"
   },
