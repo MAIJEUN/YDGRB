@@ -21,7 +21,7 @@ const scheduler = await import(`${DIST}/games/scheduler.js`);
 const store = await import(`${DIST}/games/store.js`);
 const views = await import(`${DIST}/games/views.js`);
 const { maxPlayersOf, minPlayersOf } = await import(`${DIST}/games/types.js`);
-const { buildContainer } = await import(`${DIST}/ui/response.js`);
+const { buildContainer, channelMessage } = await import(`${DIST}/ui/response.js`);
 
 const G = "111111111111111111";
 const CH = "222222222222222222";
@@ -108,6 +108,11 @@ function makeClient() {
       const message = {
         id: messageId,
         payload,
+        attachments: new Map(),
+        // 디스코드가 돌려주는 것처럼 — 고친 뒤에는 보낸 JSON 이 그대로 컴포넌트가 된다.
+        get components() {
+          return (message.payload.components ?? []).map((c) => (typeof c.toJSON === "function" ? c : { toJSON: () => c }));
+        },
         edit: async (next) => { message.payload = next; },
         // 결과는 판을 연 메시지에 **답장**으로 달린다.
         reply: async (next) => {
@@ -148,7 +153,7 @@ async function open(client, gameId, options = {}) {
   const opened = await runner.openGame(game, G, channelId, host, options);
   if (!opened.ok) return opened;
 
-  const message = await client.makeChannel(channelId).send({ view: opened.view });
+  const message = await client.makeChannel(channelId).send({ ...channelMessage(opened.view), view: opened.view });
   await runner.attach(client, game, opened.session, message, host);
 
   return { ...opened, message, game };
@@ -159,6 +164,21 @@ const bodyOf = (view) => {
   return head.type === 9 ? head.components[0].content : head.content;
 };
 const headOf = (view) => bodyOf(view).split("\n")[0];
+
+/** 판 화면에 붙은 버튼들 — 오른쪽 위 「종료」 와 아래 로우 전부. */
+function buttonsOf(client, session) {
+  const message = client.messages.get(String(session.messageId ?? ""));
+  const found = [];
+  const walk = (node) => {
+    if (Array.isArray(node)) node.forEach(walk);
+    else if (typeof node === "object" && node !== null) {
+      if (node.type === 2) found.push(node);
+      Object.values(node).forEach(walk);
+    }
+  };
+  walk(message?.components.map((c) => c.toJSON()) ?? []);
+  return found;
+}
 
 // ── 1. 형식 ────────────────────────────────────────────────
 console.log("\n=== 1. 형식 ===");
@@ -326,8 +346,17 @@ console.log("\n=== 6. 즉시 시작 ===");
   await runner.handleGameMessage({ content: "딴 채널", channelId: CH2, guildId: G, author: { id: P2 } });
   assert("  └ 다른 채널은 안 감", !heard.includes("딴 채널"), JSON.stringify(heard));
 
+  assert("  └ 도는 동안은 「종료」 를 누를 수 있음", buttonsOf(client, session).some((b) => b.label === "종료" && b.disabled !== true));
+
   await say("정답");
   assert("맞히면 끝남", (await store.getSession(G, session.id)) === undefined);
+  {
+    // 끝난 판의 「종료」 가 살아 있으면, 누른 사람은 「이미 끝난 판」 만 듣고 화면은 그대로다.
+    const buttons = buttonsOf(client, session);
+    assert("  └ 판 화면의 버튼이 잠김", buttons.length > 0 && buttons.every((b) => b.disabled === true), JSON.stringify(buttons));
+    const panel = JSON.stringify(client.messages.get(String(session.messageId ?? "")).payload);
+    assert("  └ 내용은 그대로", panel.includes("문제입니다"), panel.slice(0, 200));
+  }
   assert("  └ 답한 사람이 참가자로", JSON.stringify(client.sent.at(-1).payload).includes("맞혔습니다"));
   assert("  └ 시계도 풀림", !scheduler.reservations().some((r) => r.sessionId === session.id));
 
@@ -624,6 +653,7 @@ assert(
 
   const shown = JSON.stringify(client.sent.at(-1).payload);
   assert("  └ 게임이 마무리를 맡음", shown.includes("아무도 못 맞혔습니다"), shown.slice(0, 200));
+  assert("  └ 「종료」 가 잠김", buttonsOf(client, session).every((b) => b.disabled === true), JSON.stringify(buttonsOf(client, session)));
   assert("  └ 끝낸 사람을 남김", shown.includes("끝낸 사람"), shown.slice(0, 300));
   assert("  └ 멘션으로", shown.includes(`<@${P3}>`), shown.slice(0, 300));
 

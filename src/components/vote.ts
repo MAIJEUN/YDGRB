@@ -11,6 +11,7 @@ import { join, liveGame, refreshPanel, startNow } from "../games/runner.js";
 import { getSession } from "../games/store.js";
 import { noticeView, refusedView } from "../games/views.js";
 import { defineComponentHandler, type ComponentInteraction } from "../types.js";
+import { lockMessage } from "../ui/lock.js";
 import { response } from "../ui/response.js";
 import { speak } from "../ui/tone.js";
 
@@ -147,6 +148,7 @@ async function pick(
     await interaction.reply(
       response(refusedView("끝난 투표", VOTE_PROBLEM["gone"] ?? "", interaction.user)),
     );
+    await lockMessage(interaction.message);
     return;
   }
 

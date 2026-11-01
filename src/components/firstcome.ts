@@ -11,6 +11,7 @@ import firstcome, {
 import { liveGame } from "../games/runner.js";
 import { noticeView, refusedView, startedView } from "../games/views.js";
 import { defineComponentHandler } from "../types.js";
+import { lockMessage } from "../ui/lock.js";
 import { response, updateResponse } from "../ui/response.js";
 import { speak } from "../ui/tone.js";
 
@@ -46,6 +47,7 @@ export default defineComponentHandler({
       await interaction.reply(
         response(refusedView("끝난 판", PROBLEM["gone"] ?? "", interaction.user)),
       );
+      await lockMessage(interaction.message);
       return;
     }
 

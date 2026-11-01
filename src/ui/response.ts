@@ -404,6 +404,24 @@ export function messageEdit(options: MessageOptions): MessageEditOptions {
   };
 }
 
+/**
+ * 이미 나간 메시지의 컴포넌트를 **받아 온 그대로** 다시 실을 때 — 버튼만 잠그는 [잠금](lock.ts).
+ *
+ * 컨테이너를 새로 짓지 않는다. 다시 그리면 게임이 이미 치운 내용이 빠지고 색이 바뀔 수
+ * 있다(규칙 11). 붙어 있던 첨부는 넘겨받은 그대로 남긴다.
+ */
+export function componentsEdit(
+  components: NonNullable<MessageEditOptions["components"]>,
+  attachments: NonNullable<MessageEditOptions["attachments"]>,
+): MessageEditOptions {
+  return {
+    components,
+    flags: [MessageFlags.IsComponentsV2],
+    allowedMentions: NO_PINGS,
+    attachments,
+  };
+}
+
 /** 인터랙션 응답이 아니라 채널이나 DM 으로 직접 보낼 때. */
 export function channelMessage(options: MessageOptions): MessageCreateOptions {
   return {

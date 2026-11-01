@@ -73,6 +73,7 @@ console.log("\n=== 나간 색은 바꾸지 않는다 ===");
 
   assert("  ┌ 마무리 구간을 찾음", end.includes("finished.add(session.id)"), end.slice(0, 80));
   assert("판이 끝나도 판 화면은 그대로", !end.includes("replaceMessage"), end);
+  assert("  └ 바꾸는 것은 버튼 (잠금)", end.includes("lockPanel("));
   assert("  └ 결과는 답장으로", end.includes("announceAt("));
 }
 
@@ -543,8 +544,8 @@ assert(
   /NO_PINGS[^=]*=\s*\{\s*parse:\s*\[\],\s*repliedUser:\s*false\s*\}/u.test(responseSource),
 );
 assert(
-  "  └ 다섯 페이로드 모두에 적용",
-  (responseSource.match(/allowedMentions: NO_PINGS/gu) ?? []).length === 5,
+  "  └ 여섯 페이로드 모두에 적용",
+  (responseSource.match(/allowedMentions: NO_PINGS/gu) ?? []).length === 6,
 );
 const ownMentions = sources.filter(
   (f) => f.rel !== "src/ui/response.ts" && /allowedMentions/u.test(f.text),

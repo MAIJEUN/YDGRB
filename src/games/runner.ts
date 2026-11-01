@@ -2,6 +2,7 @@ import type { Client, GuildTextBasedChannel, Message, User } from "discord.js";
 
 import { logger } from "../logger.js";
 import { announceAt } from "../ui/end-notice.js";
+import { lockMessage } from "../ui/lock.js";
 import { channelMessage, messageEdit } from "../ui/response.js";
 import type { MessageOptions } from "../ui/response.js";
 import { RECRUIT_TIMEOUT_SECONDS } from "./ids.js";
@@ -460,6 +461,10 @@ async function end(
   try {
     const ended = (await advance(session.guildId, session.id, "playing", "ended")) ?? session;
 
+    // 판 화면의 버튼을 잠근다 — 「종료」 와 게임 버튼이 살아 있으면 끝난 판을 또 누르게
+    // 된다. 색과 내용은 그대로 둔다(규칙 11). 바뀌는 것은 버튼뿐이다.
+    await lockPanel(client, session);
+
     // 결과는 **판을 연 메시지에 답장**으로 단다 — 효과의 종료 안내와 같은 자리다.
     // 위쪽 시작 안내를 고치기만 하면 한참 위라 아무도 못 보고, 그냥 새 메시지로 던지면
     // 무엇에 대한 결과인지 스크롤을 올려 찾아야 한다. 답장은 둘 다 해결한다.
@@ -552,6 +557,15 @@ async function fetchChannel(
   if (channel === null || !channel.isTextBased() || channel.isDMBased()) return null;
 
   return channel;
+}
+
+/** 판 화면의 버튼만 잠근다. 메시지를 못 찾으면 그냥 넘긴다 — 결과는 답장이 알린다. */
+async function lockPanel(client: Client, session: GameSession): Promise<void> {
+  if (session.messageId === null) return;
+
+  const channel = await fetchChannel(client, session.channelId);
+  const message = await channel?.messages.fetch(session.messageId).catch(() => null);
+  if (message !== null && message !== undefined) await lockMessage(message);
 }
 
 /**
